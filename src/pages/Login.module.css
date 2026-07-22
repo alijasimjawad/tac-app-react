@@ -89,11 +89,11 @@
 .brand {
   display: flex;
   align-items: flex-start;
-  margin-bottom: clamp(24px, 3vh, 32px);
+  margin-bottom: clamp(34px, 4vh, 44px);
 }
 
 .brandLogoImg {
-  width: clamp(150px, 11vw, 175px);
+  width: clamp(175px, 13vw, 205px);
   height: auto;
   display: block;
   filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45));
@@ -105,7 +105,7 @@
   font-weight: 800;
   color: #ffffff;
   line-height: 1.2;
-  margin: 0 0 clamp(18px, 2vh, 22px);
+  margin: 8px 0 clamp(18px, 2vh, 22px);
   letter-spacing: -0.4px;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
@@ -429,7 +429,7 @@
   }
 
   .brandLogoImg {
-    width: 80px;
+    width: 94px;
     height: auto;
   }
 
@@ -481,7 +481,7 @@
   }
 
   .brandLogoImg {
-    width: clamp(80px, 10vw, 120px);
+    width: clamp(94px, 12vw, 141px);
     height: auto;
   }
 
@@ -491,6 +491,7 @@
 
   .headline {
     font-size: clamp(20px, 6cqi, 28px);
+    margin-top: 0;
     margin-bottom: clamp(12px, 1.6vh, 18px);
   }
 
@@ -527,7 +528,7 @@
   }
 
   .brandLogoImg {
-    width: clamp(67px, 8vw, 94px);
+    width: clamp(79px, 9vw, 110px);
     height: auto;
   }
 
@@ -537,6 +538,7 @@
 
   .headline {
     font-size: clamp(18px, 5.5cqi, 24px);
+    margin-top: 0;
     margin-bottom: clamp(8px, 1.2vh, 12px);
   }
 
