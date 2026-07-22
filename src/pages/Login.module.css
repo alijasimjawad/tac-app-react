@@ -85,16 +85,16 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Brand lockup — real TAC logo image ── */
+/* ── Brand lockup — real TAC logo image (light variant, sized by width) ── */
 .brand {
   display: flex;
   align-items: flex-start;
-  margin-bottom: clamp(34px, 4.5vh, 44px);
+  margin-bottom: clamp(24px, 3vh, 32px);
 }
 
 .brandLogoImg {
-  height: clamp(56px, 7vw, 84px);
-  width: auto;
+  width: clamp(150px, 11vw, 175px);
+  height: auto;
   display: block;
   filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45));
 }
@@ -429,11 +429,12 @@
   }
 
   .brandLogoImg {
-    height: 48px;
+    width: 80px;
+    height: auto;
   }
 
   .brand {
-    margin-bottom: 28px;
+    margin-bottom: 24px;
   }
 
   .headline {
@@ -480,7 +481,8 @@
   }
 
   .brandLogoImg {
-    height: clamp(48px, 6vw, 72px);
+    width: clamp(80px, 10vw, 120px);
+    height: auto;
   }
 
   .brand {
@@ -525,7 +527,8 @@
   }
 
   .brandLogoImg {
-    height: clamp(40px, 5vw, 56px);
+    width: clamp(67px, 8vw, 94px);
+    height: auto;
   }
 
   .brand {

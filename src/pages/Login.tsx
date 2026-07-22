@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import tacLogo from '../assets/tac-logo.png';
+import tacLogoLight from '../assets/tac-logo-light.png';
 import styles from './Login.module.css';
 
 function mapError(raw: string): string {
@@ -114,9 +115,9 @@ export default function Login() {
 
         <div className={styles.brandInner}>
           <div className={styles.brandMain}>
-            {/* Brand lockup — real TAC logo */}
+            {/* Brand lockup — real TAC logo (light variant for legibility on navy backdrop) */}
             <div className={styles.brand}>
-              <img src={tacLogo} alt="TAC Network" className={styles.brandLogoImg} />
+              <img src={tacLogoLight} alt="TAC Network" className={styles.brandLogoImg} />
             </div>
 
             <h1 className={styles.headline}>
