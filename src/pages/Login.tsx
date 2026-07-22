@@ -112,46 +112,48 @@ export default function Login() {
         <div className={styles.bgGlow1} aria-hidden="true"/>
 
         <div className={styles.brandInner}>
-          {/* Brand lockup */}
-          <div className={styles.brand}>
-            <div className={styles.brandAccent}/>
-            <div className={styles.brandText}>
-              <div className={styles.brandTac}>TAC</div>
-              <div className={styles.brandNetwork}>NETWORK</div>
-              <div className={styles.brandDivider}/>
-              <div className={styles.brandCaption}>TELECOM INFRASTRUCTURE</div>
-            </div>
-          </div>
-
-          <h1 className={styles.headline}>
-            Powering Connections.<br/>
-            Building <span className={styles.headlineAccent}>the Future.</span>
-          </h1>
-
-          <p className={styles.brandDesc}>
-            TAC Network delivers reliable telecom infrastructure solutions that connect people and power progress.
-          </p>
-
-          <div className={styles.features}>
-            <div className={styles.feature}>
-              <div className={styles.featureIcon}><IconShield/></div>
-              <div>
-                <div className={styles.featureTitle}>Secure Access</div>
-                <div className={styles.featureDesc}>Enterprise-grade security</div>
+          <div className={styles.brandMain}>
+            {/* Brand lockup */}
+            <div className={styles.brand}>
+              <div className={styles.brandAccent}/>
+              <div className={styles.brandText}>
+                <div className={styles.brandTac}>TAC</div>
+                <div className={styles.brandNetwork}>NETWORK</div>
+                <div className={styles.brandDivider}/>
+                <div className={styles.brandCaption}>TELECOM INFRASTRUCTURE</div>
               </div>
             </div>
-            <div className={styles.feature}>
-              <div className={styles.featureIcon}><IconZap/></div>
-              <div>
-                <div className={styles.featureTitle}>Reliable Platform</div>
-                <div className={styles.featureDesc}>Always available, always fast</div>
+
+            <h1 className={styles.headline}>
+              Powering Connections.<br/>
+              Building <span className={styles.headlineAccent}>the Future.</span>
+            </h1>
+
+            <p className={styles.brandDesc}>
+              TAC Network delivers reliable telecom infrastructure solutions that connect people and power progress.
+            </p>
+
+            <div className={styles.features}>
+              <div className={styles.feature}>
+                <div className={styles.featureIcon}><IconShield/></div>
+                <div>
+                  <div className={styles.featureTitle}>Secure Access</div>
+                  <div className={styles.featureDesc}>Enterprise-grade security</div>
+                </div>
               </div>
-            </div>
-            <div className={styles.feature}>
-              <div className={styles.featureIcon}><IconUsers/></div>
-              <div>
-                <div className={styles.featureTitle}>Team Collaboration</div>
-                <div className={styles.featureDesc}>Built for field teams and partners</div>
+              <div className={styles.feature}>
+                <div className={styles.featureIcon}><IconZap/></div>
+                <div>
+                  <div className={styles.featureTitle}>Reliable Platform</div>
+                  <div className={styles.featureDesc}>Always available, always fast</div>
+                </div>
+              </div>
+              <div className={styles.feature}>
+                <div className={styles.featureIcon}><IconUsers/></div>
+                <div>
+                  <div className={styles.featureTitle}>Team Collaboration</div>
+                  <div className={styles.featureDesc}>Built for field teams and partners</div>
+                </div>
               </div>
             </div>
           </div>

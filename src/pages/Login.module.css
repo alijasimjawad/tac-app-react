@@ -10,8 +10,11 @@
 
   display: flex;
   width: 100%;
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
   margin: 0;
+  padding: 0;
   background: var(--bg);
   overflow: hidden;
 }
@@ -23,8 +26,10 @@
 .brandPanel {
   position: relative;
   flex: 0 0 44%;
+  height: 100%;
+  min-height: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: flex-start;
   background:
     linear-gradient(90deg, rgba(3, 20, 48, 0.55) 0%, rgba(3, 26, 61, 0.38) 45%, rgba(3, 31, 72, 0.20) 100%),
@@ -33,7 +38,7 @@
   background-position: 28% center;
   background-repeat: no-repeat;
   overflow: hidden;
-  padding: 48px 52px;
+  padding: 0 52px;
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
@@ -53,12 +58,25 @@
 .brandInner {
   position: relative;
   z-index: 2;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   width: min(420px, 58%);
   margin-left: 37%;
-  padding-top: 11vh;
+  padding-top: clamp(28px, 5vh, 64px);
+  padding-bottom: clamp(20px, 3vh, 36px);
+  overflow: hidden;
   animation: slideUp 0.55s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Logo + headline + paragraph + features — centered within the remaining space */
+.brandMain {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 @keyframes slideUp {
@@ -71,16 +89,16 @@
   display: flex;
   align-items: flex-start;
   gap: 13px;
-  margin-bottom: 56px;
+  margin-bottom: clamp(34px, 4.5vh, 44px);
 }
 
 /* CSS triangle pointing upward */
 .brandAccent {
   width: 0;
   height: 0;
-  border-left:   13px solid transparent;
-  border-right:  13px solid transparent;
-  border-bottom: 22px solid var(--accent);
+  border-left:   clamp(10px, 1vw, 13px) solid transparent;
+  border-right:  clamp(10px, 1vw, 13px) solid transparent;
+  border-bottom: clamp(17px, 1.7vw, 22px) solid var(--accent);
   margin-top: 10px;
   flex-shrink: 0;
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
@@ -93,7 +111,7 @@
 }
 
 .brandTac {
-  font-size: 52px;
+  font-size: clamp(36px, 3.6vw, 48px);
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -1.5px;
@@ -130,11 +148,11 @@
 
 /* ── Headline ── */
 .headline {
-  font-size: 36px;
+  font-size: clamp(28px, 2.4vw, 40px);
   font-weight: 800;
   color: #ffffff;
   line-height: 1.2;
-  margin: 0 0 22px;
+  margin: 0 0 clamp(18px, 2vh, 22px);
   letter-spacing: -0.4px;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
@@ -145,10 +163,10 @@
 
 /* ── Description ── */
 .brandDesc {
-  font-size: 16px;
+  font-size: clamp(14px, 1.1vw, 17px);
   line-height: 1.6;
   color: rgba(255, 255, 255, 0.92);
-  margin: 0 0 40px;
+  margin: 0 0 clamp(28px, 3.4vh, 34px);
   max-width: 360px;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
@@ -157,8 +175,7 @@
 .features {
   display: flex;
   flex-direction: column;
-  gap: 25px;
-  margin-bottom: 52px;
+  gap: clamp(14px, 1.8vh, 18px);
 }
 
 .feature {
@@ -168,8 +185,8 @@
 }
 
 .featureIcon {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
   background: rgba(4, 21, 47, 0.55);
@@ -182,7 +199,7 @@
 }
 
 .featureTitle {
-  font-size: 16px;
+  font-size: clamp(14px, 1vw, 17px);
   font-weight: 700;
   color: #ffffff;
   margin-bottom: 3px;
@@ -190,7 +207,7 @@
 }
 
 .featureDesc {
-  font-size: 12px;
+  font-size: clamp(12px, 0.85vw, 14px);
   color: rgba(255, 255, 255, 0.70);
   line-height: 1.5;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
@@ -198,9 +215,10 @@
 
 /* ── Footer ── */
 .brandFooter {
+  flex-shrink: 0;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.32);
-  margin: 40px 0 0;
+  margin: clamp(16px, 3vh, 32px) 0 0;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
@@ -210,12 +228,15 @@
 
 .loginPanel {
   flex: 1;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px 32px 76px;
+  padding: clamp(16px, 3vh, 32px) 32px;
   background: var(--bg);
+  overflow: hidden;
   animation: fadeIn 0.45s cubic-bezier(0.4, 0, 0.2, 1) 0.1s both;
 }
 
@@ -261,18 +282,18 @@
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: 44px 40px 30px;
+  padding: clamp(28px, 4vh, 44px) 40px clamp(20px, 3vh, 30px);
   width: 100%;
-  max-width: 512px;
+  max-width: 520px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
 }
 
 .cardHeader {
-  margin-bottom: 32px;
+  margin-bottom: clamp(20px, 3vh, 32px);
 }
 
 .heading {
-  font-size: 26px;
+  font-size: clamp(22px, 2vw, 26px);
   font-weight: 800;
   color: var(--text-primary);
   margin: 0 0 6px;
@@ -456,14 +477,15 @@
 @media (max-width: 900px) {
   .brandPanel {
     flex: 0 0 40%;
-    padding: 36px 32px;
+    padding: 0 32px;
     background-position: 22% center;
   }
 
   .brandInner {
     width: min(360px, 70%);
     margin-left: 18%;
-    padding-top: 8vh;
+    padding-top: clamp(20px, 4vh, 40px);
+    padding-bottom: clamp(16px, 2.5vh, 24px);
   }
 
   .brandTac {
@@ -479,23 +501,22 @@
   }
 
   .brand {
-    margin-bottom: 36px;
+    margin-bottom: 28px;
   }
 
   .headline {
     font-size: 24px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
 
   .brandDesc {
     font-size: 13px;
-    margin-bottom: 28px;
+    margin-bottom: 22px;
     max-width: none;
   }
 
   .features {
-    gap: 16px;
-    margin-bottom: 36px;
+    gap: 12px;
   }
 
   .featureIcon {
@@ -513,17 +534,133 @@
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   Height-aware  — shorter laptop screens (e.g. 1366×768, 1280×720)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+@media (max-height: 850px) {
+  .brandInner {
+    padding-top: clamp(20px, 3.5vh, 40px);
+    padding-bottom: clamp(14px, 2vh, 22px);
+  }
+
+  .brandTac {
+    font-size: clamp(30px, 3.2vw, 40px);
+  }
+
+  .brand {
+    margin-bottom: clamp(22px, 3vh, 32px);
+  }
+
+  .headline {
+    font-size: clamp(24px, 2.1vw, 32px);
+    margin-bottom: clamp(12px, 1.6vh, 18px);
+  }
+
+  .brandDesc {
+    margin-bottom: clamp(18px, 2.4vh, 26px);
+  }
+
+  .features {
+    gap: clamp(10px, 1.4vh, 14px);
+  }
+
+  .featureIcon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .card {
+    padding: clamp(22px, 3vh, 32px) 36px clamp(16px, 2vh, 22px);
+  }
+
+  .cardHeader {
+    margin-bottom: clamp(16px, 2vh, 22px);
+  }
+
+  .form {
+    gap: 14px;
+  }
+}
+
+@media (max-height: 720px) {
+  .brandInner {
+    padding-top: clamp(14px, 2.5vh, 24px);
+    padding-bottom: clamp(10px, 1.5vh, 16px);
+  }
+
+  .brandTac {
+    font-size: clamp(26px, 2.8vw, 34px);
+  }
+
+  .brand {
+    margin-bottom: clamp(16px, 2.2vh, 22px);
+  }
+
+  .headline {
+    font-size: clamp(20px, 1.8vw, 26px);
+    margin-bottom: clamp(8px, 1.2vh, 12px);
+  }
+
+  .brandDesc {
+    font-size: 13px;
+    margin-bottom: clamp(14px, 1.8vh, 18px);
+  }
+
+  .features {
+    gap: clamp(8px, 1vh, 10px);
+  }
+
+  .featureIcon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .featureDesc {
+    font-size: 11px;
+  }
+
+  .card {
+    padding: clamp(18px, 2.4vh, 26px) 32px clamp(12px, 1.6vh, 18px);
+  }
+
+  .cardHeader {
+    margin-bottom: clamp(12px, 1.6vh, 18px);
+  }
+
+  .form {
+    gap: 12px;
+  }
+
+  .input,
+  .btn {
+    height: 46px;
+  }
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    Mobile  ≤ 640px  — hide brand panel, full-width card
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 @media (max-width: 640px) {
+  /* Mobile may need to scroll if content is taller than the viewport —
+     the strict no-scroll requirement applies to desktop/laptop only. */
+  .page {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   .brandPanel {
     display: none;
   }
 
   .loginPanel {
+    height: auto;
     padding: 32px 20px;
     min-height: 100vh;
+    min-height: 100dvh;
     justify-content: center;
+    overflow: visible;
   }
 
   .mobileBrand {
