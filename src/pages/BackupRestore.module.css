@@ -1,0 +1,74 @@
+.page { padding: 24px; padding-bottom: 48px; max-width: 640px; }
+
+/* ── Header ───────────────────────────────────────────────────── */
+.hdr { margin-bottom: 20px; }
+.hdr h2 { font-size: 22px; font-weight: 800; color: #1e293b; margin: 0 0 4px; }
+.hdr p  { font-size: 13px; color: #64748b; margin: 0; }
+
+/* ── Auto-backup info card ────────────────────────────────────── */
+.autoCard {
+  display: flex; align-items: flex-start; gap: 16px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+  border: 1.5px solid #93c5fd; border-radius: 14px;
+  padding: 20px 24px; margin-bottom: 20px;
+}
+.cloudEmoji { font-size: 26px; line-height: 1; flex-shrink: 0; }
+.autoBody   { flex: 1; }
+.autoTitle  { font-size: 15px; font-weight: 800; color: #1d4ed8; margin-bottom: 6px; }
+.autoDesc   { font-size: 13px; color: #374151; line-height: 1.6; margin-bottom: 14px; }
+.driveBtn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 16px; background: #2563eb; color: #fff;
+  border-radius: 8px; font-size: 12px; font-weight: 700;
+  text-decoration: none; transition: opacity .15s;
+}
+.driveBtn:hover { opacity: .88; }
+
+/* ── Card ─────────────────────────────────────────────────────── */
+.card {
+  background: #fff; border: 1.5px solid #e2e8f0; border-radius: 14px;
+  padding: 24px; margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.cardTitle { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+.cardDesc  { font-size: 13px; color: #64748b; margin-bottom: 12px; }
+.tableList { font-size: 12px; color: #94a3b8; margin-bottom: 16px; }
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btnExport {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 18px; border: none; border-radius: 7px;
+  background: #6366f1; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s;
+}
+.btnExport:hover:not(:disabled) { background: #4f46e5; }
+.btnExport:disabled { opacity: .6; cursor: not-allowed; }
+
+.btnRestore {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 18px; border: 1.5px solid #ef4444; border-radius: 7px;
+  background: #fff; color: #ef4444; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .15s;
+}
+.btnRestore:hover:not(:disabled) { background: #fef2f2; }
+.btnRestore:disabled { opacity: .6; cursor: not-allowed; }
+
+/* ── Warning box ──────────────────────────────────────────────── */
+.warnBox {
+  background: #fef3c7; border: 1.5px solid #fde68a; border-radius: 8px;
+  padding: 10px 14px; font-size: 12px; color: #92400e; margin-bottom: 16px;
+}
+
+/* ── Status message ───────────────────────────────────────────── */
+.status    { margin-top: 14px; font-size: 13px; color: #64748b; line-height: 1.5; }
+.statusOk  { color: #16a34a; font-weight: 600; }
+.statusErr { color: #ef4444; font-weight: 600; }
+
+/* ── Denied ───────────────────────────────────────────────────── */
+.denied { color: #ef4444; padding: 40px; text-align: center; }
+
+/* ── Toast ────────────────────────────────────────────────────── */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #fff; z-index: 10000; pointer-events: none; animation: fadeInUp .2s ease; }
+.toastOk  { background: #16a34a; }
+.toastErr { background: #ef4444; }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

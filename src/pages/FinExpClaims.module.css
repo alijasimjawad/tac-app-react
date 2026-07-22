@@ -1,0 +1,245 @@
+.page { padding: 24px; padding-bottom: 48px; }
+
+/* ── Page header ──────────────────────────────────────────────── */
+.pageHdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
+.pageTitle { font-size: 22px; font-weight: 800; color: #1e293b; }
+.hdrActions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btnGhost {
+  display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px;
+  border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 12px;
+  font-weight: 600; color: #334155; cursor: pointer; white-space: nowrap;
+}
+.btnGhost:hover { background: #f8fafc; }
+.btnAccent {
+  display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 14px;
+  border: none; border-radius: 6px; background: #6366f1; font-size: 12px;
+  font-weight: 600; color: #fff; cursor: pointer; white-space: nowrap;
+}
+.btnAccent:hover { background: #4f46e5; }
+
+/* ── Stat cards ───────────────────────────────────────────────── */
+.statCards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+@media (max-width: 800px) { .statCards { grid-template-columns: repeat(2, 1fr); } }
+.statCard {
+  border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px 16px;
+  background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s;
+  text-align: center;
+}
+.statCard:hover { border-color: #94a3b8; }
+.statCardActive { border-color: currentColor !important; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
+.statNum { font-size: 26px; font-weight: 800; line-height: 1.1; }
+.statLabel { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+.statAll   { color: #334155; }
+.statPend  { color: #b45309; }
+.statAppr  { color: #16a34a; }
+.statRej   { color: #dc2626; }
+
+/* ── Filters ──────────────────────────────────────────────────── */
+.filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filterSel {
+  padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 13px;
+  background: #fff; color: #334155; cursor: pointer;
+}
+.filterSel:focus { outline: none; border-color: #6366f1; }
+.searchInp {
+  padding: 6px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px; font-size: 13px;
+  background: #fff; color: #334155; flex: 1; min-width: 200px;
+}
+.searchInp:focus { outline: none; border-color: #6366f1; }
+
+/* ── Table ────────────────────────────────────────────────────── */
+.tableWrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th {
+  background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .4px; padding: 9px 12px;
+  text-align: left; border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+}
+.table th.num { text-align: right; }
+.table td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
+.table td.num { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.empty { text-align: center; color: #94a3b8; padding: 28px; font-size: 13px; }
+
+/* ── Status badge ─────────────────────────────────────────────── */
+.badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 5px; white-space: nowrap; }
+.badgePending  { background: #fef3c7; color: #b45309; border: 1px solid #fbbf24; }
+.badgeApproved { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
+.badgeRejected { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+
+/* ── Activity verify ──────────────────────────────────────────── */
+.verifyOk {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700;
+  color: #16a34a; background: #dcfce7; border: 1px solid #86efac; padding: 2px 8px;
+  border-radius: 5px; white-space: nowrap;
+}
+.verifyWarn {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700;
+  color: #b45309; background: #fef3c7; border: 1px solid #fbbf24; padding: 2px 8px;
+  border-radius: 5px; white-space: nowrap;
+}
+
+/* ── Sticky Actions column ────────────────────────────────────── */
+.actionsCol {
+  position: sticky;
+  right: 0;
+  background: #fff;
+  box-shadow: -6px 0 6px -6px rgba(0,0,0,.15);
+  z-index: 1;
+}
+.table thead .actionsCol { background: #f8fafc; }
+
+/* ── Row action buttons ───────────────────────────────────────── */
+.actWrap { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; min-width: 120px; }
+.actBtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px; padding: 0 8px; border: 1px solid #e2e8f0; border-radius: 5px;
+  background: #fff; cursor: pointer; font-size: 11px; font-weight: 600;
+  color: #334155; white-space: nowrap; transition: background .1s;
+}
+.actBtn:hover { background: #f1f5f9; }
+.actBtnApprove { color: #16a34a; border-color: #86efac; }
+.actBtnApprove:hover { background: #f0fdf4; }
+.actBtnReject { color: #b45309; border-color: #fbbf24; }
+.actBtnReject:hover { background: #fffbeb; }
+.actBtnDel { color: #ef4444; border-color: #fecaca; }
+.actBtnDel:hover { background: #fef2f2; }
+
+/* ── Inline reject input ──────────────────────────────────────── */
+.rejWrap { display: flex; gap: 6px; margin-top: 4px; align-items: center; }
+.rejInp {
+  flex: 1; padding: 5px 8px; border: 1.5px solid #fbbf24; border-radius: 5px;
+  font-size: 12px; background: #fff; color: #334155; min-width: 160px;
+}
+.rejInp:focus { outline: none; border-color: #f59e0b; }
+.rejInpErr { border-color: #ef4444 !important; }
+.rejConfirmBtn {
+  padding: 5px 10px; background: #dc2626; color: #fff; border: none;
+  border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.rejConfirmBtn:hover { background: #b91c1c; }
+
+/* ── Rejected reason sub-row ──────────────────────────────────── */
+.rejReason { font-size: 11px; color: #dc2626; margin-top: 3px; }
+
+/* ── Approved total bar ───────────────────────────────────────── */
+.approvedBar {
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px;
+  margin-top: 12px; padding: 12px 18px; background: #f8fafc;
+  border: 1.5px solid #e2e8f0; border-radius: 10px;
+}
+.approvedBarLabel { font-size: 13px; font-weight: 600; color: #64748b; }
+.approvedBarAmt { font-size: 15px; font-weight: 800; color: #16a34a; }
+
+/* ── Overlay / Modal ──────────────────────────────────────────── */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px;
+}
+.modal {
+  background: #fff; border-radius: 12px; padding: 28px; width: 100%;
+  max-width: 600px; max-height: 92vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+
+/* ── Detail modal ─────────────────────────────────────────────── */
+.detailTopRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 2px; }
+.detailTitle  { font-size: 16px; font-weight: 800; color: #1e293b; }
+.detailMember { font-size: 13px; color: #94a3b8; font-weight: 500; margin-top: 2px; }
+
+.detailGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-top: 16px; }
+.detailField { display: flex; flex-direction: column; gap: 3px; }
+.detailField.full { grid-column: span 2; }
+.detailLbl { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+.detailVal { font-size: 13px; color: #1e293b; font-weight: 500; }
+.detailSep { grid-column: span 2; height: 1px; background: #e2e8f0; margin: 4px 0; }
+
+/* ── Extra categories ─────────────────────────────────────────── */
+.catsSection { margin-top: 18px; }
+.catsSectionLbl { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+.catRow { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: #334155; }
+.catAmt { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── Total bar (detail modal) ─────────────────────────────────── */
+.detailTotalBar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 16px; }
+.detailTotalLabel { font-size: 13px; color: #64748b; font-weight: 600; }
+.detailTotalVal { font-size: 16px; font-weight: 800; color: #16a34a; }
+
+/* ── Status timeline ──────────────────────────────────────────── */
+.timeline { margin-top: 18px; }
+.timelineTitle { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+.tlItem { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+.tlDot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; }
+.tlDotDone { background: #16a34a; }
+.tlDotPending { background: #fbbf24; }
+.tlDotRejected { background: #ef4444; }
+.tlLabel { font-size: 13px; font-weight: 600; color: #1e293b; }
+.tlMeta { font-size: 12px; color: #94a3b8; margin-top: 1px; }
+.tlRejReason { font-size: 12px; color: #dc2626; margin-top: 4px; }
+
+/* ── Rejection reason box ─────────────────────────────────────── */
+.rejBox { margin-top: 12px; padding: 10px 14px; background: #fee2e2; border-radius: 6px; }
+.rejBoxTitle { font-size: 11px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 3px; }
+.rejBoxText { font-size: 13px; color: #7f1d1d; }
+
+/* ── Actions bar (pending claims only) ───────────────────────── */
+.detailActions { margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0; }
+.detailActionBtns { display: flex; gap: 8px; align-items: center; }
+.btnApprove { padding: 7px 16px; border: none; border-radius: 6px; background: #16a34a; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btnApprove:hover { background: #15803d; }
+.btnApprove:disabled { opacity: .6; cursor: not-allowed; }
+.btnReject { padding: 7px 16px; border: 1.5px solid #fbbf24; border-radius: 6px; background: #fff; color: #b45309; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btnReject:hover { background: #fffbeb; }
+.btnEdit { padding: 7px 14px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btnEdit:hover { background: #f8fafc; }
+
+.detailRejWrap { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.detailRejInp { flex: 1; padding: 7px 10px; border: 1.5px solid #fbbf24; border-radius: 6px; font-size: 13px; background: #fff; color: #334155; }
+.detailRejInp:focus { outline: none; border-color: #f59e0b; }
+.detailRejInpErr { border-color: #ef4444 !important; }
+.detailRejConfirm { padding: 7px 14px; border: none; border-radius: 6px; background: #dc2626; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.detailRejConfirm:hover { background: #b91c1c; }
+
+/* ── Edit form (inside detail modal) ─────────────────────────── */
+.editSection { margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0; }
+.editGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.editField { display: flex; flex-direction: column; gap: 4px; }
+.editField.full { grid-column: span 2; }
+.editLabel { font-size: 12px; font-weight: 600; color: #475569; }
+.editInp {
+  padding: 7px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px;
+  font-size: 13px; background: #fff; color: #334155; box-sizing: border-box; width: 100%;
+}
+.editInp:focus { outline: none; border-color: #6366f1; }
+.editSel {
+  padding: 7px 10px; border: 1.5px solid #cbd5e1; border-radius: 6px;
+  font-size: 13px; background: #fff; color: #334155; width: 100%; box-sizing: border-box;
+}
+.editSel:focus { outline: none; border-color: #6366f1; }
+.editTotalBar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.editTotalLabel { font-size: 13px; font-weight: 600; color: #64748b; }
+.editTotalVal { font-size: 15px; font-weight: 800; color: #16a34a; }
+
+/* ── Modal footer ─────────────────────────────────────────────── */
+.modalFooter { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.btnClose { padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btnClose:hover { background: #f8fafc; }
+.btnSave { padding: 8px 20px; border: none; border-radius: 6px; background: #6366f1; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btnSave:hover { background: #4f46e5; }
+.btnSave:disabled { opacity: .6; cursor: not-allowed; }
+.btnCancel { padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; }
+.btnCancel:hover { background: #f8fafc; }
+
+/* ── Team member pills ────────────────────────────────────────── */
+.teamPill { display: inline-block; padding: 2px 10px; background: #f1f5f9; border: 1.5px solid #e2e8f0; border-radius: 20px; font-size: 12px; font-weight: 600; color: #475569; margin: 2px 3px 2px 0; }
+
+/* ── Toast ────────────────────────────────────────────────────── */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #fff; z-index: 10000; pointer-events: none; animation: fadeInUp .2s ease; }
+.toastOk  { background: #16a34a; }
+.toastErr { background: #ef4444; }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Misc ─────────────────────────────────────────────────────── */
+.placeholder { display: flex; align-items: center; justify-content: center; height: 200px; color: #94a3b8; font-size: 14px; }
+.errorMsg    { color: #ef4444; padding: 40px; text-align: center; }

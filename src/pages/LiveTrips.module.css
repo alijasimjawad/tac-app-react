@@ -1,0 +1,308 @@
+.page {
+  max-width: 1060px;
+  position: relative;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.refreshBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-secondary);
+  transition: var(--transition-fast);
+}
+
+.refreshBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.refreshBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.denied {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.sectionLabel {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.empty {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  background: var(--bg-panel);
+  border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+}
+
+/* ── Live cards grid ── */
+.liveGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.liveCard {
+  background: var(--bg-panel);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius);
+  padding: 14px 16px 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.liveCardTitle {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.liveCardSite {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.liveCardSub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+/* ── Status badges ── */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.badgeActive   { background: #dcfce7; color: #166534; }
+.badgeDeparted { background: #dbeafe; color: #1e40af; }
+
+/* ── Mini map ── */
+.miniMap {
+  height: 180px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--slate-100);
+  margin-bottom: 8px;
+}
+
+.pSummary {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+/* ── Mini timeline ── */
+.miniTl {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: var(--slate-50);
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.miniTlItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.miniTlTime {
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+.liveCardActions {
+  display: flex;
+  gap: 8px;
+}
+
+.viewBtn {
+  padding: 6px 14px;
+  background: var(--slate-100);
+  border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-secondary);
+  transition: var(--transition-fast);
+}
+
+.viewBtn:hover { background: var(--slate-200); }
+
+.completeBtn {
+  padding: 6px 14px;
+  background: #fef3c7;
+  border: 1.5px solid #fde68a;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  color: #92400e;
+  transition: var(--transition-fast);
+}
+
+.completeBtn:hover:not(:disabled) { background: #fde68a; }
+.completeBtn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Completed history table ── */
+.tableWrap {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--slate-200);
+  box-shadow: var(--shadow-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-panel);
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--slate-200);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--slate-100);
+  color: var(--text-primary);
+  vertical-align: top;
+}
+
+.histRow {
+  cursor: pointer;
+}
+
+.histRow:hover td {
+  background: var(--slate-50);
+}
+
+.histActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.chevron {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tlRow td {
+  background: var(--slate-50);
+  padding: 10px 24px 16px;
+}
+
+.tlEmpty {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.inlineTl {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.inlineTlItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.inlineTlTime {
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 2000;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);
+  animation: slideUp 0.2s ease;
+}
+
+.toastOk  { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.toastErr { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+@keyframes slideUp {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}

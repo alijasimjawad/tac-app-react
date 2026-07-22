@@ -1,0 +1,428 @@
+/* Shared Finance page styles — imported by FinRevenue, FinGenExp, FinProjExp */
+
+.page {
+  padding: 20px 24px 48px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.placeholder {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 80px 24px;
+  font-size: 15px;
+}
+
+.loadingBar {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 48px;
+  font-size: 14px;
+}
+
+.errorMsg {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #dc2626;
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.sel {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.spacer { flex: 1; }
+
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btnGhost:hover:not(:disabled) { background: var(--slate-50); }
+.btnGhost:disabled { opacity: .5; cursor: not-allowed; }
+
+.btnAccent {
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btnAccent:hover { opacity: .88; }
+
+/* ── Table ─────────────────────────────────────────────────────────────────── */
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  background: var(--slate-50);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 10px 12px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td { border-bottom: none; }
+
+.table tfoot td {
+  border-top: 2px solid var(--border);
+  border-bottom: none;
+  padding: 10px 12px;
+}
+
+.num { text-align: right; }
+
+.noteCell {
+  color: var(--slate-500);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 32px;
+  font-size: 13px;
+}
+
+/* ── Inline amount input (Revenue) ─────────────────────────────────────────── */
+
+.amtInput {
+  width: 90px;
+  text-align: right;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 13px;
+  color: #16a34a;
+  font-weight: 600;
+  background: transparent;
+}
+.amtInput:focus { outline: 2px solid var(--accent); }
+
+/* ── Badges ────────────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badgeGreen  { background: #16a34a; color: #fff; }
+.badgeAmber  { background: #d97706; color: #fff; }
+
+/* ── Action buttons ────────────────────────────────────────────────────────── */
+
+.actions { display: flex; gap: 5px; }
+
+.actBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.actBtn:hover { background: var(--slate-50); color: var(--text-primary); }
+.actBtnDel:hover { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+
+/* ── Modals ────────────────────────────────────────────────────────────────── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--bg-panel);
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+  padding: 24px;
+  width: 460px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modalTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.modalErr {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #dc2626;
+  padding: 9px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.formRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.formLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.formInput, .formSel, .formTextarea {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.formInput[readonly] { background: var(--slate-50); color: var(--text-secondary); }
+
+.formTextarea {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.formInput:focus, .formSel:focus, .formTextarea:focus {
+  outline: 2px solid var(--accent);
+  border-color: var(--accent);
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.btnPrimary {
+  height: 34px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnPrimary:hover:not(:disabled) { opacity: .88; }
+.btnPrimary:disabled { opacity: .5; cursor: not-allowed; }
+
+.btnGhost2 {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.btnGhost2:hover:not(:disabled) { background: var(--slate-50); }
+.btnGhost2:disabled { opacity: .5; cursor: not-allowed; }
+
+.btnDanger {
+  height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: #dc2626;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnDanger:hover:not(:disabled) { opacity: .88; }
+.btnDanger:disabled { opacity: .5; cursor: not-allowed; }
+
+.delMsg {
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+/* ── Toast ─────────────────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 9999;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+}
+
+/* ── Employee multi-select (FinProjExp) ────────────────────────────────────── */
+
+.empWrap {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  min-height: 34px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.empWrap:focus-within { outline: 2px solid var(--accent); border-color: var(--accent); }
+
+.empTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 8px;
+  min-height: 34px;
+  align-items: center;
+}
+
+.empPlaceholder {
+  font-size: 13px;
+  color: var(--slate-400);
+}
+
+.empPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--slate-100);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.empPillX {
+  cursor: pointer;
+  color: var(--slate-400);
+  font-size: 14px;
+  line-height: 1;
+}
+.empPillX:hover { color: #dc2626; }
+
+.empDropdown {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  z-index: 200;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.empItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+.empItem:hover { background: var(--slate-50); }
+.empItem input { cursor: pointer; }
+
+/* ── Accommodation row (FinProjExp) ────────────────────────────────────────── */
+
+.accomRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}

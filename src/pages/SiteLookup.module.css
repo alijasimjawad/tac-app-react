@@ -1,0 +1,288 @@
+/* ── Page shell ──────────────────────────────────────────────────────────────── */
+
+.page {
+  padding: 24px 32px 48px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.placeholder {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 80px 24px;
+  font-size: 15px;
+}
+
+/* ── Search panel ────────────────────────────────────────────────────────────── */
+
+.pageHead {
+  margin-bottom: 24px;
+}
+
+.pageTitle {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.pageSub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.searchPanel {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.searchBox {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-muted);
+  display: flex;
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 10px 14px 10px 38px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--transition-fast);
+  box-sizing: border-box;
+}
+.searchInput:focus { border-color: var(--accent); }
+.searchInput::placeholder { color: var(--text-muted); }
+
+.searchBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.searchBtn:hover:not(:disabled) { background: var(--accent-hover); }
+.searchBtn:disabled { opacity: .6; cursor: not-allowed; }
+
+/* ── Summary & empty states ──────────────────────────────────────────────────── */
+
+.summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  min-height: 20px;
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 56px 24px;
+  font-size: 14px;
+}
+
+/* ── Results grid ────────────────────────────────────────────────────────────── */
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Site card ───────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  border-left: 4px solid var(--slate-300);
+}
+
+.cardAccentBlue   { border-left-color: #3B82F6; }
+.cardAccentPurple { border-left-color: #8B5CF6; }
+.cardAccentOrange { border-left-color: #F59E0B; }
+.cardAccentGreen  { border-left-color: #10B981; }
+.cardAccentNeutral { border-left-color: var(--slate-300); }
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cardIcon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.cardHeadTxt {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardTitle {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.cardSub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cardProj {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.cardProjSep {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cardSec {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────────── */
+
+.badges {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badgeGreen { background: var(--green-100); color: var(--green-600); }
+.badgeAmber { background: var(--amber-100); color: var(--amber-600); }
+.badgeRed   { background: var(--red-100);   color: var(--red-600); }
+.badgeSlate { background: var(--slate-100); color: var(--slate-500); }
+
+/* ── Action buttons ──────────────────────────────────────────────────────────── */
+
+.actBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  flex-shrink: 0;
+}
+.actBtn:hover { background: var(--slate-100); color: var(--text-primary); border-color: var(--slate-300); }
+
+/* ── Card body (key-value fields) ────────────────────────────────────────────── */
+
+.cardBody {
+  padding: 12px 18px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 130px;
+}
+
+.fieldK {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.fieldV {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── Toast ───────────────────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 2000;
+  box-shadow: var(--shadow-xl);
+  animation: slToastIn .2s ease;
+}
+.toastOk  { background: var(--green); color: #fff; }
+.toastErr { background: var(--red);   color: #fff; }
+
+@keyframes slToastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .page { padding: 16px 16px 40px; }
+  .searchPanel { flex-direction: column; }
+}

@@ -1,0 +1,3 @@
+/* Minimal reset — design tokens live in styles/tokens.css */
+* { box-sizing: border-box; }
+body { margin: 0; }
