@@ -129,7 +129,7 @@ export default function Login() {
           </h1>
 
           <p className={styles.brandDesc}>
-            TAC Network delivers reliable telecom infrastructure solutions that connect people, teams, and operations.
+            TAC Network delivers reliable telecom infrastructure solutions that connect people and power progress.
           </p>
 
           <div className={styles.features}>
@@ -137,21 +137,21 @@ export default function Login() {
               <div className={styles.featureIcon}><IconShield/></div>
               <div>
                 <div className={styles.featureTitle}>Secure Access</div>
-                <div className={styles.featureDesc}>Protected access for authorized employees</div>
+                <div className={styles.featureDesc}>Enterprise-grade security</div>
               </div>
             </div>
             <div className={styles.feature}>
               <div className={styles.featureIcon}><IconZap/></div>
               <div>
                 <div className={styles.featureTitle}>Reliable Platform</div>
-                <div className={styles.featureDesc}>Built for daily telecom operations</div>
+                <div className={styles.featureDesc}>Always available, always fast</div>
               </div>
             </div>
             <div className={styles.feature}>
               <div className={styles.featureIcon}><IconUsers/></div>
               <div>
                 <div className={styles.featureTitle}>Team Collaboration</div>
-                <div className={styles.featureDesc}>Connecting office and field teams</div>
+                <div className={styles.featureDesc}>Built for field teams and partners</div>
               </div>
             </div>
           </div>
