@@ -25,7 +25,7 @@
   align-items: center;
   justify-content: center;
   background:
-    linear-gradient(155deg, rgba(4, 21, 47, 0.90) 0%, rgba(7, 43, 84, 0.82) 55%, rgba(11, 63, 115, 0.72) 100%),
+    linear-gradient(155deg, rgba(4, 21, 47, 0.62) 0%, rgba(7, 43, 84, 0.52) 55%, rgba(11, 63, 115, 0.40) 100%),
     url('../assets/login-bg.png');
   background-size: cover;
   background-position: center;
@@ -67,67 +67,73 @@
 .brand {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 44px;
+  gap: 9px;
+  margin-bottom: 32px;
 }
 
 /* CSS triangle pointing upward */
 .brandAccent {
   width: 0;
   height: 0;
-  border-left:   13px solid transparent;
-  border-right:  13px solid transparent;
-  border-bottom: 22px solid var(--accent);
-  margin-top: 14px;
+  border-left:   9px solid transparent;
+  border-right:  9px solid transparent;
+  border-bottom: 15px solid var(--accent);
+  margin-top: 6px;
   flex-shrink: 0;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
 }
 
 .brandText {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .brandTac {
-  font-size: 72px;
+  font-size: 34px;
   font-weight: 800;
   color: #ffffff;
-  letter-spacing: -2px;
+  letter-spacing: -1px;
   line-height: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
 }
 
 .brandNetwork {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.78);
-  letter-spacing: 4px;
+  color: rgba(255, 255, 255, 0.82);
+  letter-spacing: 3.5px;
   text-transform: uppercase;
   line-height: 1;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
 
 .brandDivider {
   height: 1px;
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.5), rgba(255, 255, 255, 0.18), transparent);
-  margin: 6px 0;
+  width: 100%;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.6), rgba(255, 255, 255, 0.2), transparent);
+  margin: 5px 0;
 }
 
 .brandCaption {
   font-size: 9px;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.38);
+  color: rgba(255, 255, 255, 0.5);
   letter-spacing: 2.5px;
   text-transform: uppercase;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 /* ── Headline ── */
 .headline {
-  font-size: 40px;
+  font-size: 32px;
   font-weight: 800;
   color: #ffffff;
-  line-height: 1.2;
-  margin: 0 0 16px;
-  letter-spacing: -0.5px;
+  line-height: 1.25;
+  margin: 0 0 14px;
+  letter-spacing: -0.4px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
 
 .headlineAccent {
@@ -139,7 +145,8 @@
   font-size: 14px;
   line-height: 1.68;
   color: var(--panel-text);
-  margin: 0 0 40px;
+  margin: 0 0 36px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
 
 /* ── Feature rows ── */
@@ -161,12 +168,13 @@
   height: 40px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
-  background: var(--panel-faint);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(4, 21, 47, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: #ffffff;
+  backdrop-filter: blur(2px);
 }
 
 .featureTitle {
@@ -174,19 +182,22 @@
   font-weight: 700;
   color: #ffffff;
   margin-bottom: 3px;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
 }
 
 .featureDesc {
   font-size: 12px;
   color: var(--panel-muted);
   line-height: 1.5;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
 
 /* ── Footer ── */
 .brandFooter {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.35);
   margin: 0;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -445,16 +456,16 @@
   }
 
   .brandTac {
-    font-size: 54px;
-    letter-spacing: -1.5px;
+    font-size: 28px;
+    letter-spacing: -0.8px;
   }
 
   .brandAccent {
-    margin-top: 10px;
+    margin-top: 5px;
   }
 
   .headline {
-    font-size: 28px;
+    font-size: 24px;
   }
 
   .brandDesc {
