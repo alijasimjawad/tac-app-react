@@ -30,3 +30,7 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Deployment
+
+This app deploys to production at `tracker.al-ahmadi-group.com` via Vercel, building from this standalone repo (split out from the old `tac-tracker` monorepo on 2026-07-22). Pushing to `main` triggers a new production deployment automatically.
