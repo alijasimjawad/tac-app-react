@@ -62,7 +62,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  width: min(420px, 58%);
+  width: min(460px, 58%);
   margin-left: calc(37% + 15px);
   padding-top: clamp(28px, 5vh, 64px);
   padding-bottom: clamp(20px, 3vh, 36px);
@@ -155,6 +155,11 @@
   margin: 0 0 clamp(18px, 2vh, 22px);
   letter-spacing: -0.4px;
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+}
+
+.headlineLine {
+  display: block;
+  white-space: nowrap;
 }
 
 .headlineAccent {

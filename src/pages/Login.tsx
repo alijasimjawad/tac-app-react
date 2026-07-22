@@ -125,8 +125,8 @@ export default function Login() {
             </div>
 
             <h1 className={styles.headline}>
-              Powering Connections.<br/>
-              Building <span className={styles.headlineAccent}>the Future.</span>
+              <span className={styles.headlineLine}>Powering Connections.</span>
+              <span className={styles.headlineLine}>Building <span className={styles.headlineAccent}>the Future.</span></span>
             </h1>
 
             <p className={styles.brandDesc}>
