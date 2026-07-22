@@ -24,25 +24,65 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    linear-gradient(155deg, rgba(4, 21, 47, 0.92) 0%, rgba(7, 43, 84, 0.85) 52%, rgba(11, 63, 115, 0.78) 100%),
-    url('../assets/login-bg.png');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background: linear-gradient(155deg, var(--navy-deep) 0%, var(--navy-mid) 52%, var(--navy-light) 100%);
   overflow: hidden;
   padding: 48px 52px;
 }
 
-/* Decorative: soft blue glow accent (kept subtle over the photo for brand-color depth) */
+/* Decorative: subtle grid lines */
+.bgGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* Decorative: circular signal rings */
+.bgRing1 {
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  border: 1px solid rgba(100, 160, 255, 0.22);
+  bottom: -120px;
+  right: -150px;
+  pointer-events: none;
+}
+
+.bgRing2 {
+  position: absolute;
+  width: 820px;
+  height: 820px;
+  border-radius: 50%;
+  border: 1px solid rgba(100, 160, 255, 0.14);
+  bottom: -300px;
+  right: -300px;
+  pointer-events: none;
+}
+
+/* Decorative: soft blue glows */
 .bgGlow1 {
   position: absolute;
   width: 480px;
   height: 480px;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.30) 0%, transparent 65%);
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.36) 0%, transparent 65%);
   bottom: -60px;
   right: -120px;
+  pointer-events: none;
+}
+
+.bgGlow2 {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.28) 0%, transparent 65%);
+  top: -60px;
+  left: -60px;
   pointer-events: none;
 }
 
