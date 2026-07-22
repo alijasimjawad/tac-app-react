@@ -9,7 +9,9 @@
   --glow-blue:    rgba(37, 99, 235, 0.18);
 
   display: flex;
+  width: 100%;
   min-height: 100vh;
+  margin: 0;
   background: var(--bg);
   overflow: hidden;
 }
@@ -144,7 +146,7 @@
 .brandDesc {
   font-size: 14px;
   line-height: 1.68;
-  color: var(--panel-text);
+  color: rgba(255, 255, 255, 0.92);
   margin: 0 0 36px;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
@@ -187,15 +189,15 @@
 
 .featureDesc {
   font-size: 12px;
-  color: var(--panel-muted);
+  color: rgba(255, 255, 255, 0.70);
   line-height: 1.5;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
 
 /* ── Footer ── */
 .brandFooter {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.22);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.32);
   margin: 0;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
@@ -210,7 +212,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 36px 32px 64px;
+  padding: 24px 32px 76px;
   background: var(--bg);
   animation: fadeIn 0.45s cubic-bezier(0.4, 0, 0.2, 1) 0.1s both;
 }
@@ -257,9 +259,9 @@
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  padding: 44px 40px;
+  padding: 44px 40px 30px;
   width: 100%;
-  max-width: 480px;
+  max-width: 512px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
 }
 
@@ -277,7 +279,7 @@
 
 .subheading {
   font-size: 14px;
-  color: var(--slate-600);
+  color: var(--slate-700);
   margin: 0;
 }
 
