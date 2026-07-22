@@ -64,6 +64,7 @@
   flex-direction: column;
   width: min(480px, 60%);
   margin-left: calc(37% + 15px);
+  container-type: inline-size;
   padding-top: clamp(28px, 5vh, 64px);
   padding-bottom: clamp(20px, 3vh, 36px);
   overflow: hidden;
@@ -148,7 +149,7 @@
 
 /* ── Headline ── */
 .headline {
-  font-size: clamp(24px, 1.9vw, 32px);
+  font-size: clamp(22px, 6cqi, 30px);
   font-weight: 800;
   color: #ffffff;
   line-height: 1.2;
@@ -511,8 +512,13 @@
   }
 
   .headline {
-    font-size: 24px;
+    font-size: clamp(18px, 8cqi, 24px);
     margin-bottom: 14px;
+  }
+
+  /* Narrower column here — allow natural wrap instead of forcing one line */
+  .headlineLine {
+    white-space: normal;
   }
 
   .brandDesc {
@@ -557,7 +563,7 @@
   }
 
   .headline {
-    font-size: clamp(24px, 2.1vw, 32px);
+    font-size: clamp(20px, 6cqi, 28px);
     margin-bottom: clamp(12px, 1.6vh, 18px);
   }
 
@@ -602,7 +608,7 @@
   }
 
   .headline {
-    font-size: clamp(20px, 1.8vw, 26px);
+    font-size: clamp(18px, 5.5cqi, 24px);
     margin-bottom: clamp(8px, 1.2vh, 12px);
   }
 
