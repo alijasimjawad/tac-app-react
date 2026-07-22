@@ -35,54 +35,54 @@
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
   background-size: 44px 44px;
 }
 
 /* Decorative: circular signal rings */
 .bgRing1 {
   position: absolute;
-  width: 420px;
-  height: 420px;
+  width: 480px;
+  height: 480px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.045);
-  bottom: -110px;
-  right: -130px;
+  border: 1px solid rgba(100, 160, 255, 0.18);
+  bottom: -120px;
+  right: -150px;
   pointer-events: none;
 }
 
 .bgRing2 {
   position: absolute;
-  width: 640px;
-  height: 640px;
+  width: 820px;
+  height: 820px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.028);
-  bottom: -230px;
-  right: -240px;
+  border: 1px solid rgba(100, 160, 255, 0.10);
+  bottom: -300px;
+  right: -300px;
   pointer-events: none;
 }
 
 /* Decorative: soft blue glows */
 .bgGlow1 {
   position: absolute;
-  width: 300px;
-  height: 300px;
+  width: 480px;
+  height: 480px;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, var(--glow-blue) 0%, transparent 70%);
-  bottom: 8%;
-  right: -80px;
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.38) 0%, transparent 65%);
+  bottom: -60px;
+  right: -120px;
   pointer-events: none;
 }
 
 .bgGlow2 {
   position: absolute;
-  width: 200px;
-  height: 200px;
+  width: 320px;
+  height: 320px;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.10) 0%, transparent 70%);
-  top: 14%;
-  left: 18%;
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.26) 0%, transparent 65%);
+  top: -60px;
+  left: -60px;
   pointer-events: none;
 }
 
@@ -114,34 +114,41 @@
 .brandAccent {
   width: 0;
   height: 0;
-  border-left:   8px solid transparent;
-  border-right:  8px solid transparent;
-  border-bottom: 14px solid var(--accent);
-  margin-top: 6px;
+  border-left:   13px solid transparent;
+  border-right:  13px solid transparent;
+  border-bottom: 22px solid var(--accent);
+  margin-top: 14px;
   flex-shrink: 0;
 }
 
 .brandText {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .brandTac {
-  font-size: 30px;
+  font-size: 72px;
   font-weight: 800;
   color: #ffffff;
-  letter-spacing: -0.5px;
+  letter-spacing: -2px;
   line-height: 1;
 }
 
 .brandNetwork {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.72);
-  letter-spacing: 4.5px;
+  letter-spacing: 3.5px;
   text-transform: uppercase;
   line-height: 1;
+  margin-bottom: 2px;
+}
+
+.brandDivider {
+  height: 1px;
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.5), rgba(255, 255, 255, 0.18), transparent);
+  margin: 6px 0;
 }
 
 .brandCaption {
@@ -150,17 +157,16 @@
   color: rgba(255, 255, 255, 0.38);
   letter-spacing: 2.5px;
   text-transform: uppercase;
-  margin-top: 3px;
 }
 
 /* ── Headline ── */
 .headline {
-  font-size: 30px;
+  font-size: 36px;
   font-weight: 800;
   color: #ffffff;
-  line-height: 1.28;
+  line-height: 1.22;
   margin: 0 0 16px;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.5px;
 }
 
 .headlineAccent {
@@ -203,7 +209,7 @@
 }
 
 .featureTitle {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: #ffffff;
   margin-bottom: 3px;
@@ -477,8 +483,17 @@
     padding: 36px 32px;
   }
 
+  .brandTac {
+    font-size: 54px;
+    letter-spacing: -1.5px;
+  }
+
+  .brandAccent {
+    margin-top: 10px;
+  }
+
   .headline {
-    font-size: 24px;
+    font-size: 26px;
   }
 
   .brandDesc {
