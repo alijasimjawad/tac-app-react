@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import tacLogo from '../assets/tac-logo.png';
 import styles from './Login.module.css';
 
 function mapError(raw: string): string {
@@ -113,15 +114,9 @@ export default function Login() {
 
         <div className={styles.brandInner}>
           <div className={styles.brandMain}>
-            {/* Brand lockup */}
+            {/* Brand lockup — real TAC logo */}
             <div className={styles.brand}>
-              <div className={styles.brandAccent}/>
-              <div className={styles.brandText}>
-                <div className={styles.brandTac}>TAC</div>
-                <div className={styles.brandNetwork}>NETWORK</div>
-                <div className={styles.brandDivider}/>
-                <div className={styles.brandCaption}>TELECOM INFRASTRUCTURE</div>
-              </div>
+              <img src={tacLogo} alt="TAC Network" className={styles.brandLogoImg} />
             </div>
 
             <h1 className={styles.headline}>
@@ -166,11 +161,7 @@ export default function Login() {
       <div className={styles.loginPanel}>
         {/* Mobile-only logo (hidden on desktop) */}
         <div className={styles.mobileBrand} aria-hidden="true">
-          <div className={styles.mobileBrandAccent}/>
-          <div>
-            <div className={styles.mobileBrandTac}>TAC</div>
-            <div className={styles.mobileBrandNetwork}>NETWORK</div>
-          </div>
+          <img src={tacLogo} alt="TAC Network" className={styles.mobileBrandLogoImg} />
         </div>
 
         <div className={styles.card}>

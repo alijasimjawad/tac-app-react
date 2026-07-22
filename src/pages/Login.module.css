@@ -85,66 +85,18 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Brand lockup ── */
+/* ── Brand lockup — real TAC logo image ── */
 .brand {
   display: flex;
   align-items: flex-start;
-  gap: 13px;
   margin-bottom: clamp(34px, 4.5vh, 44px);
 }
 
-/* CSS triangle pointing upward */
-.brandAccent {
-  width: 0;
-  height: 0;
-  border-left:   clamp(10px, 1vw, 13px) solid transparent;
-  border-right:  clamp(10px, 1vw, 13px) solid transparent;
-  border-bottom: clamp(17px, 1.7vw, 22px) solid var(--accent);
-  margin-top: 10px;
-  flex-shrink: 0;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35));
-}
-
-.brandText {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.brandTac {
-  font-size: clamp(36px, 3.6vw, 48px);
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: -1.5px;
-  line-height: 1;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-}
-
-.brandNetwork {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.82);
-  letter-spacing: 4px;
-  text-transform: uppercase;
-  line-height: 1;
-  margin-bottom: 6px;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
-}
-
-.brandDivider {
-  height: 1px;
-  width: 100%;
-  background: linear-gradient(90deg, rgba(37, 99, 235, 0.6), rgba(255, 255, 255, 0.2), transparent);
-  margin: 5px 0;
-}
-
-.brandCaption {
-  font-size: 9px;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.5);
-  letter-spacing: 2.5px;
-  text-transform: uppercase;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+.brandLogoImg {
+  height: clamp(56px, 7vw, 84px);
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45));
 }
 
 /* ── Headline ── */
@@ -255,32 +207,13 @@
 .mobileBrand {
   display: none;
   align-items: center;
-  gap: 10px;
   margin-bottom: 28px;
 }
 
-.mobileBrandAccent {
-  width: 0;
-  height: 0;
-  border-left:   6px solid transparent;
-  border-right:  6px solid transparent;
-  border-bottom: 10px solid var(--accent);
-}
-
-.mobileBrandTac {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
-  line-height: 1;
-}
-
-.mobileBrandNetwork {
-  font-size: 9px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 3.5px;
-  text-transform: uppercase;
+.mobileBrandLogoImg {
+  height: 40px;
+  width: auto;
+  display: block;
 }
 
 /* ── Card ── */
@@ -495,16 +428,8 @@
     padding-bottom: clamp(16px, 2.5vh, 24px);
   }
 
-  .brandTac {
-    font-size: 32px;
-    letter-spacing: -0.9px;
-  }
-
-  .brandAccent {
-    margin-top: 6px;
-    border-left:   9px solid transparent;
-    border-right:  9px solid transparent;
-    border-bottom: 15px solid var(--accent);
+  .brandLogoImg {
+    height: 48px;
   }
 
   .brand {
@@ -554,8 +479,8 @@
     padding-bottom: clamp(14px, 2vh, 22px);
   }
 
-  .brandTac {
-    font-size: clamp(30px, 3.2vw, 40px);
+  .brandLogoImg {
+    height: clamp(48px, 6vw, 72px);
   }
 
   .brand {
@@ -599,8 +524,8 @@
     padding-bottom: clamp(10px, 1.5vh, 16px);
   }
 
-  .brandTac {
-    font-size: clamp(26px, 2.8vw, 34px);
+  .brandLogoImg {
+    height: clamp(40px, 5vw, 56px);
   }
 
   .brand {
