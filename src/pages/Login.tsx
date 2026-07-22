@@ -108,12 +108,8 @@ export default function Login() {
 
       {/* LEFT: Branding Panel */}
       <div className={styles.brandPanel}>
-        {/* Decorative bg elements — rendered first so content paints on top */}
-        <div className={styles.bgGrid} aria-hidden="true"/>
-        <div className={styles.bgRing1} aria-hidden="true"/>
-        <div className={styles.bgRing2} aria-hidden="true"/>
+        {/* Decorative: subtle blue glow accent over the photo — rendered first so content paints on top */}
         <div className={styles.bgGlow1} aria-hidden="true"/>
-        <div className={styles.bgGlow2} aria-hidden="true"/>
 
         <div className={styles.brandInner}>
           {/* Brand lockup */}
