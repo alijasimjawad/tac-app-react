@@ -63,7 +63,7 @@
   display: flex;
   flex-direction: column;
   width: min(420px, 58%);
-  margin-left: 37%;
+  margin-left: calc(37% + 15px);
   padding-top: clamp(28px, 5vh, 64px);
   padding-bottom: clamp(20px, 3vh, 36px);
   overflow: hidden;
@@ -166,7 +166,7 @@
   font-size: clamp(14px, 1.1vw, 17px);
   line-height: 1.6;
   color: rgba(255, 255, 255, 0.92);
-  margin: 0 0 clamp(28px, 3.4vh, 34px);
+  margin: 0 0 clamp(38px, calc(3.4vh + 10px), 44px);
   max-width: 360px;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
@@ -285,6 +285,7 @@
   padding: clamp(28px, 4vh, 44px) 40px clamp(20px, 3vh, 30px);
   width: 100%;
   max-width: 520px;
+  margin-top: -12px;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08), 0 3px 8px rgba(15, 23, 42, 0.04);
 }
 
@@ -511,7 +512,7 @@
 
   .brandDesc {
     font-size: 13px;
-    margin-bottom: 22px;
+    margin-bottom: 32px;
     max-width: none;
   }
 
@@ -556,7 +557,7 @@
   }
 
   .brandDesc {
-    margin-bottom: clamp(18px, 2.4vh, 26px);
+    margin-bottom: clamp(28px, calc(2.4vh + 10px), 36px);
   }
 
   .features {
@@ -602,7 +603,7 @@
 
   .brandDesc {
     font-size: 13px;
-    margin-bottom: clamp(14px, 1.8vh, 18px);
+    margin-bottom: clamp(24px, calc(1.8vh + 10px), 28px);
   }
 
   .features {
