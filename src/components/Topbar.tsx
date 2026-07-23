@@ -38,7 +38,11 @@ export default function Topbar({ title, onMenuOpen }: TopbarProps) {
       </button>
       <span className={styles.title}>{title}</span>
       <div className={styles.right}>
-        <div className={styles.avatar}>{initials}</div>
+        <div className={styles.avatar}>
+          {currentUser?.profile_photo_url
+            ? <img src={currentUser.profile_photo_url} alt="" className={styles.avatarImg} />
+            : initials}
+        </div>
         <div className={styles.userInfo}>
           <div className={styles.userName}>{currentUser?.full_name || currentUser?.username}</div>
           <div className={styles.userRole}>{currentUser?.role}</div>
