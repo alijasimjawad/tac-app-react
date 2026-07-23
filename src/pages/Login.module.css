@@ -33,7 +33,8 @@
   justify-content: flex-start;
   background:
     linear-gradient(90deg, rgba(3, 20, 48, 0.55) 0%, rgba(3, 26, 61, 0.38) 45%, rgba(3, 31, 72, 0.20) 100%),
-    url('../assets/login-bg.png');
+    url('/login-bg-desktop.webp');
+  background-color: #04152f;
   background-size: cover;
   background-position: 28% center;
   background-repeat: no-repeat;
@@ -625,7 +626,8 @@
     min-height: clamp(168px, 30vh, 240px);
     background:
       linear-gradient(90deg, rgba(3, 18, 43, 0.72) 0%, rgba(4, 28, 65, 0.58) 45%, rgba(6, 52, 102, 0.48) 100%),
-      url('../assets/login-bg.png');
+      url('/login-bg-mobile.webp');
+    background-color: #04152f;
     background-size: cover;
     background-position: 18% center;
     background-repeat: no-repeat;
