@@ -191,7 +191,8 @@
 
 .nsSection {
   border-top: 1px solid rgba(255, 255, 255, .06);
-  padding: 6px 0 8px;
+  margin-top: 6px;
+  padding: 8px 0 10px;
 }
 
 .nsSectionHdr {
@@ -318,10 +319,10 @@
   gap: 8px;
   padding: 5px 8px;
   border-radius: 6px;
-  color: #8ca3be;
+  color: #9bb6c9;
   font-size: 12px;
   text-decoration: none;
-  opacity: .8;
+  opacity: .9;
   transition: background .14s cubic-bezier(.4, 0, .2, 1),
               opacity .14s ease,
               color .14s ease;
@@ -329,7 +330,7 @@
 .secLink:hover {
   background: rgba(255, 255, 255, .055);
   opacity: 1;
-  color: #c8d8ea;
+  color: #ccdde8;
 }
 .secLinkActive {
   background: rgba(37, 99, 235, .14);

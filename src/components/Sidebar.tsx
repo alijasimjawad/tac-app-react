@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import styles from './Sidebar.module.css';
@@ -21,6 +21,20 @@ const DEFAULT_SECTIONS: Record<string, string[]> = {
 const DEFAULT_HEADERS = ['Site ID', 'Governate', 'Imp. Date', 'ATP Status', 'Comment'];
 
 const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt'] as const;
+
+type MajorGroup = 'finance' | 'hr' | 'admin';
+
+function getActiveGroupFromPath(pathname: string): MajorGroup | null {
+  if (pathname.startsWith('/finance')) return 'finance';
+  if (pathname === '/hr-profiles' || pathname === '/attendance-admin') return 'hr';
+  if (
+    pathname === '/live-trips' ||
+    pathname === '/activity-log' ||
+    pathname === '/user-management' ||
+    pathname === '/backup-restore'
+  ) return 'admin';
+  return null;
+}
 
 // ── Collapse icon ─────────────────────────────────────────────────────────────
 
@@ -49,8 +63,16 @@ function NetworkScopesTree() {
   const params = useParams<{ proj?: string; sec?: string }>();
   const navigate = useNavigate();
   const [sections, setSections] = useState<SectionMeta[]>([]);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [nsCollapsed, setNsCollapsed] = useState(false);
+
+  // Accordion: only one project open at a time. Initialize from params (current route) or localStorage.
+  const [openProj, setOpenProj] = useState<string | null>(() => {
+    return params.proj ?? localStorage.getItem('sb_open_proj');
+  });
+
+  // Persist ns-section collapsed state across refreshes.
+  const [nsCollapsed, setNsCollapsed] = useState(() => {
+    return localStorage.getItem('sb_ns_collapsed') === 'true';
+  });
 
   // Section management state
   const [addSecState, setAddSecState]       = useState<{ proj: string; name: string } | null>(null);
@@ -66,6 +88,22 @@ function NetworkScopesTree() {
   useEffect(() => {
     ensureSectionsLoaded().then(() => setSections(getSections()));
   }, []);
+
+  // Auto-expand the active project when route changes.
+  useEffect(() => {
+    if (params.proj) setOpenProj(params.proj);
+  }, [params.proj]);
+
+  // Persist openProj to localStorage.
+  useEffect(() => {
+    if (openProj) localStorage.setItem('sb_open_proj', openProj);
+    else localStorage.removeItem('sb_open_proj');
+  }, [openProj]);
+
+  // Persist nsCollapsed to localStorage.
+  useEffect(() => {
+    localStorage.setItem('sb_ns_collapsed', nsCollapsed ? 'true' : 'false');
+  }, [nsCollapsed]);
 
   // Close section menu on outside click
   useEffect(() => {
@@ -83,12 +121,13 @@ function NetworkScopesTree() {
     setSections(getSections());
   }
 
+  // Accordion: clicking an open project closes it (unless it's active); clicking a closed project opens it.
   function toggleProj(proj: string) {
-    setCollapsed(prev => {
-      const next = new Set(prev);
-      if (next.has(proj)) next.delete(proj);
-      else next.add(proj);
-      return next;
+    setOpenProj(prev => {
+      if (prev === proj) {
+        return params.proj === proj ? proj : null; // keep active project open
+      }
+      return proj;
     });
   }
 
@@ -206,8 +245,8 @@ function NetworkScopesTree() {
       {!nsCollapsed && (
         <div className={styles.nsBody}>
           {visibleProjects.map((proj, pi) => {
-            const secs  = getSectionsForProj(proj);
-            const isOpen = !collapsed.has(proj);
+            const secs   = getSectionsForProj(proj);
+            const isOpen = openProj === proj;
             return (
               <div key={proj}>
                 {pi > 0 && <div className={styles.nsDivider} />}
@@ -440,9 +479,13 @@ function GridTableIcon() {
 
 // ── Finance nav group ─────────────────────────────────────────────────────────
 
-function FinanceNavGroup() {
+interface NavGroupProps {
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function FinanceNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const { hasPerm } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
 
   const FIN_LINKS = [
     ...(hasPerm('view_fin_team')      ? [{ to: '/finance/team',              label: 'Team Members' }]      : []),
@@ -460,20 +503,20 @@ function FinanceNavGroup() {
 
   return (
     <div className={styles.nsSection}>
-      <div className={styles.nsSectionHdr} onClick={() => setCollapsed(v => !v)}>
+      <div className={styles.nsSectionHdr} onClick={onToggle}>
         <div className={styles.nsHdrLeft}>
           <FinanceIcon />
           <span>Finance</span>
         </div>
         <svg
-          className={`${styles.nsChevron} ${collapsed ? styles.nsChevronClosed : ''}`}
+          className={`${styles.nsChevron} ${isExpanded ? '' : styles.nsChevronClosed}`}
           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
           width="12" height="12"
         >
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </div>
-      {!collapsed && (
+      {isExpanded && (
         <div className={styles.nsBody}>
           <div className={styles.projGroup}>
             <div className={styles.projChildren}>
@@ -485,7 +528,7 @@ function FinanceNavGroup() {
                       `${styles.secLink} ${isActive ? styles.secLinkActive : ''}`
                     }
                   >
-                    <span className={`${styles.secDot}`} />
+                    <span className={styles.secDot} />
                     <span className={styles.secLinkLabel}>{label}</span>
                     <span className={styles.secArr}>›</span>
                   </NavLink>
@@ -501,10 +544,9 @@ function FinanceNavGroup() {
 
 // ── HR nav group ──────────────────────────────────────────────────────────────
 
-function HrNavGroup() {
+function HrNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const { currentUser, hasPerm } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
-  const [collapsed, setCollapsed] = useState(false);
 
   const HR_LINKS = [
     ...(hasPerm('view_hr_profiles') ? [{ to: '/hr-profiles',      label: 'Employee Profiles' }] : []),
@@ -515,20 +557,20 @@ function HrNavGroup() {
 
   return (
     <div className={styles.nsSection}>
-      <div className={styles.nsSectionHdr} onClick={() => setCollapsed(v => !v)}>
+      <div className={styles.nsSectionHdr} onClick={onToggle}>
         <div className={styles.nsHdrLeft}>
           <HrGroupIcon />
           <span>HR</span>
         </div>
         <svg
-          className={`${styles.nsChevron} ${collapsed ? styles.nsChevronClosed : ''}`}
+          className={`${styles.nsChevron} ${isExpanded ? '' : styles.nsChevronClosed}`}
           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
           width="12" height="12"
         >
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </div>
-      {!collapsed && (
+      {isExpanded && (
         <div className={styles.nsBody}>
           <div className={styles.projGroup}>
             <div className={styles.projChildren}>
@@ -556,10 +598,9 @@ function HrNavGroup() {
 
 // ── Admin nav group ───────────────────────────────────────────────────────────
 
-function AdminNavGroup() {
+function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const { currentUser, hasPerm } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
-  const [collapsed, setCollapsed] = useState(false);
 
   const ADMIN_LINKS = [
     ...(isAdmin                      ? [{ to: '/live-trips',      label: 'Live Trips' }]       : []),
@@ -572,20 +613,20 @@ function AdminNavGroup() {
 
   return (
     <div className={styles.nsSection}>
-      <div className={styles.nsSectionHdr} onClick={() => setCollapsed(v => !v)}>
+      <div className={styles.nsSectionHdr} onClick={onToggle}>
         <div className={styles.nsHdrLeft}>
           <AdminGroupIcon />
           <span>Admin</span>
         </div>
         <svg
-          className={`${styles.nsChevron} ${collapsed ? styles.nsChevronClosed : ''}`}
+          className={`${styles.nsChevron} ${isExpanded ? '' : styles.nsChevronClosed}`}
           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
           width="12" height="12"
         >
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </div>
-      {!collapsed && (
+      {isExpanded && (
         <div className={styles.nsBody}>
           <div className={styles.projGroup}>
             <div className={styles.projChildren}>
@@ -620,7 +661,39 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const { hasPerm } = useAuth();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Accordion state for Finance / HR / Admin: only one open at a time.
+  // Initialize from active route first, then localStorage.
+  const [expandedGroup, setExpandedGroup] = useState<MajorGroup | null>(() => {
+    const activeGroup = getActiveGroupFromPath(location.pathname);
+    if (activeGroup) return activeGroup;
+    return localStorage.getItem('sb_expanded_group') as MajorGroup | null;
+  });
+
+  // Auto-expand the group containing the active route.
+  useEffect(() => {
+    const group = getActiveGroupFromPath(location.pathname);
+    if (group) setExpandedGroup(group);
+  }, [location.pathname]);
+
+  // Persist expandedGroup to localStorage.
+  useEffect(() => {
+    if (expandedGroup) localStorage.setItem('sb_expanded_group', expandedGroup);
+    else localStorage.removeItem('sb_expanded_group');
+  }, [expandedGroup]);
+
+  function toggleGroup(group: MajorGroup) {
+    const activeGroup = getActiveGroupFromPath(location.pathname);
+    setExpandedGroup(prev => {
+      if (prev === group) {
+        // Don't collapse the group you're actively navigating within.
+        return activeGroup === group ? group : null;
+      }
+      return group;
+    });
+  }
 
   const NAV_TOP = [
     { to: '/dashboard', label: 'Dashboard', icon: GridIcon },
@@ -687,9 +760,18 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           {navLinks(NAV_MID)}
         </nav>
 
-        <FinanceNavGroup />
-        <HrNavGroup />
-        <AdminNavGroup />
+        <FinanceNavGroup
+          isExpanded={expandedGroup === 'finance'}
+          onToggle={() => toggleGroup('finance')}
+        />
+        <HrNavGroup
+          isExpanded={expandedGroup === 'hr'}
+          onToggle={() => toggleGroup('hr')}
+        />
+        <AdminNavGroup
+          isExpanded={expandedGroup === 'admin'}
+          onToggle={() => toggleGroup('admin')}
+        />
       </aside>
     </>
   );
