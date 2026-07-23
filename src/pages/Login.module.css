@@ -623,7 +623,12 @@
     position: relative;
     width: 100%;
     min-height: clamp(168px, 30vh, 240px);
-    background: linear-gradient(145deg, #04152F 0%, #082E5C 55%, #0B4A86 100%);
+    background:
+      linear-gradient(90deg, rgba(3, 18, 43, 0.72) 0%, rgba(4, 28, 65, 0.58) 45%, rgba(6, 52, 102, 0.48) 100%),
+      url('../assets/login-bg.png');
+    background-size: cover;
+    background-position: 18% center;
+    background-repeat: no-repeat;
     border-radius: 0 0 28px 28px;
     overflow: hidden;
     padding: clamp(28px, 4vh, 44px) 24px clamp(40px, 6vh, 56px);
