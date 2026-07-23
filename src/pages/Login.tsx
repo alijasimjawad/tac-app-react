@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import tacLogo from '../assets/tac-logo.png';
 import tacLogoLight from '../assets/tac-logo-light.png';
 import styles from './Login.module.css';
 
@@ -160,9 +159,15 @@ export default function Login() {
 
       {/* RIGHT: Login Panel */}
       <div className={styles.loginPanel}>
-        {/* Mobile-only logo (hidden on desktop) */}
-        <div className={styles.mobileBrand} aria-hidden="true">
-          <img src={tacLogo} alt="TAC Network" className={styles.mobileBrandLogoImg} />
+        {/* Mobile-only branded hero header (hidden on desktop) */}
+        <div className={styles.mobileBrand}>
+          <div className={styles.mobileRing1} aria-hidden="true"/>
+          <div className={styles.mobileRing2} aria-hidden="true"/>
+          <div className={styles.mobileGlow}  aria-hidden="true"/>
+          <div className={styles.mobileLogoWrap}>
+            <img src={tacLogoLight} alt="TAC Network" className={styles.mobileBrandLogoImg}/>
+            <span className={styles.mobileTagline}>Secure employee access</span>
+          </div>
         </div>
 
         <div className={styles.card}>
@@ -236,6 +241,11 @@ export default function Login() {
                 </>
               )}
             </button>
+
+            <div className={styles.mobileSecurityNote} aria-hidden="true">
+              <IconShield/>
+              <span>Secure access for authorized employees only</span>
+            </div>
           </form>
         </div>
       </div>

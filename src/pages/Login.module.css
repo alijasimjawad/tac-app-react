@@ -203,11 +203,9 @@
   to   { opacity: 1; }
 }
 
-/* Mobile-only logo — hidden on desktop */
+/* Mobile-only brand hero — hidden on desktop */
 .mobileBrand {
   display: none;
-  align-items: center;
-  margin-bottom: 28px;
 }
 
 .mobileBrandLogoImg {
@@ -215,6 +213,9 @@
   width: auto;
   display: block;
 }
+
+/* Mobile-only security note — hidden on desktop */
+.mobileSecurityNote { display: none; }
 
 /* ── Card ── */
 .card {
@@ -472,9 +473,9 @@
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Height-aware  — shorter laptop screens (e.g. 1366×768, 1280×720)
+   Height-aware  — shorter laptop screens (desktop only)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-@media (max-height: 850px) {
+@media (min-width: 769px) and (max-height: 850px) {
   .brandInner {
     padding-top: clamp(20px, 3.5vh, 40px);
     padding-bottom: clamp(14px, 2vh, 22px);
@@ -521,7 +522,7 @@
   }
 }
 
-@media (max-height: 720px) {
+@media (min-width: 769px) and (max-height: 720px) {
   .brandInner {
     padding-top: clamp(14px, 2.5vh, 24px);
     padding-bottom: clamp(10px, 1.5vh, 16px);
@@ -579,49 +580,261 @@
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   Mobile  ≤ 640px  — hide brand panel, full-width card
+   Mobile  ≤ 768px — two-section layout with branded hero
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-@media (max-width: 640px) {
-  /* Mobile may need to scroll if content is taller than the viewport —
-     the strict no-scroll requirement applies to desktop/laptop only. */
+@media (max-width: 768px) {
   .page {
+    flex-direction: column;
     height: auto;
-    min-height: 100vh;
     min-height: 100dvh;
-    overflow-y: auto;
     overflow-x: hidden;
+    overflow-y: auto;
+    background: #F5F7FB;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   .brandPanel {
     display: none;
   }
 
+  /* Full-height column, starts from top */
   .loginPanel {
+    flex: none;
+    width: 100%;
     height: auto;
-    padding: 32px 20px;
-    min-height: 100vh;
     min-height: 100dvh;
-    justify-content: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0;
+    background: transparent;
     overflow: visible;
+    animation: none;
   }
 
+  /* ── Branded hero header ── */
   .mobileBrand {
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    width: 100%;
+    min-height: clamp(168px, 30vh, 240px);
+    background: linear-gradient(145deg, #04152F 0%, #082E5C 55%, #0B4A86 100%);
+    border-radius: 0 0 28px 28px;
+    overflow: hidden;
+    padding: clamp(28px, 4vh, 44px) 24px clamp(40px, 6vh, 56px);
+    flex-shrink: 0;
   }
 
+  /* Decorative signal rings */
+  .mobileRing1 {
+    position: absolute;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    border: 1px solid rgba(100, 160, 255, 0.18);
+    bottom: -90px;
+    right: -50px;
+    pointer-events: none;
+  }
+
+  .mobileRing2 {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    border: 1px solid rgba(100, 160, 255, 0.09);
+    bottom: -160px;
+    right: -110px;
+    pointer-events: none;
+  }
+
+  /* Soft radial glow */
+  .mobileGlow {
+    position: absolute;
+    width: 320px;
+    height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.26) 0%, transparent 65%);
+    bottom: -80px;
+    right: -40px;
+    pointer-events: none;
+  }
+
+  /* Logo + tagline centred over decorations */
+  .mobileLogoWrap {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobileBrandLogoImg {
+    width: clamp(135px, 42vw, 165px);
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 2px 14px rgba(0, 0, 0, 0.40));
+  }
+
+  .mobileTagline {
+    font-size: 13px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.58);
+    letter-spacing: 0.2px;
+    text-align: center;
+  }
+
+  /* ── Card overlaps the hero by ~36px ── */
   .card {
-    padding: 28px 20px;
-    max-width: 100%;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    width: calc(100% - 32px);
+    max-width: 440px;
+    border-radius: 24px;
+    padding: 24px 22px 26px;
+    margin-top: -36px;
+    margin-bottom: clamp(20px, 4vh, 36px);
+    position: relative;
+    z-index: 2;
+    background: #ffffff;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 8px 32px rgba(15, 23, 42, 0.10), 0 2px 8px rgba(15, 23, 42, 0.05);
+  }
+
+  .cardHeader {
+    margin-bottom: 18px;
   }
 
   .heading {
-    font-size: 22px;
+    font-size: clamp(28px, 7.5vw, 34px);
+    font-weight: 700;
+    line-height: 1.15;
+    color: #0F172A;
+    letter-spacing: -0.4px;
+    margin: 0 0 8px;
   }
 
-  .input,
+  .subheading {
+    font-size: clamp(14px, 3.8vw, 16px);
+    color: var(--slate-500);
+    line-height: 1.45;
+    margin: 0;
+  }
+
+  .form {
+    gap: 16px;
+  }
+
+  .field {
+    gap: 8px;
+  }
+
+  .label {
+    font-size: 14px;
+  }
+
+  /* font-size ≥ 16px prevents iOS auto-zoom on focus */
+  .input {
+    height: 56px;
+    font-size: 16px;
+    border-radius: 14px;
+    border: 1.5px solid #DCE3ED;
+    background: #FAFBFC;
+  }
+
+  .input:focus {
+    background: #ffffff;
+  }
+
+  .eyeBtn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   .btn {
-    height: 50px;
+    height: 56px;
+    border-radius: 15px;
+    font-size: 16px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #3563EB 0%, #2563EB 55%, #1D4ED8 100%);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+    margin-top: 8px;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 55%, #1A44C4 100%);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+  }
+
+  /* Security note visible only on mobile */
+  .mobileSecurityNote {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 18px;
+    color: var(--slate-400);
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: center;
+  }
+
+  .mobileSecurityNote svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+  }
+}
+
+/* ── Short phone  ≤ 768px wide & ≤ 720px tall ── */
+@media (max-width: 768px) and (max-height: 720px) {
+  .mobileBrand {
+    min-height: clamp(136px, 24vh, 172px);
+    padding-bottom: clamp(32px, 5vh, 48px);
+  }
+
+  .mobileBrandLogoImg {
+    width: clamp(110px, 36vw, 140px);
+  }
+
+  .mobileTagline {
+    font-size: 12px;
+  }
+
+  .card {
+    margin-top: -28px;
+    padding: 20px 20px 22px;
+    margin-bottom: 16px;
+  }
+
+  .cardHeader {
+    margin-bottom: 14px;
+  }
+
+  .heading {
+    font-size: clamp(24px, 6.5vw, 28px);
+  }
+
+  .form {
+    gap: 14px;
+  }
+
+  .input {
+    height: 52px;
+  }
+
+  .btn {
+    height: 52px;
+    margin-top: 6px;
+  }
+
+  .mobileSecurityNote {
+    margin-top: 14px;
+    font-size: 11px;
   }
 }
