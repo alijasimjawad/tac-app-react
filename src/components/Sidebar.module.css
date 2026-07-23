@@ -1,146 +1,217 @@
+/* ─── Core container ─────────────────────────────────────────────────────────── */
+
 .sidebar {
-  width: 220px;
-  min-width: 220px;
-  background: linear-gradient(180deg, #10233d 0%, #0b1a2e 100%);
+  width: 284px;
+  min-width: 284px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #0d1e35 0%, #081626 100%);
   display: flex;
   flex-direction: column;
   height: 100vh;
   position: sticky;
   top: 0;
   overflow-y: auto;
-  box-shadow: 1px 0 0 rgba(255, 255, 255, .04), 4px 0 24px rgba(0, 0, 0, .18);
+  overflow-x: hidden;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, .05), 4px 0 32px rgba(0, 0, 0, .25);
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, .14) transparent;
+  scrollbar-color: rgba(255, 255, 255, .1) transparent;
+  transition: width .22s cubic-bezier(.4, 0, .2, 1),
+              min-width .22s cubic-bezier(.4, 0, .2, 1);
 }
 
-.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-track { background: transparent; }
-.sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .12); border-radius: 10px; }
-.sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .2); }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .1); border-radius: 10px; }
+.sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .18); }
+
+/* ─── Collapsed state ────────────────────────────────────────────────────────── */
+
+.sidebarCollapsed {
+  width: 80px;
+  min-width: 80px;
+}
+
+.sidebarCollapsed .brandText { display: none; }
+
+.sidebarCollapsed .navItem {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebarCollapsed .navLabel { display: none; }
+
+.sidebarCollapsed .nsSection { display: none; }
+
+/* ─── Mobile backdrop ─────────────────────────────────────────────────────────── */
+
+.mobileBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+  z-index: 499;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* ─── Brand header ───────────────────────────────────────────────────────────── */
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 16px 18px;
-  border-bottom: 1px solid var(--sb-border);
-  position: relative;
+  padding: 0 14px;
+  height: 64px;
+  min-height: 64px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  flex-shrink: 0;
+}
+
+.sidebarCollapsed .brand {
+  justify-content: center;
+  padding: 0 12px;
 }
 
 .brandIcon {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, var(--blue-600), var(--blue-700));
+  width: 34px;
+  height: 34px;
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
   color: #fff;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   font-weight: 800;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, .35), inset 0 1px 0 rgba(255, 255, 255, .15);
+  letter-spacing: -0.5px;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, .4), inset 0 1px 0 rgba(255, 255, 255, .15);
+}
+
+.brandText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brandName {
   font-size: 13px;
   font-weight: 700;
-  color: #eef3fa;
-  line-height: 1.2;
+  color: #dce8f4;
+  white-space: nowrap;
   letter-spacing: .01em;
 }
 
 .brandSub {
   font-size: 10px;
-  color: var(--sb-label);
-  margin-top: 2px;
-  letter-spacing: .02em;
+  color: #4e6882;
+  margin-top: 1px;
+  letter-spacing: .03em;
+  white-space: nowrap;
 }
 
+.collapseBtn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: rgba(255, 255, 255, .05);
+  color: #4e6882;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease;
+}
+.collapseBtn:hover {
+  background: rgba(255, 255, 255, .1);
+  color: #8ca3be;
+}
+
+.sidebarCollapsed .collapseBtn { margin-left: 0; }
+
+/* ─── Nav sections ───────────────────────────────────────────────────────────── */
+
 .nav {
-  padding: 12px 10px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  flex: 1;
+  gap: 2px;
 }
 
 .navItem {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 12px;
-  border-radius: var(--radius);
-  color: var(--sb-text);
+  padding: 0 12px;
+  height: 44px;
+  border-radius: 8px;
+  color: #8ca3be;
   font-size: 13px;
   font-weight: 500;
   text-decoration: none;
   position: relative;
+  overflow: hidden;
+  white-space: nowrap;
   transition: background .16s cubic-bezier(.4, 0, .2, 1),
-              color .16s cubic-bezier(.4, 0, .2, 1),
-              transform .16s cubic-bezier(.4, 0, .2, 1);
+              color .16s cubic-bezier(.4, 0, .2, 1);
 }
 
 .navItem svg {
   flex-shrink: 0;
-  opacity: 0.7;
+  opacity: .75;
   transition: opacity .16s ease;
 }
 
 .navItem:hover {
-  background: var(--sb-hover);
-  color: #eef3fa;
-  transform: translateX(1px);
+  background: rgba(255, 255, 255, .055);
+  color: #c8d8ea;
 }
-
 .navItem:hover svg { opacity: 1; }
 
 .active {
-  background: linear-gradient(90deg, rgba(37, 99, 235, .22), rgba(37, 99, 235, .07));
-  color: #eef3fa;
+  background: linear-gradient(90deg, rgba(37, 99, 235, .22) 0%, rgba(37, 99, 235, .06) 100%);
+  color: #e0eeff;
   font-weight: 600;
 }
-
 .active::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 4px;
-  bottom: 4px;
+  top: 6px;
+  bottom: 6px;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: var(--accent);
-  box-shadow: 0 0 6px rgba(37, 99, 235, .55);
+  background: #2563eb;
+  box-shadow: 0 0 8px rgba(37, 99, 235, .65);
 }
+.active svg { opacity: 1; color: #93c5fd; }
 
-.active svg {
-  opacity: 1;
-  color: var(--blue-200);
-}
-
-/* ── Network Scopes tree ─────────────────────────────────────────────────── */
+/* ─── Section group headers (Network Scopes / Finance / HR / Admin) ──────────── */
 
 .nsSection {
-  border-top: 1px solid var(--sb-border);
-  padding: 10px 0 12px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+  padding: 6px 0 8px;
 }
 
 .nsSectionHdr {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px 7px 12px;
+  padding: 6px 12px 6px 14px;
+  margin: 0 8px;
+  border-radius: 6px;
   cursor: pointer;
-  color: var(--sb-label);
-  font-size: 11px;
+  color: #4e6882;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: .08em;
+  letter-spacing: .1em;
   user-select: none;
-  transition: color .16s ease;
+  transition: color .16s ease, background .16s ease;
 }
-.nsSectionHdr:hover { color: var(--blue-200); }
-.nsSectionHdr:hover .nsChevron { color: var(--blue-200); }
+.nsSectionHdr:hover { color: #8ca3be; background: rgba(255, 255, 255, .03); }
+.nsSectionHdr:hover .nsChevron { color: #8ca3be; }
 
 .nsHdrLeft {
   display: flex;
@@ -149,99 +220,120 @@
 }
 
 .nsChevron {
-  color: var(--sb-label);
+  color: #4e6882;
   transition: transform .22s cubic-bezier(.4, 0, .2, 1), color .16s ease;
   flex-shrink: 0;
 }
 .nsChevronClosed { transform: rotate(-90deg); }
 
 .nsBody {
-  padding: 0 8px;
+  padding: 4px 10px 0;
 }
 
 .nsDivider {
   height: 1px;
-  background: var(--sb-border);
-  margin: 5px 4px;
+  background: rgba(255, 255, 255, .05);
+  margin: 4px 4px;
 }
 
-.projGroup {
-  margin-bottom: 2px;
-}
+/* ─── Project group ──────────────────────────────────────────────────────────── */
+
+.projGroup { margin-bottom: 2px; }
 
 .projHeader {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
   cursor: pointer;
   user-select: none;
-  transition: background .16s cubic-bezier(.4, 0, .2, 1), transform .16s cubic-bezier(.4, 0, .2, 1);
+  transition: background .16s cubic-bezier(.4, 0, .2, 1);
 }
-.projHeader:hover { background: var(--sb-hover); transform: translateX(1px); }
+.projHeader:hover { background: rgba(255, 255, 255, .05); }
 
-.projIcon {
-  color: var(--sb-label);
-  flex-shrink: 0;
-}
-
-.projHeaderText {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
+.projIcon { color: #4e6882; flex-shrink: 0; }
 
 .projName {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--sb-text);
-  line-height: 1.2;
+  color: #adc0d4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.projSub {
+.projBadge {
   font-size: 10px;
-  color: var(--sb-label);
+  font-weight: 700;
+  color: #4e6882;
+  background: rgba(255, 255, 255, .07);
+  border-radius: 10px;
+  padding: 1px 6px;
+  line-height: 1.6;
+  flex-shrink: 0;
 }
 
 .projChevron {
-  color: var(--sb-label);
+  color: #4e6882;
   transition: transform .22s cubic-bezier(.4, 0, .2, 1);
   flex-shrink: 0;
 }
 .projChevronClosed { transform: rotate(-90deg); }
 
+/* ─── Child sections with vertical guide line ────────────────────────────────── */
+
 .projChildren {
-  padding: 2px 0 2px 20px;
+  position: relative;
+  padding: 2px 0 4px 12px;
+  margin-left: 8px;
 }
+
+.projChildren::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: rgba(255, 255, 255, .1);
+  border-radius: 1px;
+}
+
+/* ─── Section links ──────────────────────────────────────────────────────────── */
+
+.secLinkWrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.secLinkWrap .secLink { flex: 1; min-width: 0; }
 
 .secLink {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  border-radius: var(--radius);
-  color: var(--sb-text);
+  border-radius: 6px;
+  color: #8ca3be;
   font-size: 12px;
   text-decoration: none;
-  opacity: 0.8;
+  opacity: .8;
   transition: background .14s cubic-bezier(.4, 0, .2, 1),
               opacity .14s ease,
-              transform .14s cubic-bezier(.4, 0, .2, 1);
+              color .14s ease;
 }
 .secLink:hover {
-  background: var(--sb-hover);
+  background: rgba(255, 255, 255, .055);
   opacity: 1;
-  transform: translateX(1px);
+  color: #c8d8ea;
 }
 .secLinkActive {
-  background: linear-gradient(90deg, rgba(37, 99, 235, .18), rgba(37, 99, 235, .05));
-  color: #eef3fa;
+  background: rgba(37, 99, 235, .14);
+  color: #bfdbfe;
   font-weight: 600;
   opacity: 1;
 }
@@ -250,13 +342,13 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--sb-label);
+  background: rgba(255, 255, 255, .22);
   flex-shrink: 0;
-  transition: box-shadow .16s ease;
+  transition: background .16s ease, box-shadow .16s ease;
 }
 .secDotActive {
-  background: var(--blue-200);
-  box-shadow: 0 0 6px rgba(191, 219, 254, .7);
+  background: #60a5fa;
+  box-shadow: 0 0 6px rgba(96, 165, 250, .55);
 }
 
 .secLinkLabel {
@@ -268,23 +360,12 @@
 }
 
 .secArr {
-  color: var(--sb-label);
+  color: #4e6882;
   font-size: 13px;
   line-height: 1;
 }
 
-/* ── Section link with ⋮ menu ───────────────────────────────────────────────── */
-
-.secLinkWrap {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.secLinkWrap .secLink {
-  flex: 1;
-  min-width: 0;
-}
+/* ─── Section ⋮ menu ──────────────────────────────────────────────────────────── */
 
 .secMenuBtn {
   flex-shrink: 0;
@@ -292,19 +373,19 @@
   height: 20px;
   border: none;
   background: transparent;
-  color: var(--sb-label);
+  color: #4e6882;
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   line-height: 1;
   opacity: 0;
-  transition: opacity .16s cubic-bezier(.4, 0, .2, 1), background .16s cubic-bezier(.4, 0, .2, 1);
+  transition: opacity .16s ease, background .16s ease;
 }
 .secLinkWrap:hover .secMenuBtn { opacity: 1; }
-.secMenuBtn:hover { background: var(--sb-hover); color: var(--sb-text); opacity: 1 !important; }
+.secMenuBtn:hover { background: rgba(255, 255, 255, .08); color: #adc0d4; opacity: 1 !important; }
 
 .secMenuDropdown {
   position: absolute;
@@ -312,10 +393,10 @@
   right: 0;
   z-index: 300;
   min-width: 140px;
-  background: #17293f;
-  border: 1px solid var(--sb-border);
-  border-radius: var(--radius-sm);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  background: #0f2444;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .5);
   padding: 4px 0;
 }
 
@@ -326,19 +407,19 @@
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--sb-text);
+  color: #adc0d4;
   background: transparent;
   border: none;
   cursor: pointer;
   transition: background .14s ease;
   font-family: inherit;
 }
-.secMenuItem:hover { background: var(--sb-hover); }
+.secMenuItem:hover { background: rgba(255, 255, 255, .06); color: #dce8f4; }
 
-.secMenuItemDanger { color: #f87171; }
-.secMenuItemDanger:hover { background: rgba(239, 68, 68, .12); }
+.secMenuItemDanger { color: #fca5a5; }
+.secMenuItemDanger:hover { background: rgba(239, 68, 68, .12); color: #f87171; }
 
-/* ── Add Section button ─────────────────────────────────────────────────────── */
+/* ─── Add Section ghost button ───────────────────────────────────────────────── */
 
 .addSecBtn {
   display: flex;
@@ -347,25 +428,23 @@
   width: 100%;
   padding: 5px 8px;
   margin-top: 4px;
-  border: 1px dashed rgba(255, 255, 255, .12);
-  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(255, 255, 255, .1);
+  border-radius: 6px;
   background: transparent;
-  color: var(--sb-label);
+  color: #4e6882;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  transition: border-color .16s cubic-bezier(.4, 0, .2, 1),
-              color .16s cubic-bezier(.4, 0, .2, 1),
-              background .16s cubic-bezier(.4, 0, .2, 1);
+  transition: border-color .16s ease, color .16s ease, background .16s ease;
 }
 .addSecBtn:hover {
-  border-color: var(--blue-200);
-  color: var(--blue-200);
-  background: var(--sb-hover);
+  border-color: #60a5fa;
+  color: #93c5fd;
+  background: rgba(37, 99, 235, .07);
 }
 
-/* ── Section management modals ──────────────────────────────────────────────── */
+/* ─── Section management modals ──────────────────────────────────────────────── */
 
 .secModalOverlay {
   position: fixed;
@@ -471,3 +550,44 @@
 }
 .sbBtnGhost:hover:not(:disabled) { background: var(--slate-100); color: var(--text-primary); }
 .sbBtnGhost:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ─── Reduced motion ─────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+  .navItem,
+  .projHeader,
+  .secLink { transition: none !important; }
+  .nsChevron,
+  .projChevron { transition: none !important; }
+}
+
+/* ─── Mobile (≤ 768px) ───────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    z-index: 500;
+    transform: translateX(-100%);
+    transition: transform .28s cubic-bezier(.4, 0, .2, 1);
+    width: 280px;
+    min-width: 280px;
+  }
+
+  .mobileOpen { transform: translateX(0); }
+
+  .collapseBtn { display: none; }
+
+  /* Override collapsed state on mobile — always show full sidebar */
+  .sidebarCollapsed {
+    width: 280px;
+    min-width: 280px;
+  }
+  .sidebarCollapsed .brandText { display: block; }
+  .sidebarCollapsed .navItem { justify-content: flex-start; padding: 0 12px; }
+  .sidebarCollapsed .navLabel { display: inline; }
+  .sidebarCollapsed .nsSection { display: block; }
+}

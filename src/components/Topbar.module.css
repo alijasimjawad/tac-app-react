@@ -10,12 +10,30 @@
   top: 0;
   z-index: 10;
   box-shadow: var(--shadow-xs);
+  gap: 12px;
 }
+
+.menuBtn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--slate-500);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.menuBtn:hover { background: var(--slate-100); color: var(--slate-700); }
 
 .title {
   font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
+  flex: 1;
 }
 
 .right {
@@ -68,8 +86,13 @@
   cursor: pointer;
   transition: var(--transition-fast);
 }
-
 .logoutBtn:hover {
   border-color: var(--red);
   color: var(--red);
+}
+
+@media (max-width: 768px) {
+  .menuBtn { display: flex; }
+  .topbar { padding: 0 16px; }
+  .userInfo { display: none; }
 }

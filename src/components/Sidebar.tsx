@@ -22,6 +22,26 @@ const DEFAULT_HEADERS = ['Site ID', 'Governate', 'Imp. Date', 'ATP Status', 'Com
 
 const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt'] as const;
 
+// ── Collapse icon ─────────────────────────────────────────────────────────────
+
+function CollapseIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {collapsed ? (
+        <>
+          <path d="M13 17l5-5-5-5"/>
+          <path d="M6 17l5-5-5-5"/>
+        </>
+      ) : (
+        <>
+          <path d="M11 17l-5-5 5-5"/>
+          <path d="M18 17l-5-5 5-5"/>
+        </>
+      )}
+    </svg>
+  );
+}
+
 // ── Network Scopes sidebar tree ───────────────────────────────────────────────
 
 function NetworkScopesTree() {
@@ -194,10 +214,8 @@ function NetworkScopesTree() {
                 <div className={styles.projGroup}>
                   <div className={styles.projHeader} onClick={() => toggleProj(proj)}>
                     <ProjIcon proj={proj} />
-                    <div className={styles.projHeaderText}>
-                      <span className={styles.projName}>{PROJ_NAMES[proj]}</span>
-                      <span className={styles.projSub}>{secs.length} section{secs.length !== 1 ? 's' : ''}</span>
-                    </div>
+                    <span className={styles.projName}>{PROJ_NAMES[proj]}</span>
+                    <span className={styles.projBadge}>{secs.length}</span>
                     <svg
                       className={`${styles.projChevron} ${isOpen ? '' : styles.projChevronClosed}`}
                       viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -595,8 +613,14 @@ function AdminNavGroup() {
 
 // ── Main Sidebar ──────────────────────────────────────────────────────────────
 
-export default function Sidebar() {
+interface SidebarProps {
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+}
+
+export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const { hasPerm } = useAuth();
+  const [collapsed, setCollapsed] = useState(false);
 
   const NAV_TOP = [
     { to: '/dashboard', label: 'Dashboard', icon: GridIcon },
@@ -616,33 +640,58 @@ export default function Sidebar() {
     <NavLink
       key={to}
       to={to}
+      title={collapsed ? label : undefined}
       className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}
     >
       <Icon />
-      <span>{label}</span>
+      <span className={styles.navLabel}>{label}</span>
     </NavLink>
   ));
 
   return (
-    <aside className={styles.sidebar}>
-      <div className={styles.brand}>
-        <div className={styles.brandIcon}>T</div>
-        <div>
-          <div className={styles.brandName}>TAC Network</div>
-          <div className={styles.brandSub}>Telecom Mgmt</div>
+    <>
+      {mobileOpen && (
+        <div className={styles.mobileBackdrop} onClick={onMobileClose} aria-hidden="true" />
+      )}
+
+      <aside
+        className={[
+          styles.sidebar,
+          collapsed ? styles.sidebarCollapsed : '',
+          mobileOpen ? styles.mobileOpen : '',
+        ].join(' ')}
+        aria-label="Main navigation"
+      >
+        <div className={styles.brand}>
+          <div className={styles.brandIcon}>T</div>
+          <div className={styles.brandText}>
+            <div className={styles.brandName}>TAC Network</div>
+            <div className={styles.brandSub}>Telecom Mgmt</div>
+          </div>
+          <button
+            className={styles.collapseBtn}
+            onClick={() => setCollapsed(v => !v)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <CollapseIcon collapsed={collapsed} />
+          </button>
         </div>
-      </div>
 
-      <nav className={styles.nav}>{navLinks(NAV_TOP)}</nav>
+        <nav className={styles.nav} aria-label="Main">
+          {navLinks(NAV_TOP)}
+        </nav>
 
-      <NetworkScopesTree />
+        <NetworkScopesTree />
 
-      <nav className={styles.nav}>{navLinks(NAV_MID)}</nav>
+        <nav className={styles.nav} aria-label="Tools">
+          {navLinks(NAV_MID)}
+        </nav>
 
-      <FinanceNavGroup />
-      <HrNavGroup />
-      <AdminNavGroup />
-    </aside>
+        <FinanceNavGroup />
+        <HrNavGroup />
+        <AdminNavGroup />
+      </aside>
+    </>
   );
 }
 
