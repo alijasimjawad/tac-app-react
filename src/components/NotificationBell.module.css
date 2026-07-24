@@ -1,0 +1,255 @@
+/* ── Wrapper (positioning anchor) ────────────────────────────────────────────── */
+
+.wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ── Bell button ─────────────────────────────────────────────────────────────── */
+
+.bellBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm, 6px);
+  border: none;
+  background: transparent;
+  color: var(--slate-500, #64748B);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.bellBtn:hover { background: var(--slate-100, #F1F5F9); color: var(--slate-700, #334155); }
+
+/* ── Unread count badge ──────────────────────────────────────────────────────── */
+
+.badge {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  background: #EF4444;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* ── Dropdown panel ──────────────────────────────────────────────────────────── */
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 340px;
+  background: #ffffff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06);
+  z-index: 200;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────────── */
+
+.dropHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.dropTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+.markReadBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563EB;
+  cursor: pointer;
+}
+.markReadBtn:hover { text-decoration: underline; }
+
+/* ── Push notifications toggle row ──────────────────────────────────────────── */
+
+.pushRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 16px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #F1F5F9;
+  min-height: 36px;
+}
+
+.pushNote {
+  font-size: 11px;
+  color: var(--text-muted, #94A3B8);
+}
+
+.pushLabel {
+  font-size: 11px;
+  color: var(--text-secondary, #64748B);
+  flex: 1;
+  min-width: 0;
+}
+
+.pushActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.pushBtnOn {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1.5px solid #2563EB;
+  background: #EFF6FF;
+  color: #1D4ED8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pushBtnOn:hover:not(:disabled) { background: #DBEAFE; }
+
+.pushBtnOff {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1.5px solid #E2E8F0;
+  background: transparent;
+  color: #64748B;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pushBtnOff:hover:not(:disabled) { border-color: #EF4444; color: #DC2626; }
+
+.pushBtnOn:disabled,
+.pushBtnOff:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ⚠️ Temporary test button — remove after verifying push end-to-end */
+.testBtn {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1.5px dashed #CBD5E1;
+  background: transparent;
+  color: #94A3B8;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.testBtn:hover { border-color: #94A3B8; color: #475569; }
+
+/* ── Notification list ───────────────────────────────────────────────────────── */
+
+.list {
+  overflow-y: auto;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted, #94A3B8);
+}
+
+/* ── Single notification row ─────────────────────────────────────────────────── */
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px 10px 16px;
+  border-bottom: 1px solid #F8FAFC;
+  transition: background 0.1s ease;
+}
+.item:last-child { border-bottom: none; }
+.item:hover { background: #F8FAFC; }
+
+.itemUnread { background: #FAFBFF; }
+.itemUnread:hover { background: #F0F5FF; }
+
+/* ── Colored kind icon badge ─────────────────────────────────────────────────── */
+
+.notifIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.iconAdd    { background: #DCFCE7; color: #16A34A; }
+.iconDelete { background: #FEE2E2; color: #DC2626; }
+.iconEdit   { background: #FEF3C7; color: #D97706; }
+.iconOther  { background: #F1F5F9; color: #94A3B8; }
+
+/* ── Item text block ─────────────────────────────────────────────────────────── */
+
+.itemBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemMsg {
+  font-size: 12px;
+  color: #1E293B;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.itemTime {
+  font-size: 11px;
+  color: var(--text-muted, #94A3B8);
+}
+
+/* ── Unread indicator dot ────────────────────────────────────────────────────── */
+
+.unreadDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3B82F6;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+/* ── Narrow viewports ────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .dropdown {
+    position: fixed;
+    top: 62px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+}

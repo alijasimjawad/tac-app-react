@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import NotificationBell from './NotificationBell';
 import styles from './Topbar.module.css';
 
 interface TopbarProps {
@@ -38,6 +39,7 @@ export default function Topbar({ title, onMenuOpen }: TopbarProps) {
       </button>
       <span className={styles.title}>{title}</span>
       <div className={styles.right}>
+        <NotificationBell />
         <div className={styles.avatar}>
           {currentUser?.profile_photo_url
             ? <img src={currentUser.profile_photo_url} alt="" className={styles.avatarImg} />
