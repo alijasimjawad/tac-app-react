@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { PROJ_NAMES } from './NetworkScopes';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToRoles } from '../lib/pushNotify';
 import css from './UserManagement.module.css';
 
 async function extractFnError(error: unknown, data: unknown): Promise<string> {
@@ -237,7 +238,7 @@ export default function UserManagement() {
     setUsers(us => [...us, newRow]);
     setAddOpen(false);
     showToast(`User "${username.trim()}" created`, true);
-    // TODO(push): not yet implemented in React app — see old index.html saveNewUser's sendPushToRoles(['admin'], ...) call
+    void sendPushToRoles(['admin'], 'User Updated', `User account ${username.trim()} was created`);
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Add User',
@@ -359,7 +360,7 @@ export default function UserManagement() {
 
     setEditId(null);
     showToast(`User "${editUser.trim()}" updated`, true);
-    // TODO(push): not yet implemented in React app — see old index.html saveEditUser's sendPushToRoles(['admin'], ...) call
+    void sendPushToRoles(['admin'], 'User Updated', `User account ${editUser.trim()} was modified`);
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Edit User',

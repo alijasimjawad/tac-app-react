@@ -100,6 +100,7 @@ export default function NotificationBell() {
   const [pushEnabled,   setPushEnabled]   = useState<boolean | null>(null);
   const [pushSupported, setPushSupported] = useState(true);
   const [loadingPush,   setLoadingPush]   = useState(false);
+  const [pushError,     setPushError]     = useState<string | null>(null);
 
   const wrapRef      = useRef<HTMLDivElement>(null);
   const markTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -202,6 +203,7 @@ export default function NotificationBell() {
     if (!open) return;
     void loadNotifs();
     void checkPushState();
+    setPushError(null);
   }, [open, loadNotifs, checkPushState]);
 
   // 3-second auto-mark-read on open — matches old app's _notifMarkReadTimer
@@ -231,23 +233,43 @@ export default function NotificationBell() {
   async function subscribePush() {
     if (!currentUser) return;
     setLoadingPush(true);
+    setPushError(null);
     try {
       const vapidKey = (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) ?? '';
-      if (!vapidKey) { console.error('[Push] VITE_VAPID_PUBLIC_KEY not set'); setLoadingPush(false); return; }
+      if (!vapidKey) {
+        const msg = 'Push isn\'t configured on this deployment (missing VAPID key). Contact the admin.';
+        console.error('[Push] VITE_VAPID_PUBLIC_KEY not set');
+        setPushError(msg); setLoadingPush(false); return;
+      }
       const reg  = await navigator.serviceWorker.register('/sw.js');
       const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { setLoadingPush(false); return; }
+      if (perm !== 'granted') {
+        setPushError(
+          perm === 'denied'
+            ? 'Notifications are blocked for this site. Enable them in your browser\'s site settings and try again.'
+            : 'Notification permission was dismissed. Click Enable again to retry.',
+        );
+        setLoadingPush(false);
+        return;
+      }
       const sub  = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
-      await supabase.from('push_subscriptions').upsert(
+      const { error: upsertErr } = await supabase.from('push_subscriptions').upsert(
         { user_id: currentUser.id, subscription: sub.toJSON() },
         { onConflict: 'user_id' },
       );
+      if (upsertErr) {
+        console.error('[Push] saving subscription failed:', upsertErr);
+        setPushError(`Couldn't save subscription: ${upsertErr.message}`);
+        setLoadingPush(false);
+        return;
+      }
       setPushEnabled(true);
     } catch (err) {
       console.error('[Push] subscribe failed:', err);
+      setPushError(err instanceof Error ? `Enable failed: ${err.message}` : 'Enable failed. See console for details.');
     }
     setLoadingPush(false);
   }
@@ -255,6 +277,7 @@ export default function NotificationBell() {
   async function unsubscribePush() {
     if (!currentUser) return;
     setLoadingPush(true);
+    setPushError(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
@@ -263,6 +286,7 @@ export default function NotificationBell() {
       setPushEnabled(false);
     } catch (err) {
       console.error('[Push] unsubscribe failed:', err);
+      setPushError(err instanceof Error ? `Disable failed: ${err.message}` : 'Disable failed. See console for details.');
     }
     setLoadingPush(false);
   }
@@ -370,6 +394,11 @@ export default function NotificationBell() {
               </>
             )}
           </div>
+          {pushError && (
+            <div className={styles.pushRow} style={{ color: '#c0392b', fontSize: '0.8rem', paddingTop: 0 }}>
+              {pushError}
+            </div>
+          )}
 
           {/* Notification list */}
           <div className={styles.list} role="list">

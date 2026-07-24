@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToUser, sendPushToRoles, getMemberUserId } from '../lib/pushNotify';
 import { iqd, FIN_PROJECTS, FIN_MONTHS } from '../lib/finHelpers';
 import css from './FinExpClaims.module.css';
 
@@ -187,7 +188,11 @@ export default function FinExpClaims() {
       .eq('id', id);
     if (clErr) { showToast(clErr.message, false); setApprovingId(null); return; }
     setClaims(cs => cs.map(c => c.id === id ? { ...c, status: 'approved', reviewed_by: reviewedBy, reviewed_at: reviewedAt, rejection_reason: null } : c));
-    // TODO(push): not yet implemented in React app — see old index.html approveExpClaim for the intended sendPushToUser/sendPushToRoles calls
+    const approveMemberName = team.find(t => t.id === claim.member_id)?.full_name || 'team member';
+    void getMemberUserId(approveMemberName).then(uid => {
+      if (uid) void sendPushToUser(uid, 'Claim Approved ✓', `Your claim for ${claim.project_name} has been approved`);
+    });
+    void sendPushToRoles(['admin'], 'Claim Approved', `Claim approved for ${approveMemberName}`);
     showToast('Claim approved and added to Project Expenses', true);
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
@@ -214,9 +219,15 @@ export default function FinExpClaims() {
     setRejectOpen(v => ({ ...v, [id]: false }));
     setRejectVal(v => ({ ...v, [id]: '' }));
     setRejectErr(v => ({ ...v, [id]: false }));
-    // TODO(push): not yet implemented in React app
     showToast('Claim rejected', true);
     const claim = claims.find(c => c.id === id);
+    if (claim) {
+      const rejMemberName = memberName(claim.member_id);
+      void getMemberUserId(rejMemberName).then(uid => {
+        if (uid) void sendPushToUser(uid, 'Claim Rejected ✗', `Your claim for ${claim.project_name} was rejected: ${reason}`);
+      });
+      void sendPushToRoles(['admin'], 'Claim Rejected', `Claim rejected for ${rejMemberName}`);
+    }
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Rejected Expense Claim',
@@ -256,9 +267,15 @@ export default function FinExpClaims() {
       .eq('id', id);
     if (e) { showToast(e.message, false); return; }
     setClaims(cs => cs.map(c => c.id === id ? { ...c, status: 'rejected', rejection_reason: reason, reviewed_by: rejBy, reviewed_at: rejAt } : c));
-    // TODO(push): not yet implemented in React app
     showToast('Claim rejected', true);
     const claim = claims.find(c => c.id === id);
+    if (claim) {
+      const rejMemberName = memberName(claim.member_id);
+      void getMemberUserId(rejMemberName).then(uid => {
+        if (uid) void sendPushToUser(uid, 'Claim Rejected ✗', `Your claim for ${claim.project_name} was rejected: ${reason}`);
+      });
+      void sendPushToRoles(['admin'], 'Claim Rejected', `Claim rejected for ${rejMemberName}`);
+    }
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Rejected Expense Claim',
