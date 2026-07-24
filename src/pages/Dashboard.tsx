@@ -571,6 +571,23 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
   );
 }
 
+// ── Recent Activity Panel ─────────────────────────────────────────────────────
+
+function RecentActivity() {
+  return (
+    <section className={styles.recentActivitySection} aria-labelledby="activity-heading">
+      <h2 id="activity-heading" className={styles.sectionTitle}>Recent Activity</h2>
+      <div className={styles.activityEmpty}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <p>Activity log coming soon.</p>
+      </div>
+    </section>
+  );
+}
+
 // ── Attention Panel ───────────────────────────────────────────────────────────
 
 function AttentionPanel({ items }: { items: AttentionItem[] }) {
@@ -915,8 +932,11 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* ── Attention panel ──────────────────────────────────────────────── */}
-          <AttentionPanel items={uniqueAttention} />
+          {/* ── Bottom panel: Attention + Recent Activity ────────────────────── */}
+          <div className={styles.bottomPanel}>
+            <AttentionPanel items={uniqueAttention} />
+            <RecentActivity />
+          </div>
         </>
       )}
 

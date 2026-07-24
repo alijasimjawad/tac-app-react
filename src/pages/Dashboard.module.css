@@ -1,7 +1,7 @@
 /* ── Page shell ──────────────────────────────────────────────────────────────── */
 
 .page {
-  padding: 28px 32px 56px;
+  padding: 24px 28px 48px;
   max-width: 1540px;
   margin: 0 auto;
 }
@@ -20,7 +20,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 32px;
+  margin-bottom: 22px;
   flex-wrap: wrap;
 }
 
@@ -28,7 +28,7 @@
 
 .pageTitle {
   margin: 0;
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 800;
   color: #0F172A;
   line-height: 1.2;
@@ -36,15 +36,15 @@
 }
 
 .pageSubtitle {
-  margin-top: 5px;
-  font-size: 14px;
+  margin-top: 4px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
 .headerRight {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -65,7 +65,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 8px 16px;
+  padding: 7px 14px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
@@ -95,17 +95,17 @@
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: 14px;
+  margin-bottom: 22px;
 }
 
 .kpiCard {
   background: #ffffff;
   border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 20px 22px 18px;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
-  min-height: 118px;
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+  min-height: 108px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -114,14 +114,14 @@
 .kpiTop {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 9px;
+  margin-bottom: 10px;
 }
 
 .kpiIconWrap {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -129,7 +129,7 @@
 }
 
 .kpiLabel {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -137,16 +137,16 @@
 }
 
 .kpiValue {
-  font-size: 36px;
+  font-size: 30px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.5px;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .kpiSupport {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
 }
@@ -156,21 +156,22 @@
 .analyticsRow {
   display: grid;
   grid-template-columns: 3fr 2fr;
-  gap: 16px;
-  margin-bottom: 40px;
+  gap: 14px;
+  margin-bottom: 26px;
+  align-items: stretch;
 }
 
 .analyticsCard {
   background: #ffffff;
   border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 24px 28px;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+  border-radius: 14px;
+  padding: 20px 24px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
 }
 
 .analyticsTitle {
-  margin: 0 0 20px;
-  font-size: 14px;
+  margin: 0 0 16px;
+  font-size: 13px;
   font-weight: 700;
   color: #0F172A;
   letter-spacing: -0.1px;
@@ -180,7 +181,7 @@
 
 .overallBody {
   display: flex;
-  gap: 28px;
+  gap: 24px;
   align-items: flex-start;
 }
 
@@ -189,14 +190,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
 .donutChart {
   position: relative;
-  width: 116px;
-  height: 116px;
+  width: 108px;
+  height: 108px;
 }
 
 .donutCenter {
@@ -210,7 +211,7 @@
 }
 
 .donutPct {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   color: #0F172A;
   line-height: 1;
@@ -223,7 +224,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 .donutStat {
@@ -231,7 +232,7 @@
 }
 .donutStatValue {
   display: block;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
   color: #0F172A;
   font-variant-numeric: tabular-nums;
@@ -241,7 +242,7 @@
   display: block;
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 /* Segmented bar */
@@ -256,11 +257,11 @@
 
 .segBar {
   display: flex;
-  height: 8px;
+  height: 7px;
   border-radius: 999px;
   overflow: hidden;
   background: #F1F5F9;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .segGreen { background: #16A34A; border-radius: 999px 0 0 999px; }
@@ -271,8 +272,8 @@
 .segLegend {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 20px;
-  margin-bottom: 16px;
+  gap: 10px 16px;
+  margin-bottom: 14px;
 }
 
 .segLegendItem {
@@ -292,7 +293,7 @@
 .dividerLine {
   height: 1px;
   background: #F1F5F9;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .installedRow {
@@ -345,11 +346,11 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .statusTotal {
-  font-size: 40px;
+  font-size: 34px;
   font-weight: 800;
   color: #0F172A;
   line-height: 1;
@@ -364,8 +365,8 @@
 .statusList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 9px;
+  margin-bottom: 16px;
 }
 
 .statusItem {
@@ -405,26 +406,26 @@
 
 /* ── Projects section ────────────────────────────────────────────────────────── */
 
-.projectsSection { margin-bottom: 36px; }
+.projectsSection { margin-bottom: 26px; }
 
 .sectionHdr {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .sectionTitle {
   margin: 0 0 4px;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #0F172A;
 }
 
 .sectionMeta {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 
@@ -432,8 +433,8 @@
 
 .projectGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
   align-items: start;
 }
 
@@ -442,8 +443,8 @@
 .projCard {
   background: #ffffff;
   border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
   display: flex;
   flex-direction: column;
   height: auto;
@@ -453,7 +454,7 @@
 }
 
 .projCard:hover {
-  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
+  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.09);
   border-color: #BFDBFE;
   transform: translateY(-1px);
 }
@@ -462,17 +463,17 @@
 .cardHeader {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 18px 20px 16px;
+  gap: 10px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid #F1F5F9;
 }
 
 .projAvatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 9px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   display: flex;
   align-items: center;
@@ -484,7 +485,7 @@
 .cardHeaderText { flex: 1; min-width: 0; }
 
 .projName {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: #0F172A;
   line-height: 1.2;
@@ -494,7 +495,7 @@
 }
 
 .projSecSummary {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   margin-top: 2px;
 }
@@ -502,9 +503,9 @@
 /* Badges */
 .badge {
   flex-shrink: 0;
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -515,66 +516,66 @@
 
 /* No-data state */
 .noDataBody {
-  padding: 24px 20px 20px;
+  padding: 18px 16px 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .noDataIcon { color: #CBD5E1; }
 
 .noDataText {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
 }
 
 .noDataSub {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 /* Card body */
 .cardBody {
-  padding: 16px 20px 12px;
+  padding: 12px 16px 10px;
 }
 
 .metricRow {
   display: flex;
   gap: 0;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
 .metric {
   flex: 1;
   min-width: 0;
-  padding-right: 12px;
+  padding-right: 10px;
 }
 .metric:not(:first-child) {
-  padding-left: 12px;
+  padding-left: 10px;
   border-left: 1px solid #F1F5F9;
 }
 
 .metricLabel {
   display: block;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   white-space: nowrap;
 }
 
 .metricValue {
   display: block;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
   color: #0F172A;
   font-variant-numeric: tabular-nums;
@@ -583,7 +584,7 @@
 }
 
 .metricOf {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: #94A3B8;
 }
@@ -593,12 +594,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .atpProgressBar {
   flex: 1;
-  height: 5px;
+  height: 4px;
   background: #F1F5F9;
   border-radius: 999px;
   overflow: hidden;
@@ -621,7 +622,7 @@
 }
 
 /* Disclosure button */
-.disclosureWrap { border-top: 1px solid #F1F5F9; padding-top: 10px; }
+.disclosureWrap { border-top: 1px solid #F1F5F9; padding-top: 8px; }
 
 .disclosureToggle {
   display: flex;
@@ -630,11 +631,11 @@
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
-  padding: 4px 0;
+  padding: 3px 0;
   transition: color 0.15s ease;
 }
 .disclosureToggle:hover { color: var(--accent); }
@@ -660,22 +661,22 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 6px 0;
   border-bottom: 1px solid #F8FAFC;
 }
 .bdRow:last-child { border-bottom: none; }
 
 .bdLabel {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #0F172A;
-  min-width: 60px;
+  min-width: 50px;
 }
 
 .bdStats {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -683,18 +684,18 @@
 .bdStat {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
-  font-size: 11px;
+  gap: 3px;
+  font-size: 10px;
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 5px;
+  padding: 2px 6px;
+  border-radius: 4px;
   background: #F8FAFC;
   color: #475569;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .bdKey {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -706,20 +707,20 @@
 
 /* Card footer */
 .cardFooter {
-  padding: 12px 20px 16px;
+  padding: 10px 16px 12px;
   border-top: 1px solid #F1F5F9;
 }
 
 .openProjBtn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 14px;
+  gap: 6px;
+  padding: 6px 12px;
   background: #F8FAFC;
   color: #334155;
   border: 1px solid #E2E8F0;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: 7px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
@@ -736,18 +737,27 @@
 }
 .openProjBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ── Bottom panel (Attention + Recent Activity, 2-col) ───────────────────────── */
+
+.bottomPanel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
 /* ── Attention section ───────────────────────────────────────────────────────── */
 
-.attentionSection { margin-bottom: 12px; }
+.attentionSection { margin-bottom: 0; }
 
 .attentionOk {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 18px;
+  padding: 12px 16px;
   background: #F0FDF4;
   border: 1px solid #BBF7D0;
-  border-radius: 12px;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 600;
   color: #15803D;
@@ -756,18 +766,18 @@
 .attentionList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .attentionItem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 13px 16px;
-  border-radius: 10px;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
   transition: opacity 0.15s ease;
 }
-.attentionItem:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+.attentionItem:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
 
 .attentionWarning {
   background: #FFFBEB;
@@ -787,13 +797,37 @@
 
 .attentionMsg {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: #0F172A;
   line-height: 1.4;
 }
 
 .attentionArrow { flex-shrink: 0; color: var(--text-muted); }
+
+/* ── Recent activity section ─────────────────────────────────────────────────── */
+
+.recentActivitySection { margin-bottom: 0; }
+
+.activityEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  color: #94A3B8;
+  text-align: center;
+}
+
+.activityEmpty p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
 
 /* ── Skeleton loaders ────────────────────────────────────────────────────────── */
 
@@ -811,43 +845,43 @@
 .skKpiRow {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
-  margin-bottom: 32px;
+  gap: 14px;
+  margin-bottom: 22px;
 }
 
 .skKpiCard {
   background: #ffffff;
   border: 1px solid #E2E8F0;
-  border-radius: 16px;
-  padding: 20px 22px;
-  min-height: 118px;
+  border-radius: 14px;
+  padding: 16px 18px;
+  min-height: 108px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
-.skIcon  { width: 32px; height: 32px; border-radius: 8px; }
-.skH1    { height: 36px; border-radius: 6px; width: 70%; }
-.skH2    { height: 14px; border-radius: 6px; width: 90%; }
+.skIcon  { width: 30px; height: 30px; border-radius: 7px; }
+.skH1    { height: 30px; border-radius: 6px; width: 70%; }
+.skH2    { height: 12px; border-radius: 6px; width: 90%; }
 
 .skAnalyticsRow {
   display: grid;
   grid-template-columns: 3fr 2fr;
-  gap: 16px;
-  margin-bottom: 40px;
+  gap: 14px;
+  margin-bottom: 26px;
 }
 
-.skAnalCard   { height: 220px; }
-.skAnalCardSm { height: 220px; }
+.skAnalCard   { height: 200px; }
+.skAnalCardSm { height: 200px; }
 
 .skProjRow {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
   align-items: start;
 }
 
-.skProjCard { height: 200px; }
+.skProjCard { height: 180px; }
 
 /* ── Error state ─────────────────────────────────────────────────────────────── */
 
@@ -933,10 +967,11 @@
 
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
 
-/* Slightly smaller type/padding on medium desktop */
 @media (max-width: 1280px) {
-  .page { padding: 24px 28px 48px; }
-  .kpiValue { font-size: 32px; }
+  .page { padding: 20px 24px 40px; }
+  .kpiValue { font-size: 26px; }
+  .projectGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .skProjRow { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* KPI: 3 columns, analytics: single column */
@@ -949,10 +984,11 @@
 
 /* Tablet: reduce padding */
 @media (max-width: 900px) {
-  .page { padding: 20px 20px 40px; }
-  .pageTitle { font-size: 24px; }
+  .page { padding: 18px 18px 36px; }
+  .pageTitle { font-size: 22px; }
   .overallBody { flex-direction: column; }
   .donutWrap { flex-direction: row; align-items: center; gap: 20px; }
+  .bottomPanel { grid-template-columns: 1fr; }
 }
 
 /* Tablet: single project column */
@@ -967,16 +1003,16 @@
 
 /* Mobile */
 @media (max-width: 600px) {
-  .page { padding: 16px 16px 36px; }
-  .pageTitle { font-size: 22px; }
-  .metricRow { gap: 8px; }
-  .metric { min-width: 70px; }
-  .metricValue { font-size: 16px; }
+  .page { padding: 14px 14px 32px; }
+  .pageTitle { font-size: 20px; }
+  .metricRow { gap: 6px; }
+  .metric { min-width: 60px; }
+  .metricValue { font-size: 14px; }
   .headerRight { flex-wrap: wrap; gap: 8px; }
   .lastUpdated { order: 3; width: 100%; }
   .kpiGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .kpiCard { min-height: 100px; padding: 16px; }
-  .kpiValue { font-size: 28px; }
+  .kpiCard { min-height: 96px; padding: 14px; }
+  .kpiValue { font-size: 24px; }
   .bdStats { gap: 4px; }
   .bdStat { font-size: 10px; }
 }
