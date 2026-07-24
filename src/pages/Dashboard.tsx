@@ -299,7 +299,9 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
               <div className={styles.analyticsLegendRow}>
                 <span className={row.dot} aria-hidden="true" />
                 <span className={styles.legendLabel}>{row.label}</span>
-                <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
+                <span className={styles.legendValue}>
+                {row.count} <span className={styles.legendPct}>({row.pct}%)</span>
+              </span>
               </div>
               {i < legendRows.length - 1 && <div className={styles.legendDivider} aria-hidden="true" />}
             </React.Fragment>
@@ -385,7 +387,9 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
               <div className={styles.analyticsLegendRow}>
                 <span className={row.dot} aria-hidden="true" />
                 <span className={styles.legendLabel}>{row.label}</span>
-                <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
+                <span className={styles.legendValue}>
+                {row.count} <span className={styles.legendPct}>({row.pct}%)</span>
+              </span>
               </div>
               {i < legendRows.length - 1 && <div className={styles.legendDivider} aria-hidden="true" />}
             </React.Fragment>
