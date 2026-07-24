@@ -3,10 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TAC Network</title>
     <link rel="preload" as="image" href="/login-bg-mobile.webp"  type="image/webp" media="(max-width: 768px)"/>
     <link rel="preload" as="image" href="/login-bg-desktop.webp" type="image/webp" media="(min-width: 769px)"/>
+
+    <!-- PWA: installable "Add to Home Screen" support -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0F172A" />
+
+    <!-- iOS home-screen support (Safari ignores manifest.json for most of this) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TAC Tracker" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>
   <body>
     <div id="root"></div>
