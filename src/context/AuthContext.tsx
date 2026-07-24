@@ -11,6 +11,7 @@ export interface UserProfile {
   role: string;
   permissions: Record<string, boolean>;
   auth_user_id: string;
+  profile_photo_url: string | null;
 }
 
 interface AuthState {
@@ -28,6 +29,24 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Same matching logic My Attendance already uses to resolve a `users` account
+// to its `team_members` row: by username first, then by full name.
+async function fetchTeamPhoto(username: string, fullName: string): Promise<string | null> {
+  const { data: byUsername } = await supabase
+    .from('team_members')
+    .select('profile_photo_url')
+    .ilike('username', username.trim())
+    .maybeSingle();
+  if (byUsername?.profile_photo_url) return byUsername.profile_photo_url;
+
+  const { data: byName } = await supabase
+    .from('team_members')
+    .select('profile_photo_url')
+    .ilike('full_name', fullName.trim())
+    .maybeSingle();
+  return byName?.profile_photo_url ?? null;
+}
+
 async function fetchProfile(authUserId: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from('users')
@@ -35,7 +54,8 @@ async function fetchProfile(authUserId: string): Promise<UserProfile | null> {
     .eq('auth_user_id', authUserId)
     .single();
   if (error || !data) return null;
-  return data as UserProfile;
+  const profile_photo_url = await fetchTeamPhoto(data.username, data.full_name).catch(() => null);
+  return { ...data, profile_photo_url } as UserProfile;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
