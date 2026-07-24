@@ -84,25 +84,6 @@
   text-transform: capitalize;
 }
 
-.logoutBtn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: transparent;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--slate-500);
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-.logoutBtn:hover {
-  border-color: var(--red);
-  color: var(--red);
-}
-
 @media (max-width: 768px) {
   .menuBtn { display: flex; }
   .topbar {
@@ -112,7 +93,4 @@
     padding-right: calc(16px + env(safe-area-inset-right, 0px));
   }
   .userInfo { display: none; }
-  /* Sign out moves into the sidebar drawer footer on mobile (see Sidebar.tsx)
-     to avoid crowding this narrow row alongside the hamburger/title/bell/avatar. */
-  .logoutBtn { display: none; }
 }

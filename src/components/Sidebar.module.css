@@ -41,12 +41,6 @@
 .sidebarCollapsed .nsSection { display: none; }
 
 /* ─── Mobile-only footer (sign out) ──────────────────────────────────────────── */
-/* Hidden on desktop — the topbar's own "Sign out" button covers that case.
-   Shown only inside the mobile drawer (see @media block below), since the
-   topbar's version is hidden on mobile to avoid crowding that narrow row. */
-
-.mobileFooter { display: none; }
-
 /* ─── Mobile backdrop ─────────────────────────────────────────────────────────── */
 
 .mobileBackdrop {
@@ -56,6 +50,82 @@
   z-index: 499;
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
+}
+
+/* ─── Sidebar footer (sign out + user) — desktop + mobile ───────────────────── */
+
+.mobileFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  background: #081626;
+  position: sticky;
+  bottom: 0;
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.mobileFooterUser {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mobileFooterName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #dce8f4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobileFooterRole {
+  font-size: 11px;
+  color: #4e6882;
+  text-transform: capitalize;
+}
+
+.mobileSignOutBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, .15);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a8bdd1;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.mobileSignOutBtn:hover,
+.mobileSignOutBtn:active {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+/* Collapsed desktop: icon-only sign-out, hide name/role */
+.sidebarCollapsed .mobileFooter {
+  justify-content: center;
+  padding: 12px;
+}
+
+.sidebarCollapsed .mobileFooterUser {
+  display: none;
+}
+
+.sidebarCollapsed .mobileSignOutBtn {
+  padding: 8px;
+}
+
+.sidebarCollapsed .mobileSignOutLabel {
+  display: none;
 }
 
 /* ─── Brand header ───────────────────────────────────────────────────────────── */
@@ -626,59 +696,4 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
 
-  .mobileFooter {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 12px 14px;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid rgba(255, 255, 255, .08);
-    background: #081626;
-    position: sticky;
-    bottom: 0;
-    flex-shrink: 0;
-    margin-top: auto;
-  }
-
-  .mobileFooterUser {
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .mobileFooterName {
-    font-size: 13px;
-    font-weight: 600;
-    color: #dce8f4;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .mobileFooterRole {
-    font-size: 11px;
-    color: #4e6882;
-    text-transform: capitalize;
-  }
-
-  .mobileSignOutBtn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: transparent;
-    border: 1.5px solid rgba(255, 255, 255, .15);
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #a8bdd1;
-    flex-shrink: 0;
-    cursor: pointer;
-  }
-
-  .mobileSignOutBtn:hover,
-  .mobileSignOutBtn:active {
-    border-color: #ef4444;
-    color: #ef4444;
-  }
 }
