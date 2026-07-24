@@ -806,6 +806,69 @@
 .modalSaveBtn:hover { background: var(--accent-hover); }
 .modalSaveBtn:disabled { opacity: .55; cursor: not-allowed; }
 
+/* ── Photo crop/zoom modal ──────────────────────────────────────────────────── */
+
+.cropModal {
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.cropBody {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.cropViewport {
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  background: var(--slate-100);
+  border: 1px solid var(--border);
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+}
+.cropViewport:active { cursor: grabbing; }
+
+.cropImg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.cropZoomRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--text-muted);
+}
+
+.cropZoomSlider {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.cropHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* ── Toast ──────────────────────────────────────────────────────────────────── */
 
 .toast {
