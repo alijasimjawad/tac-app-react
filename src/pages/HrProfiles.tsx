@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { type FieldTrip, type TripParticipant, fmtDate as fmtTripDate, buildTimeline } from '../lib/tripTypes';
+import { logActivity } from '../lib/activityLog';
 import styles from './HrProfiles.module.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -366,6 +367,12 @@ function ProfileDetail({
       setMember(updated);
       onMemberUpdated(updated);
       showToast('Photo updated', true);
+      logActivity({
+        userFullName: currentUser?.full_name ?? currentUser?.username,
+        action: 'Edited Team Member',
+        sectionName: 'HR',
+        details: `Updated photo: ${member.full_name}`,
+      });
       setPhotoUploading(false);
       closeCropModal();
     } catch (e: unknown) {
@@ -455,6 +462,12 @@ function ProfileDetail({
     onMemberUpdated(updated);
     setEditOpen(false);
     showToast('Profile saved', true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Edited Team Member',
+      sectionName: 'HR',
+      details: `Edited Team Member: ${name}`,
+    });
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
