@@ -483,6 +483,18 @@ export default function DailyActivities() {
         .slice(0, 6)
     : [];
 
+  function getSiteLabel(tag: string): string {
+    const rowData = siteDataMap[tag];
+    if (!rowData) return tag;
+    const keys = Object.keys(rowData);
+    const nameKey = keys.find(k => /^site[\s._-]*name$/i.test(k) || /^name$/i.test(k));
+    if (nameKey) {
+      const name = String(rowData[nameKey]).trim();
+      if (name && name !== 'undefined' && name !== 'null') return `${tag} – ${name}`;
+    }
+    return tag;
+  }
+
   function statusPill(s: string | null) {
     if (s === 'Completed') return <span className={`${styles.pill} ${styles.pillDone}`}><span className={styles.dot} />{s}</span>;
     if (s === 'In Progress') return <span className={`${styles.pill} ${styles.pillInprog}`}><span className={styles.dot} />{s}</span>;
@@ -580,13 +592,15 @@ export default function DailyActivities() {
       <div className={styles.formCard} ref={formCardRef}>
         <div className={styles.formHdr}>
           <div className={styles.formHdrIcon}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+              <path d="M9 12l2 2 4-4"/>
             </svg>
           </div>
           <div>
-            <div className={styles.formHdrTitle}>{editingId ? 'Edit Activity' : 'Log New Activity'}</div>
-            <div className={styles.formHdrSub}>Fill in the details below to save or send to WhatsApp</div>
+            <div className={styles.formHdrTitle}>{editingId ? 'Edit Activity' : 'New Activity'}</div>
+            <div className={styles.formHdrSub}>{editingId ? 'Fill in the details below to save or send to WhatsApp' : 'Create, assign and share a field activity'}</div>
           </div>
         </div>
 
@@ -596,26 +610,21 @@ export default function DailyActivities() {
             {/* ── Sub-card 1: Location & Scope ── */}
             <div className={styles.subCard}>
               <div className={styles.subCardHdr}>
-                <div className={`${styles.subCardIcon} ${styles.subCardIconBlue}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                    <circle cx="12" cy="10" r="3"/>
-                  </svg>
-                </div>
-                <div>
-                  <div className={styles.subCardTitle}>Location & Scope</div>
-                  <div className={styles.subCardSub}>Project, section and site details</div>
-                </div>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+                <div className={styles.subCardTitle}>Location & Scope</div>
               </div>
               <div className={styles.subCardBody}>
                 <div className={styles.field}>
-                  <label>Project</label>
+                  <label>Project <span className={styles.req}>*</span></label>
                   <select value={project} onChange={e => setProject(e.target.value)}>
                     {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <label>Section</label>
+                  <label>Section <span className={styles.req}>*</span></label>
                   <select
                     value={sectionId}
                     onChange={e => {
@@ -632,14 +641,14 @@ export default function DailyActivities() {
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <label>Site ID</label>
+                  <label>Site ID <span className={styles.req}>*</span></label>
                   <div
                     className={styles.siteTagsWrap}
                     onClick={() => siteInputRef.current?.focus()}
                   >
                     {siteTags.map((tag, i) => (
                       <span key={i} className={styles.siteTag}>
-                        {tag}
+                        {getSiteLabel(tag)}
                         <button type="button" onClick={e => { e.stopPropagation(); removeSiteTag(i); }}>×</button>
                       </span>
                     ))}
@@ -661,6 +670,9 @@ export default function DailyActivities() {
                     <datalist id="da-site-list">
                       {siteOptions.map(o => <option key={o} value={o} />)}
                     </datalist>
+                    <svg className={styles.siteChevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
                   </div>
                 </div>
                 <div className={styles.field}>
@@ -678,33 +690,27 @@ export default function DailyActivities() {
             {/* ── Sub-card 2: Work Details ── */}
             <div className={styles.subCard}>
               <div className={styles.subCardHdr}>
-                <div className={`${styles.subCardIcon} ${styles.subCardIconAmber}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
-                  </svg>
-                </div>
-                <div>
-                  <div className={styles.subCardTitle}>Work Details</div>
-                  <div className={styles.subCardSub}>Activity type, status and notes</div>
-                </div>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <div className={styles.subCardTitle}>Work Details</div>
               </div>
               <div className={styles.subCardBody}>
                 <div className={styles.field}>
-                  <label>Date</label>
+                  <label>Date <span className={styles.req}>*</span></label>
                   <input type="date" value={date} onChange={e => setDate(e.target.value)} />
                 </div>
                 <div className={styles.field}>
-                  <label>Activity Type</label>
+                  <label>Activity Type <span className={styles.req}>*</span></label>
                   <select value={activityType} onChange={e => setActivityType(e.target.value)}>
                     {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div className={styles.field}>
-                  <label>Status</label>
+                  <label>Status <span className={styles.req}>*</span></label>
                   <select value={status} onChange={e => setStatus(e.target.value)}>
                     {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -723,28 +729,29 @@ export default function DailyActivities() {
             {/* ── Sub-card 3: Team Members ── */}
             <div className={styles.subCard}>
               <div className={styles.subCardHdr}>
-                <div className={`${styles.subCardIcon} ${styles.subCardIconGreen}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                </div>
-                <div>
-                  <div className={styles.subCardTitle}>Team Members</div>
-                  <div className={styles.subCardSub}>Search and assign field staff</div>
-                </div>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+                <div className={styles.subCardTitle}>Team Members</div>
               </div>
               <div className={styles.subCardBody}>
-                <div className={styles.field}>
-                  <label>Search members</label>
+                <div className={styles.memberSearchWrap}>
+                  <svg className={styles.memberSearchIcon} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
                   <input
+                    className={styles.memberSearchInput}
                     type="text"
-                    placeholder="Type a name to search…"
+                    placeholder="Search team members…"
                     value={memberSearch}
                     onChange={e => setMemberSearch(e.target.value)}
                   />
+                  <svg className={styles.memberSearchChevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
                 </div>
 
                 {memberSearch.trim() && (
