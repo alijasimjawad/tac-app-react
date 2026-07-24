@@ -287,23 +287,27 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
             />
             <div className={styles.donutCenter} aria-hidden="true">
               <span className={styles.donutPct}>{atpPct}%</span>
-              <span className={styles.donutCenterLabel}>ATP</span>
+              <span className={styles.donutCenterLabel}>ATP<br />Accepted</span>
             </div>
           </div>
         </div>
 
         {/* Right: Vertical legend list */}
         <div className={styles.analyticsList}>
-          {legendRows.map(row => (
-            <div key={row.label} className={styles.analyticsLegendRow}>
-              <span className={row.dot} aria-hidden="true" />
-              <span className={styles.legendLabel}>{row.label}</span>
-              <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
-            </div>
+          {legendRows.map((row, i) => (
+            <React.Fragment key={row.label}>
+              <div className={styles.analyticsLegendRow}>
+                <span className={row.dot} aria-hidden="true" />
+                <span className={styles.legendLabel}>{row.label}</span>
+                <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
+              </div>
+              {i < legendRows.length - 1 && <div className={styles.legendDivider} aria-hidden="true" />}
+            </React.Fragment>
           ))}
           <div className={styles.acceptedBadge}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="20 6 9 17 4 12"/>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <circle cx="6" cy="6" r="6" fill="#1D4ED8"/>
+              <polyline points="3,6.5 5.2,8.5 9,3.8" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             {accepted} of {total} sites accepted
           </div>
@@ -348,10 +352,10 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
   };
 
   const legendRows = [
-    { dot: styles.dotGreen,  label: 'Complete',       count: counts.complete,       pct: calcPct(counts.complete, n) },
-    { dot: styles.dotBlue,   label: 'Active',         count: counts.active,         pct: calcPct(counts.active, n) },
-    { dot: styles.dotPurple, label: 'High Rejection', count: counts.highRejection,  pct: calcPct(counts.highRejection, n) },
-    { dot: styles.dotGray,   label: 'No Data',        count: counts.noData,         pct: calcPct(counts.noData, n) },
+    { dot: styles.dotGreen,  label: 'Complete', count: counts.complete,      pct: calcPct(counts.complete, n) },
+    { dot: styles.dotBlue,   label: 'Active',   count: counts.active,        pct: calcPct(counts.active, n) },
+    { dot: styles.dotGray,   label: 'No Data',  count: counts.noData,        pct: calcPct(counts.noData, n) },
+    { dot: styles.dotPurple, label: 'At Risk',  count: counts.highRejection, pct: calcPct(counts.highRejection, n) },
   ];
 
   return (
@@ -376,12 +380,15 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
 
         {/* Right: Status legend — always render all four rows */}
         <div className={styles.analyticsList}>
-          {legendRows.map(row => (
-            <div key={row.label} className={styles.analyticsLegendRow}>
-              <span className={row.dot} aria-hidden="true" />
-              <span className={styles.legendLabel}>{row.label}</span>
-              <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
-            </div>
+          {legendRows.map((row, i) => (
+            <React.Fragment key={row.label}>
+              <div className={styles.analyticsLegendRow}>
+                <span className={row.dot} aria-hidden="true" />
+                <span className={styles.legendLabel}>{row.label}</span>
+                <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
+              </div>
+              {i < legendRows.length - 1 && <div className={styles.legendDivider} aria-hidden="true" />}
+            </React.Fragment>
           ))}
         </div>
       </div>

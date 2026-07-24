@@ -211,12 +211,14 @@
 }
 
 .donutCenterLabel {
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
   margin-top: 2px;
+  text-align: center;
+  line-height: 1.3;
 }
 
 /* Vertical legend list (right side of analytics card) */
@@ -225,13 +227,19 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 5px;
 }
 
 .analyticsLegendRow {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.legendDivider {
+  height: 1px;
+  background: #F1F5F9;
+  flex-shrink: 0;
 }
 
 .legendLabel {
