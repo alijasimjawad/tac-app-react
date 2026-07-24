@@ -1,7 +1,7 @@
 /* ── Page shell ──────────────────────────────────────────────────────────────── */
 
 .page {
-  padding: 14px 28px 48px;
+  padding: 7px 28px 48px;
   max-width: 1540px;
   margin: 0 auto;
 }
@@ -20,7 +20,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   flex-wrap: wrap;
 }
 
