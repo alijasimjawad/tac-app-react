@@ -105,6 +105,14 @@
 
 @media (max-width: 768px) {
   .menuBtn { display: flex; }
-  .topbar { padding: 0 16px; }
+  .topbar {
+    padding: 0 16px;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+  }
   .userInfo { display: none; }
+  /* Sign out moves into the sidebar drawer footer on mobile (see Sidebar.tsx)
+     to avoid crowding this narrow row alongside the hamburger/title/bell/avatar. */
+  .logoutBtn { display: none; }
 }

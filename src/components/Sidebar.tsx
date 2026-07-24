@@ -660,9 +660,16 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
-  const { hasPerm } = useAuth();
+  const { hasPerm, currentUser, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+
+  async function handleSignOut() {
+    onMobileClose();
+    await logout();
+    navigate('/login');
+  }
 
   // Accordion state for Finance / HR / Admin: only one open at a time.
   // Initialize from active route first, then localStorage.
@@ -772,6 +779,24 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           isExpanded={expandedGroup === 'admin'}
           onToggle={() => toggleGroup('admin')}
         />
+
+        {/* Mobile-only: the topbar's "Sign out" button is hidden on small
+            screens to reduce crowding (hamburger/title/bell/avatar already
+            fill that row) — sign out lives here instead, inside the drawer. */}
+        <div className={styles.mobileFooter}>
+          <div className={styles.mobileFooterUser}>
+            <div className={styles.mobileFooterName}>{currentUser?.full_name || currentUser?.username}</div>
+            <div className={styles.mobileFooterRole}>{currentUser?.role}</div>
+          </div>
+          <button className={styles.mobileSignOutBtn} onClick={handleSignOut}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Sign out
+          </button>
+        </div>
       </aside>
     </>
   );
