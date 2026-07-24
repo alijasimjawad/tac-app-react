@@ -910,12 +910,13 @@ export default function Dashboard() {
           {/* ── Projects section ─────────────────────────────────────────────── */}
           <section className={styles.projectsSection} aria-labelledby="projects-heading">
             <div className={styles.sectionHdr}>
-              <div>
+              <div className={styles.sectionHdrLeft}>
                 <h2 id="projects-heading" className={styles.sectionTitle}>Network Scope Projects</h2>
-                <p className={styles.sectionMeta}>
+                <span className={styles.sectionMeta}>
                   {projData.length} total · {activeProjs} active · {noDataProjs} no data
-                </p>
+                </span>
               </div>
+              <span className={styles.sectionViewAll} aria-hidden="true">View all projects →</span>
             </div>
             <div className={styles.projectGrid}>
               {projData.map(pd => (

@@ -339,10 +339,19 @@
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.sectionHdrLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .sectionTitle {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 16px;
   font-weight: 700;
   color: #0F172A;
@@ -352,9 +361,16 @@
 }
 
 .sectionMeta {
-  margin: 0;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.sectionViewAll {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563EB;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Icon badge in section title */
