@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './FinPages.module.css';
 
 const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
@@ -268,6 +269,7 @@ export default function FinProjExp() {
         if (error) throw error;
         setRows(prev => [{ id: (data as { id: string }).id, ...payload } as ProjExpRow, ...prev]);
         showToast('Added');
+        void sendPushToRoles(['admin'], 'Project Expense Added', `New expense for ${form.proj}: ${iqd(amt)}`);
         logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Added Project Expense', projectName: form.proj, details: `Added: ${form.proj} - ${desc} ${iqd(amt)}` });
       }
       setModalOpen(false);

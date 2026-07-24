@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { isAtpAccepted, findImpColIdx, findAtpColIdx, PROJ_NAMES, SEC_LABELS } from './NetworkScopes';
 import { ensureSectionsLoaded, getSections } from '../lib/sectionsCache';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './FinPages.module.css';
 
 const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
@@ -179,6 +180,7 @@ export default function FinRevenue() {
         if (error) throw error;
         setRows(prev => prev.map(r => r.id === editId ? { ...r, ...payload } : r));
         showToast('Revenue updated');
+        void sendPushToRoles(['admin'], 'Revenue Updated', `Revenue updated for ${form.proj}`);
         logActivity({
           userFullName: currentUser?.full_name ?? currentUser?.username,
           action: 'Edited Revenue',
@@ -190,6 +192,7 @@ export default function FinRevenue() {
         if (error) throw error;
         setRows(prev => [{ id: (data as { id: string }).id, ...payload } as RevRow, ...prev]);
         showToast('Revenue added');
+        void sendPushToRoles(['admin'], 'Revenue Added', `Revenue entry added for ${form.proj}`);
         logActivity({
           userFullName: currentUser?.full_name ?? currentUser?.username,
           action: 'Added Revenue',
@@ -217,6 +220,7 @@ export default function FinRevenue() {
     setRows(prev => prev.filter(r => r.id !== delId));
     setDelId(null); setDelSaving(false);
     showToast('Deleted');
+    void sendPushToRoles(['admin'], 'Revenue Deleted', `Revenue entry removed for ${r?.project_name || 'a project'}`);
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Deleted Revenue',

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './NetworkScopes.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -295,6 +296,14 @@ export default function NetworkScopes() {
     setModal(null);
     showToast(isNew ? 'Site added' : 'Changes saved', true);
     const siteId = modal.cells[0] || '(empty)';
+    const projLabel = proj ? (PROJ_NAMES[proj] || proj) : '';
+    if (isNew) {
+      void sendPushToRoles(['admin'], 'New Site Added', `Site added to ${projLabel} — ${secMeta.section_label || sec}`);
+      void sendPushToRoles(['engineer'], 'New Site Added', `Site added to ${projLabel}`);
+    } else {
+      void sendPushToRoles(['admin'], 'Site Updated', `Site updated in ${projLabel}`);
+      void sendPushToRoles(['engineer'], 'Site Updated', `Site updated in ${projLabel}`);
+    }
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: isNew ? 'Added Row' : 'Edited Row',
@@ -315,6 +324,7 @@ export default function NetworkScopes() {
     setDeleteConfirm(false);
     setModal(null);
     showToast('Site deleted', true);
+    void sendPushToRoles(['admin'], 'Site Deleted', `Site removed from ${proj ? (PROJ_NAMES[proj] || proj) : ''}`);
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Deleted Row',

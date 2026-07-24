@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './FinPages.module.css';
 
 const FIN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -132,6 +133,7 @@ export default function FinGenExp() {
         if (error) throw error;
         setRows(prev => [{ id: (data as { id: string }).id, ...payload } as GenExpRow, ...prev]);
         showToast('Added');
+        void sendPushToRoles(['admin'], 'General Expense Added', `New expense: ${desc} — ${iqd(amt)}`);
         logActivity({
           userFullName: currentUser?.full_name ?? currentUser?.username,
           action: 'Added General Expense',

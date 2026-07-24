@@ -13,6 +13,7 @@ import {
   buildTimeline,
 } from '../lib/tripTypes';
 import type { UserProfile } from '../context/AuthContext';
+import { sendPushToUser, getMemberUserId } from '../lib/pushNotify';
 import styles from './TripDetailModal.module.css';
 
 interface Props {
@@ -185,6 +186,11 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
           const locFields = lat !== null ? { last_lat: lat, last_lng: lng, last_location_at: nowIso } : {};
           await supabase.from('trip_participants').update({ status: 'joined', joined_at: nowIso, delay_minutes: 0, ...locFields }).eq('id', myPp.id);
         }
+        ((freshTrip.team_member_names as string[] | null) || []).forEach((name: string) => {
+          void getMemberUserId(name).then(uid => {
+            if (uid) void sendPushToUser(uid, 'Trip Started 🚗', `Field trip to ${freshTrip.project || freshTrip.site_id || 'site'} has started`);
+          });
+        });
 
       } else if (action === 'join') {
         let myLat: number, myLng: number;
@@ -208,6 +214,11 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
         const { data: tripCheck } = await supabase.from('field_trips').select('started_by').eq('id', tripId).single();
         if (tripCheck?.started_by !== memberId) { setActionErr('Only the trip starter can mark departure'); return; }
         await supabase.from('field_trips').update({ status: 'departed', departed_at: new Date().toISOString() }).eq('id', tripId);
+        participants.filter(p => p.status === 'joined').forEach(p => {
+          void getMemberUserId(p.member_name).then(uid => {
+            if (uid) void sendPushToUser(uid, 'Team departed 🚗', `${currentUser?.full_name || 'The starter'} has marked departure`);
+          });
+        });
 
       } else if (action === 'reached') {
         const { data: tripCheck } = await supabase.from('field_trips').select('started_by').eq('id', tripId).single();

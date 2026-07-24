@@ -4,6 +4,7 @@ import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './Sidebar.module.css';
 import tacLogoLight from '../assets/tac-logo-light.png';
 import { SiteLookupIcon } from '../pages/SiteLookup';
@@ -181,6 +182,7 @@ function NetworkScopesTree() {
     await reloadSections();
     setAddSecState(null);
     navigate(`/network-scopes/${savedProj}/${key}`);
+    void sendPushToRoles(['admin', 'engineer'], 'New Section Added', `${name} added to ${PROJ_NAMES[savedProj] || savedProj}`);
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Added Section',

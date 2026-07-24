@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
+import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './FinTeam.module.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -332,6 +333,7 @@ export default function FinTeam() {
       });
       if (error) { setEditModal(p => p && ({ ...p, saving: false, error: error.message })); return; }
       showToast('Member added', true);
+      void sendPushToRoles(['admin'], 'Team Member Added', `${name} added to team`);
       logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Added Team Member', details: `Added Team Member: ${name}` });
     }
     setEditModal(null);
