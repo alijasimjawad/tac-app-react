@@ -107,6 +107,30 @@
 
 .sidebarCollapsed .brandLogoImg { display: none; }
 
+.brandText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebarCollapsed .brandText { display: none; }
+
+.brandName {
+  font-size: 13px;
+  font-weight: 700;
+  color: #dce8f4;
+  white-space: nowrap;
+  letter-spacing: .01em;
+}
+
+.brandSub {
+  font-size: 10px;
+  color: #4e6882;
+  margin-top: 1px;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
+
 .collapseBtn {
   flex-shrink: 0;
   width: 26px;
@@ -587,6 +611,7 @@
   }
   .sidebarCollapsed .brandIcon { display: none; }
   .sidebarCollapsed .brandLogoImg { display: block; }
+  .sidebarCollapsed .brandText { display: block; }
   .sidebarCollapsed .navItem { justify-content: flex-start; padding: 0 12px; }
   .sidebarCollapsed .navLabel { display: inline; }
   .sidebarCollapsed .nsSection { display: block; }

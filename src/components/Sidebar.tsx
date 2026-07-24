@@ -746,6 +746,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         <div className={styles.brand}>
           <div className={styles.brandIcon}>T</div>
           <img src={tacLogoLight} alt="TAC Network" className={styles.brandLogoImg} />
+          <div className={styles.brandText}>
+            <div className={styles.brandName}>TAC Network</div>
+            <div className={styles.brandSub}>Telecom Mgmt</div>
+          </div>
           <button
             className={styles.collapseBtn}
             onClick={() => setCollapsed(v => !v)}
