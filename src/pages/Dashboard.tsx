@@ -458,11 +458,11 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
       ) : (
         <div className={styles.cardBody}>
 
-          {/* Summary metric grid */}
+          {/* Summary metric grid — 2×2 */}
           <div className={styles.metricRow}>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>Installed</span>
-              <span className={styles.metricValue}>
+              <span className={styles.metricValue} style={{ color: '#2563EB' }}>
                 {projInstalled}
                 <span className={styles.metricOf}>/{projTotal}</span>
               </span>
@@ -478,12 +478,10 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
               <span className={styles.metricLabel}>Pending</span>
               <span className={styles.metricValue} style={{ color: '#D97706' }}>{projPending}</span>
             </div>
-            {projRejected > 0 && (
-              <div className={styles.metric}>
-                <span className={styles.metricLabel}>Rejected</span>
-                <span className={styles.metricValue} style={{ color: '#DC2626' }}>{projRejected}</span>
-              </div>
-            )}
+            <div className={styles.metric}>
+              <span className={styles.metricLabel}>Rejected</span>
+              <span className={styles.metricValue} style={{ color: projRejected > 0 ? '#DC2626' : '#94A3B8' }}>{projRejected}</span>
+            </div>
           </div>
 
           {/* ATP progress bar */}
@@ -578,11 +576,10 @@ function RecentActivity() {
     <section className={styles.recentActivitySection} aria-labelledby="activity-heading">
       <h2 id="activity-heading" className={styles.sectionTitle}>Recent Activity</h2>
       <div className={styles.activityEmpty}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
-        <p>Activity log coming soon.</p>
+        <p>No recent activity available.</p>
       </div>
     </section>
   );
