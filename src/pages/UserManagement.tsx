@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { PROJ_NAMES } from './NetworkScopes';
+import { logActivity } from '../lib/activityLog';
 import css from './UserManagement.module.css';
 
 async function extractFnError(error: unknown, data: unknown): Promise<string> {
@@ -237,7 +238,12 @@ export default function UserManagement() {
     setAddOpen(false);
     showToast(`User "${username.trim()}" created`, true);
     // TODO(push): not yet implemented in React app — see old index.html saveNewUser's sendPushToRoles(['admin'], ...) call
-    // TODO(activity-log): wire up once activity_log writing exists in the React app — see old index.html saveNewUser's logActivity('Add User', ...) call
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Add User',
+      sectionName: 'User Management',
+      details: `Created user: ${fullName.trim()} (${username.trim()}), role: ${role}`,
+    });
   }
 
   // ── Open edit modal ────────────────────────────────────────────────────────
@@ -354,7 +360,12 @@ export default function UserManagement() {
     setEditId(null);
     showToast(`User "${editUser.trim()}" updated`, true);
     // TODO(push): not yet implemented in React app — see old index.html saveEditUser's sendPushToRoles(['admin'], ...) call
-    // TODO(activity-log): wire up once activity_log writing exists in the React app — see old index.html saveEditUser's logActivity('Edit User', ...) call
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Edit User',
+      sectionName: 'User Management',
+      details: `Updated user: ${editFull.trim()} (${editUser.trim()}), role: ${editRole}`,
+    });
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────
@@ -367,7 +378,12 @@ export default function UserManagement() {
     if (e || data?.error) { showToast('Delete failed: ' + await extractFnError(e, data), false); return; }
     setUsers(us => us.filter(u => u.id !== id));
     showToast(`User "${username}" deleted`, true);
-    // TODO(activity-log): wire up once activity_log writing exists in the React app — see old index.html deleteUser's logActivity('Delete User', ...) call
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Delete User',
+      sectionName: 'User Management',
+      details: `Deleted user: ${username}`,
+    });
   }
 
   // ── Render ──────────────────────────────────────────────────────────────────

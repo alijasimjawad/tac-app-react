@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import { iqd, FIN_PROJECTS, FIN_MONTHS } from '../lib/finHelpers';
 import css from './FinExpClaims.module.css';
 
@@ -188,6 +189,13 @@ export default function FinExpClaims() {
     setClaims(cs => cs.map(c => c.id === id ? { ...c, status: 'approved', reviewed_by: reviewedBy, reviewed_at: reviewedAt, rejection_reason: null } : c));
     // TODO(push): not yet implemented in React app — see old index.html approveExpClaim for the intended sendPushToUser/sendPushToRoles calls
     showToast('Claim approved and added to Project Expenses', true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Approved Expense Claim',
+      sectionName: 'Expense Claims',
+      details: `Approved claim: ${team.find(t => t.id === claim.member_id)?.full_name || claim.member_id} - ${claim.project_name || ''} ${iqd(claim.total_amount)}`,
+      projectName: claim.project_name,
+    });
     setApprovingId(null);
     setDetailId(null);
   }
@@ -208,15 +216,31 @@ export default function FinExpClaims() {
     setRejectErr(v => ({ ...v, [id]: false }));
     // TODO(push): not yet implemented in React app
     showToast('Claim rejected', true);
+    const claim = claims.find(c => c.id === id);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Rejected Expense Claim',
+      sectionName: 'Expense Claims',
+      details: `Rejected claim: ${claim ? memberName(claim.member_id) : id} - reason: ${reason}`,
+      projectName: claim?.project_name,
+    });
   }
 
   // ── Delete ─────────────────────────────────────────────────────────────────
   async function deleteClaim(id: string) {
     if (!window.confirm('Are you sure you want to delete this claim? This cannot be undone.')) return;
+    const claim = claims.find(c => c.id === id);
     const { error: e } = await supabase.from('expense_claims').delete().eq('id', id);
     if (e) { showToast(e.message, false); return; }
     setClaims(cs => cs.filter(c => c.id !== id));
     showToast('Claim deleted', true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Deleted Expense Claim',
+      sectionName: 'Expense Claims',
+      details: `Deleted claim: ${claim ? memberName(claim.member_id) : id}`,
+      projectName: claim?.project_name,
+    });
   }
 
   // ── Detail modal reject ────────────────────────────────────────────────────
@@ -234,6 +258,14 @@ export default function FinExpClaims() {
     setClaims(cs => cs.map(c => c.id === id ? { ...c, status: 'rejected', rejection_reason: reason, reviewed_by: rejBy, reviewed_at: rejAt } : c));
     // TODO(push): not yet implemented in React app
     showToast('Claim rejected', true);
+    const claim = claims.find(c => c.id === id);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Rejected Expense Claim',
+      sectionName: 'Expense Claims',
+      details: `Rejected claim: ${claim ? memberName(claim.member_id) : id} - reason: ${reason}`,
+      projectName: claim?.project_name,
+    });
     setDetailId(null);
   }
 
@@ -272,8 +304,15 @@ export default function FinExpClaims() {
     }).eq('id', id);
     if (e) { showToast(e.message, false); setEditSaving(false); return; }
     setClaims(cs => cs.map(c => c.id === id ? { ...c, project_name, site_id: site_id.trim(), governorate: governorate.trim(), description, activity_date, transport_amount, accommodation, food_amount, total_amount } : c));
-    // TODO(activity-log): wire up once Admin suite / activity_log is built
     showToast('Claim updated', true);
+    const claim = claims.find(c => c.id === id);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Edited Expense Claim',
+      sectionName: 'Expense Claims',
+      details: `Edited claim: ${claim ? memberName(claim.member_id) : id} - ${project_name} ${iqd(total_amount)}`,
+      projectName: project_name,
+    });
     setEditSaving(false);
     setDetailId(null);
     setEditMode(false);
