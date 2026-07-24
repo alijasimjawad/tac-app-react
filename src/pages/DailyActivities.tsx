@@ -636,7 +636,7 @@ export default function DailyActivities() {
                         setSectionLabel(opt.text || '');
                       }}
                     >
-                      <option value="">{sections.length === 0 ? '— Select project first —' : '— Select section —'}</option>
+                      <option value="">{sections.length === 0 ? 'Select project first' : 'Select section'}</option>
                       {sections.map(s => {
                         const lbl = s.section_label || s.section_name || '';
                         return <option key={s.id} value={s.id}>{lbl}</option>;
@@ -659,7 +659,7 @@ export default function DailyActivities() {
                         ref={siteInputRef}
                         className={styles.siteInput}
                         type="text"
-                        placeholder={siteTags.length ? '' : 'Type or select a site, Enter to add…'}
+                        placeholder={siteTags.length ? '' : 'Search or add a site…'}
                         value={siteInput}
                         list="da-site-list"
                         autoComplete="off"
@@ -679,10 +679,10 @@ export default function DailyActivities() {
                     </div>
                   </div>
                   <div className={styles.field}>
-                    <label>Governate</label>
+                    <label>Governorate</label>
                     <input
                       type="text"
-                      placeholder="Auto-fills or type new…"
+                      placeholder="Auto-fills…"
                       value={governate}
                       onChange={e => setGovernate(e.target.value)}
                     />
@@ -874,7 +874,7 @@ export default function DailyActivities() {
                 <th>Date</th>
                 <th>Project</th>
                 <th>Site ID</th>
-                <th>Governate</th>
+                <th>Governorate</th>
                 <th>Team</th>
                 <th>Activity</th>
                 <th>Status</th>
@@ -984,7 +984,7 @@ export default function DailyActivities() {
                 <span className={styles.viewValue}>{viewActivity.site_id || '—'}</span>
               </div>
               <div className={styles.viewRow}>
-                <span className={styles.viewLabel}>Governate</span>
+                <span className={styles.viewLabel}>Governorate</span>
                 <span className={styles.viewValue}>{viewActivity.governate || '—'}</span>
               </div>
               <div className={styles.viewRow}>

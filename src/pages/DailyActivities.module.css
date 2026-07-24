@@ -272,6 +272,8 @@
 .field input,
 .field select,
 .field textarea {
+  width: 100%;
+  box-sizing: border-box;
   padding: 8px 10px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
@@ -292,6 +294,21 @@
 .field textarea {
   resize: vertical;
   min-height: 72px;
+}
+
+/* Uniform custom chevron on all selects, matching the Site ID / Team Search fields */
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 /* ── Site ID tag input ── */
