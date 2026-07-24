@@ -215,7 +215,7 @@ interface KpiCardProps {
 
 function KpiCard({ label, value, support, Icon, accentBg, accentColor }: KpiCardProps) {
   return (
-    <div className={styles.kpiCard}>
+    <div className={styles.kpiCard} style={{ borderBottomColor: accentColor }}>
       <div className={styles.kpiTop}>
         <div className={styles.kpiIconWrap} style={{ background: accentBg, color: accentColor }}>
           <Icon />
@@ -228,14 +228,11 @@ function KpiCard({ label, value, support, Icon, accentBg, accentColor }: KpiCard
   );
 }
 
-// ── Overall Progress Card (donut + segmented bar) ─────────────────────────────
+// ── Overall Progress Card (donut + vertical legend) ──────────────────────────
 
-const DONUT_OPTIONS = {
+const DONUT_BASE_OPTIONS = {
   cutout: '72%',
-  plugins: {
-    legend: { display: false },
-    tooltip: { enabled: true },
-  },
+  plugins: { legend: { display: false }, tooltip: { enabled: false } },
   animation: { duration: 600 },
 } as const;
 
@@ -243,41 +240,45 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
   total: number; installed: number; accepted: number; rejected: number; remaining: number;
 }) {
   const atpPct       = calcPct(accepted, total);
-  const acceptedPct  = calcPct(accepted, total);
-  const rejectedPct  = calcPct(rejected, total);
-  const remainingPct = calcPct(remaining, total);
   const installedPct = calcPct(installed, total);
+  const acceptedPct  = calcPct(accepted, total);
+  const pendingPct   = calcPct(remaining, total);
+  const rejectedPct  = calcPct(rejected, total);
 
   const donutData = {
     datasets: [{
       data: total > 0 ? [accepted, rejected, remaining] : [1],
-      backgroundColor: total > 0
-        ? ['#16A34A', '#DC2626', '#E2E8F0']
-        : ['#E2E8F0'],
+      backgroundColor: total > 0 ? ['#16A34A', '#DC2626', '#F59E0B'] : ['#E2E8F0'],
       borderWidth: 0,
       hoverOffset: 4,
     }],
     labels: total > 0 ? ['ATP Accepted', 'Rejected', 'Pending'] : ['No Data'],
   };
 
+  const legendRows = [
+    { dot: styles.dotBlue,  label: 'Installed',    count: installed, pct: installedPct },
+    { dot: styles.dotGreen, label: 'ATP Accepted', count: accepted,  pct: acceptedPct  },
+    { dot: styles.dotAmber, label: 'Pending',      count: remaining, pct: pendingPct   },
+    ...(rejected > 0 ? [{ dot: styles.dotRed, label: 'ATP Rejected', count: rejected, pct: rejectedPct }] : []),
+  ];
+
   return (
     <div className={styles.analyticsCard}>
       <h3 className={styles.analyticsTitle}>Overall Delivery Progress</h3>
-      <div className={styles.overallBody}>
+      <div className={styles.analyticsBody}>
 
-        {/* Donut */}
+        {/* Left: Donut */}
         <div className={styles.donutWrap}>
           <div className={styles.donutChart}>
             <Doughnut
               data={donutData}
               options={{
-                ...DONUT_OPTIONS,
+                ...DONUT_BASE_OPTIONS,
                 plugins: {
-                  ...DONUT_OPTIONS.plugins,
+                  ...DONUT_BASE_OPTIONS.plugins,
                   tooltip: {
-                    callbacks: {
-                      label: (ctx) => `${ctx.label}: ${ctx.parsed}`,
-                    },
+                    enabled: true,
+                    callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed}` },
                   },
                 },
               }}
@@ -288,61 +289,23 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
               <span className={styles.donutCenterLabel}>ATP</span>
             </div>
           </div>
-          <div className={styles.donutStat}>
-            <span className={styles.donutStatValue}>{accepted}</span>
-            <span className={styles.donutStatLabel}>of {total} sites accepted</span>
-          </div>
         </div>
 
-        {/* Right: segmented bar + legend + installed row */}
-        <div className={styles.deliveryDetails}>
-          <div
-            className={styles.segBar}
-            role="img"
-            aria-label={`Delivery breakdown: ${acceptedPct}% accepted, ${rejectedPct}% rejected, ${remainingPct}% pending`}
-          >
-            {total > 0 ? (
-              <>
-                {accepted > 0 && <div className={styles.segGreen} style={{ width: `${acceptedPct}%` }} />}
-                {rejected > 0 && <div className={styles.segRed}   style={{ width: `${rejectedPct}%` }} />}
-                {remaining > 0 && <div className={styles.segAmber} style={{ width: `${remainingPct}%` }} />}
-              </>
-            ) : (
-              <div className={styles.segEmpty} style={{ width: '100%' }} />
-            )}
-          </div>
-
-          <div className={styles.segLegend}>
-            <span className={styles.segLegendItem}>
-              <span className={styles.dotGreen} aria-hidden="true" />
-              ATP Accepted
-              <strong className={styles.segCount}>{accepted}</strong>
-            </span>
-            {rejected > 0 && (
-              <span className={styles.segLegendItem}>
-                <span className={styles.dotRed} aria-hidden="true" />
-                Rejected
-                <strong className={styles.segCount}>{rejected}</strong>
-              </span>
-            )}
-            <span className={styles.segLegendItem}>
-              <span className={styles.dotAmber} aria-hidden="true" />
-              Pending
-              <strong className={styles.segCount}>{remaining}</strong>
-            </span>
-          </div>
-
-          <div className={styles.dividerLine} aria-hidden="true" />
-
-          <div className={styles.installedRow}>
-            <span className={styles.installedLabel}>
-              <span className={styles.dotBlue} aria-hidden="true" />
-              Installed
-            </span>
-            <span className={styles.installedVal}>
-              {installed} / {total}
-              <span className={styles.installedPct}>{installedPct}%</span>
-            </span>
+        {/* Right: Vertical legend list */}
+        <div className={styles.analyticsList}>
+          {legendRows.map(row => (
+            <div key={row.label} className={styles.analyticsLegendRow}>
+              <span className={row.dot} aria-hidden="true" />
+              <span className={styles.legendLabel}>{row.label}</span>
+              <span className={styles.legendCount}>{row.count}</span>
+              <span className={styles.legendPct}>{row.pct}%</span>
+            </div>
+          ))}
+          <div className={styles.acceptedBadge}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            {accepted} of {total} sites accepted
           </div>
         </div>
       </div>
@@ -350,57 +313,77 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
   );
 }
 
-// ── Project Status Overview Card ──────────────────────────────────────────────
+// ── Project Status Overview Card (donut + vertical legend) ───────────────────
 
 function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
-  const counts = { complete: 0, inProgress: 0, highRejection: 0, noData: 0 };
+  const counts = { complete: 0, active: 0, highRejection: 0, noData: 0 };
 
   for (const { sections } of projData) {
     const pTotal     = sections.reduce((s, x) => s + x.total, 0);
     const pInstalled = sections.reduce((s, x) => s + x.installed, 0);
     const pRejected  = sections.reduce((s, x) => s + x.atpRejected, 0);
     const { label }  = getProjStatus(pTotal, pInstalled, pRejected);
-    if (label === 'Complete')       counts.complete++;
-    else if (label === 'In Progress') counts.inProgress++;
+    if (label === 'Complete')          counts.complete++;
+    else if (label === 'In Progress')  counts.active++;
     else if (label === 'High Rejection') counts.highRejection++;
     else counts.noData++;
   }
 
-  const statusRows = [
-    { label: 'Complete',       count: counts.complete,       dot: styles.dotGreen, text: '#16A34A', bg: '#F0FDF4' },
-    { label: 'In Progress',    count: counts.inProgress,     dot: styles.dotBlue,  text: '#1D4ED8', bg: '#EFF6FF' },
-    { label: 'High Rejection', count: counts.highRejection,  dot: styles.dotRed,   text: '#DC2626', bg: '#FEF2F2' },
-    { label: 'No Data',        count: counts.noData,         dot: styles.dotGray,  text: '#64748B', bg: '#F8FAFC' },
+  const n = projData.length;
+
+  const donutValues: number[] = [];
+  const donutColors: string[] = [];
+  if (counts.complete > 0)       { donutValues.push(counts.complete);       donutColors.push('#16A34A'); }
+  if (counts.active > 0)         { donutValues.push(counts.active);         donutColors.push('#2563EB'); }
+  if (counts.highRejection > 0)  { donutValues.push(counts.highRejection);  donutColors.push('#7C3AED'); }
+  if (counts.noData > 0)         { donutValues.push(counts.noData);         donutColors.push('#CBD5E1'); }
+
+  const statusDonutData = {
+    datasets: [{
+      data: donutValues.length > 0 ? donutValues : [1],
+      backgroundColor: donutColors.length > 0 ? donutColors : ['#E2E8F0'],
+      borderWidth: 0,
+      hoverOffset: 4,
+    }],
+  };
+
+  const legendRows = [
+    { dot: styles.dotGreen,  label: 'Complete',       count: counts.complete,       pct: calcPct(counts.complete, n) },
+    { dot: styles.dotBlue,   label: 'Active',         count: counts.active,         pct: calcPct(counts.active, n) },
+    { dot: styles.dotPurple, label: 'High Rejection', count: counts.highRejection,  pct: calcPct(counts.highRejection, n) },
+    { dot: styles.dotGray,   label: 'No Data',        count: counts.noData,         pct: calcPct(counts.noData, n) },
   ].filter(r => r.count > 0 || r.label === 'No Data');
 
   return (
     <div className={styles.analyticsCard}>
       <h3 className={styles.analyticsTitle}>Project Status Overview</h3>
-      <div className={styles.statusBody}>
+      <div className={styles.analyticsBody}>
 
-        <div className={styles.statusTotalRow}>
-          <span className={styles.statusTotal}>{projData.length}</span>
-          <span className={styles.statusTotalLabel}>total projects</span>
+        {/* Left: Donut */}
+        <div className={styles.donutWrap}>
+          <div className={styles.donutChart}>
+            <Doughnut
+              data={statusDonutData}
+              options={DONUT_BASE_OPTIONS}
+              aria-label="Project status distribution"
+            />
+            <div className={styles.donutCenter} aria-hidden="true">
+              <span className={styles.donutPct}>{n}</span>
+              <span className={styles.donutCenterLabel}>Projects</span>
+            </div>
+          </div>
         </div>
 
-        <div className={styles.statusList} role="list">
-          {statusRows.map(row => (
-            <div key={row.label} className={styles.statusItem} role="listitem">
+        {/* Right: Status legend */}
+        <div className={styles.analyticsList}>
+          {legendRows.map(row => (
+            <div key={row.label} className={styles.analyticsLegendRow}>
               <span className={row.dot} aria-hidden="true" />
-              <span className={styles.statusLabel}>{row.label}</span>
-              <span className={styles.statusCount} style={{ color: row.text, background: row.bg }}>
-                {row.count}
-              </span>
+              <span className={styles.legendLabel}>{row.label}</span>
+              <span className={styles.legendCount}>{row.count}</span>
+              <span className={styles.legendPct}>{row.pct}%</span>
             </div>
           ))}
-        </div>
-
-        {/* Visual stacked bar */}
-        <div className={styles.statusBar} role="img" aria-label="Project status distribution">
-          {counts.complete > 0      && <div className={styles.statusBarGreen} style={{ flex: counts.complete }} />}
-          {counts.inProgress > 0    && <div className={styles.statusBarBlue}  style={{ flex: counts.inProgress }} />}
-          {counts.highRejection > 0 && <div className={styles.statusBarRed}   style={{ flex: counts.highRejection }} />}
-          {counts.noData > 0        && <div className={styles.statusBarGray}  style={{ flex: counts.noData }} />}
         </div>
       </div>
     </div>
@@ -574,7 +557,14 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
 function RecentActivity() {
   return (
     <section className={styles.recentActivitySection} aria-labelledby="activity-heading">
-      <h2 id="activity-heading" className={styles.sectionTitle}>Recent Activity</h2>
+      <h2 id="activity-heading" className={styles.sectionTitle}>
+        <span className={styles.titleIconBadge} style={{ background: '#DCFCE7', color: '#16A34A' }} aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </span>
+        Recent Activity
+      </h2>
       <div className={styles.activityEmpty}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -591,7 +581,14 @@ function AttentionPanel({ items }: { items: AttentionItem[] }) {
   const navigate = useNavigate();
   return (
     <section className={styles.attentionSection} aria-labelledby="attention-heading">
-      <h2 id="attention-heading" className={styles.sectionTitle}>Attention Required</h2>
+      <h2 id="attention-heading" className={styles.sectionTitle}>
+        <span className={styles.titleIconBadge} style={{ background: '#FEF3C7', color: '#D97706' }} aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </span>
+        Attention Required
+      </h2>
       {items.length === 0 ? (
         <div className={styles.attentionOk}>
           <IconOk />
@@ -895,8 +892,8 @@ export default function Dashboard() {
               value={`${grandAtpPct}%`}
               support={`${grandAccepted} of ${grandTotal} sites accepted`}
               Icon={IconPercent}
-              accentBg={grandAtpPct >= 100 ? '#F0FDF4' : '#F0FDFA'}
-              accentColor={grandAtpPct >= 100 ? '#16A34A' : '#0D9488'}
+              accentBg="#F5F3FF"
+              accentColor="#7C3AED"
             />
           </div>
 
