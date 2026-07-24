@@ -479,11 +479,8 @@ export default function DailyActivities() {
 
   const { busyIds, busyInfo } = getBusyMap();
 
-  const filteredNonSelected = memberSearch.trim()
-    ? teamMembers
-        .filter(m => !selectedMemberIds.has(m.id) && m.full_name.toLowerCase().includes(memberSearch.toLowerCase()))
-        .slice(0, 6)
-    : [];
+  const filteredNonSelected = teamMembers
+    .filter(m => !selectedMemberIds.has(m.id) && m.full_name.toLowerCase().includes(memberSearch.trim().toLowerCase()));
 
   function getSiteLabel(tag: string): string {
     const rowData = siteDataMap[tag];
