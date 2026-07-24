@@ -366,12 +366,18 @@
 }
 
 .sectionViewAll {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
   font-size: 12px;
   font-weight: 600;
   color: #2563EB;
   white-space: nowrap;
   flex-shrink: 0;
 }
+.sectionViewAll:hover { text-decoration: underline; }
 
 /* Icon badge in section title */
 .titleIconBadge {

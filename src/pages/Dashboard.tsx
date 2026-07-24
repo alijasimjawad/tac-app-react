@@ -666,6 +666,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 
 export default function Dashboard() {
   const { hasPerm }   = useAuth();
+  const navigate      = useNavigate();
 
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
@@ -916,7 +917,13 @@ export default function Dashboard() {
                   {projData.length} total · {activeProjs} active · {noDataProjs} no data
                 </span>
               </div>
-              <span className={styles.sectionViewAll} aria-hidden="true">View all projects →</span>
+              <button
+                type="button"
+                className={styles.sectionViewAll}
+                onClick={() => navigate('/network-scopes')}
+              >
+                View all projects →
+              </button>
             </div>
             <div className={styles.projectGrid}>
               {projData.map(pd => (
