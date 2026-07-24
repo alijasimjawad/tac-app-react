@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import styles from './DailyActivities.module.css';
 
 const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
@@ -428,6 +429,7 @@ export default function DailyActivities() {
   // ── Delete ──
   async function deleteActivity(id: string) {
     if (!window.confirm('Delete this activity?')) return;
+    const a = activities.find(x => x.id === id);
     // Delete trip participants first (no guarantee of cascade), then trip, then activity
     const { data: trip } = await supabase.from('field_trips').select('id').eq('daily_activity_id', id).single();
     if (trip?.id) {
@@ -436,8 +438,14 @@ export default function DailyActivities() {
     }
     const { error } = await supabase.from('daily_activities').delete().eq('id', id);
     if (error) { showToast(error.message, false); return; }
-    setActivities(prev => prev.filter(a => a.id !== id));
+    setActivities(prev => prev.filter(x => x.id !== id));
     showToast('Deleted.', true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Deleted Daily Activity',
+      projectName: a?.project,
+      details: `Deleted activity: ${a?.project || '—'} — ${a?.activity_type || '—'} (${a?.date || '—'})`,
+    });
     if (editingId === id) { setEditingId(null); resetForm(); }
   }
 

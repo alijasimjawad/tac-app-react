@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import { cacheOk, getAllSites, ensureFullLoad } from '../lib/sitesCache';
 import type { CachedSite } from '../lib/sitesCache';
 import { nearestSiteWithin } from '../lib/sitesNearest';
@@ -260,6 +261,14 @@ export default function AttendanceAdmin() {
 
     if (error) { setModalErr(error.message); return; }
     showToast(modalEditId ? 'Attendance updated.' : 'Entry saved.', true);
+    if (modalEditId) {
+      const empName = members.find(m => m.id === modalForm.member_id)?.full_name ?? 'employee';
+      logActivity({
+        userFullName: currentUser?.full_name ?? currentUser?.username,
+        action: 'Edited Attendance',
+        details: `Edited attendance for ${empName} — ${modalForm.date} (${modalForm.status})`,
+      });
+    }
     setModalOpen(false);
     await loadAll();
   }
