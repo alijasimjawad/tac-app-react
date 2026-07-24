@@ -211,9 +211,10 @@ interface KpiCardProps {
   Icon: () => React.ReactElement;
   accentBg: string;
   accentColor: string;
+  valueColor?: string;
 }
 
-function KpiCard({ label, value, support, Icon, accentBg, accentColor }: KpiCardProps) {
+function KpiCard({ label, value, support, Icon, accentBg, accentColor, valueColor }: KpiCardProps) {
   return (
     <div className={styles.kpiCard} style={{ borderBottomColor: accentColor }}>
       <div className={styles.kpiTop}>
@@ -222,7 +223,7 @@ function KpiCard({ label, value, support, Icon, accentBg, accentColor }: KpiCard
         </div>
         <span className={styles.kpiLabel}>{label}</span>
       </div>
-      <div className={styles.kpiValue} style={{ color: accentColor }}>{value}</div>
+      <div className={styles.kpiValue} style={{ color: valueColor ?? accentColor }}>{value}</div>
       <div className={styles.kpiSupport}>{support}</div>
     </div>
   );
@@ -297,8 +298,7 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
             <div key={row.label} className={styles.analyticsLegendRow}>
               <span className={row.dot} aria-hidden="true" />
               <span className={styles.legendLabel}>{row.label}</span>
-              <span className={styles.legendCount}>{row.count}</span>
-              <span className={styles.legendPct}>{row.pct}%</span>
+              <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
             </div>
           ))}
           <div className={styles.acceptedBadge}>
@@ -352,7 +352,7 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
     { dot: styles.dotBlue,   label: 'Active',         count: counts.active,         pct: calcPct(counts.active, n) },
     { dot: styles.dotPurple, label: 'High Rejection', count: counts.highRejection,  pct: calcPct(counts.highRejection, n) },
     { dot: styles.dotGray,   label: 'No Data',        count: counts.noData,         pct: calcPct(counts.noData, n) },
-  ].filter(r => r.count > 0 || r.label === 'No Data');
+  ];
 
   return (
     <div className={styles.analyticsCard}>
@@ -374,14 +374,13 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
           </div>
         </div>
 
-        {/* Right: Status legend */}
+        {/* Right: Status legend — always render all four rows */}
         <div className={styles.analyticsList}>
           {legendRows.map(row => (
             <div key={row.label} className={styles.analyticsLegendRow}>
               <span className={row.dot} aria-hidden="true" />
               <span className={styles.legendLabel}>{row.label}</span>
-              <span className={styles.legendCount}>{row.count}</span>
-              <span className={styles.legendPct}>{row.pct}%</span>
+              <span className={styles.legendValue}>{row.count} ({row.pct}%)</span>
             </div>
           ))}
         </div>
@@ -405,8 +404,16 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
   const firstKey      = sections[0]?.key ?? '';
   const hasData       = projTotal > 0;
   const secsWithData  = sections.filter(s => s.total > 0);
-  const atpPct        = calcPct(projAccepted, projTotal);
   const { label: badgeLabel, cls: badgeCls } = getProjStatus(projTotal, projInstalled, projRejected);
+
+  const secLabelStr = (() => {
+    const labels = sections.map(s => s.label);
+    if (labels.length === 0) return '';
+    const shown = labels.length <= 2
+      ? labels.join(', ')
+      : `${labels.slice(0, 2).join(', ')}, +${labels.length - 2} more`;
+    return ` · ${shown}`;
+  })();
 
   function goToProj() {
     if (firstKey) navigate(`/network-scopes/${proj}/${firstKey}`);
@@ -423,7 +430,7 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
         <div className={styles.cardHeaderText}>
           <div className={styles.projName}>{PROJ_NAMES[proj]}</div>
           <div className={styles.projSecSummary}>
-            {sections.length} section{sections.length !== 1 ? 's' : ''}
+            {sections.length} section{sections.length !== 1 ? 's' : ''}{secLabelStr}
           </div>
         </div>
         <span className={`${styles.badge} ${badgeCls}`} aria-label={`Status: ${badgeLabel}`}>
@@ -441,46 +448,29 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
       ) : (
         <div className={styles.cardBody}>
 
-          {/* Summary metric grid — 2×2 */}
-          <div className={styles.metricRow}>
-            <div className={styles.metric}>
-              <span className={styles.metricLabel}>Installed</span>
-              <span className={styles.metricValue} style={{ color: '#2563EB' }}>
-                {projInstalled}
-                <span className={styles.metricOf}>/{projTotal}</span>
-              </span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.metricLabel}>ATP Accepted</span>
-              <span className={styles.metricValue} style={{ color: '#16A34A' }}>
-                {projAccepted}
-                <span className={styles.metricOf} style={{ color: '#94A3B8' }}>/{projTotal}</span>
-              </span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.metricLabel}>Pending</span>
-              <span className={styles.metricValue} style={{ color: '#D97706' }}>{projPending}</span>
-            </div>
-            <div className={styles.metric}>
-              <span className={styles.metricLabel}>Rejected</span>
-              <span className={styles.metricValue} style={{ color: projRejected > 0 ? '#DC2626' : '#94A3B8' }}>{projRejected}</span>
-            </div>
-          </div>
-
-          {/* ATP progress bar */}
-          <div className={styles.atpProgressWrap}>
-            <div
-              className={styles.atpProgressBar}
-              role="progressbar"
-              aria-valuenow={atpPct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`ATP accepted ${atpPct}%`}
-            >
-              <div className={styles.atpProgressFill} style={{ width: `${atpPct}%` }} />
-            </div>
-            <span className={styles.atpPct}>{atpPct}%</span>
-          </div>
+          {/* 4-row stat breakdown with per-row progress bars */}
+          {([
+            { label: 'Installed',    count: projInstalled, color: '#2563EB' },
+            { label: 'ATP Accepted', count: projAccepted,  color: '#16A34A' },
+            { label: 'Pending',      count: projPending,   color: '#D97706' },
+            { label: 'Rejected',     count: projRejected,  color: '#DC2626' },
+          ] as const).map(row => {
+            const pct = calcPct(row.count, projTotal);
+            return (
+              <div key={row.label} className={styles.statRow}>
+                <div className={styles.statRowHeader}>
+                  <span className={styles.statLabel}>{row.label}</span>
+                  <span className={styles.statValue} style={{ color: row.color }}>
+                    {row.count}/{projTotal}
+                    <span className={styles.statPct}> ({pct}%)</span>
+                  </span>
+                </div>
+                <div className={styles.statBarTrack}>
+                  <div className={styles.statBarFill} style={{ width: `${pct}%`, background: row.color }} />
+                </div>
+              </div>
+            );
+          })}
 
           {/* Section breakdown disclosure */}
           {secsWithData.length > 1 && (
@@ -862,6 +852,7 @@ export default function Dashboard() {
               Icon={IconTarget}
               accentBg="#EFF6FF"
               accentColor="#1D4ED8"
+              valueColor="#0F172A"
             />
             <KpiCard
               label="Installed"
