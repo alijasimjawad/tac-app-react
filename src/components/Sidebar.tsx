@@ -4,6 +4,7 @@ import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import styles from './Sidebar.module.css';
+import tacLogoLight from '../assets/tac-logo-light.png';
 import { SiteLookupIcon } from '../pages/SiteLookup';
 import { FinanceIcon } from '../pages/FinTeam';
 import { PROJ_NAMES, SEC_LABELS } from '../pages/NetworkScopes';
@@ -744,10 +745,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
       >
         <div className={styles.brand}>
           <div className={styles.brandIcon}>T</div>
-          <div className={styles.brandText}>
-            <div className={styles.brandName}>TAC Network</div>
-            <div className={styles.brandSub}>Telecom Mgmt</div>
-          </div>
+          <img src={tacLogoLight} alt="TAC Network" className={styles.brandLogoImg} />
           <button
             className={styles.collapseBtn}
             onClick={() => setCollapsed(v => !v)}

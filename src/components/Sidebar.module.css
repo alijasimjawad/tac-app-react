@@ -31,8 +31,6 @@
   min-width: 80px;
 }
 
-.sidebarCollapsed .brandText { display: none; }
-
 .sidebarCollapsed .navItem {
   justify-content: center;
   padding: 0;
@@ -66,25 +64,28 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 14px;
-  height: 64px;
-  min-height: 64px;
+  padding: 16px 14px;
+  height: auto;
+  min-height: 118px;
   border-bottom: 1px solid rgba(255, 255, 255, .07);
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .sidebarCollapsed .brand {
   justify-content: center;
   padding: 0 12px;
+  height: 64px;
+  min-height: 64px;
 }
 
 .brandIcon {
+  display: none;
   width: 34px;
   height: 34px;
   background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
   color: #fff;
   border-radius: 8px;
-  display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
@@ -94,27 +95,16 @@
   box-shadow: 0 4px 14px rgba(37, 99, 235, .4), inset 0 1px 0 rgba(255, 255, 255, .15);
 }
 
-.brandText {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+.sidebarCollapsed .brandIcon { display: flex; }
+
+.brandLogoImg {
+  width: 150px;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, .45));
 }
 
-.brandName {
-  font-size: 13px;
-  font-weight: 700;
-  color: #dce8f4;
-  white-space: nowrap;
-  letter-spacing: .01em;
-}
-
-.brandSub {
-  font-size: 10px;
-  color: #4e6882;
-  margin-top: 1px;
-  letter-spacing: .03em;
-  white-space: nowrap;
-}
+.sidebarCollapsed .brandLogoImg { display: none; }
 
 .collapseBtn {
   flex-shrink: 0;
@@ -594,7 +584,8 @@
     width: 240px;
     min-width: 240px;
   }
-  .sidebarCollapsed .brandText { display: block; }
+  .sidebarCollapsed .brandIcon { display: none; }
+  .sidebarCollapsed .brandLogoImg { display: block; }
   .sidebarCollapsed .navItem { justify-content: flex-start; padding: 0 12px; }
   .sidebarCollapsed .navLabel { display: inline; }
   .sidebarCollapsed .nsSection { display: block; }
@@ -604,7 +595,7 @@
      the brand row extra top padding to clear it instead of being covered. */
   .brand {
     height: auto;
-    min-height: calc(64px + env(safe-area-inset-top, 0px));
+    min-height: calc(118px + env(safe-area-inset-top, 0px));
     box-sizing: border-box;
     padding-top: env(safe-area-inset-top, 0px);
   }
