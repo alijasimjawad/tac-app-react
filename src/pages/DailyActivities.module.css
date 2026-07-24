@@ -241,6 +241,13 @@
   flex: 1;
 }
 
+/* Pairs fields two-per-row (e.g. Project | Section, Site ID | Governate) */
+.fieldsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
 /* ── Required field marker ── */
 .req {
   color: var(--red);
@@ -414,13 +421,14 @@
 .clearAllBtn:hover { text-decoration: underline; }
 
 .selectedChipsWrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
   min-height: 32px;
 }
 
 .noSelectionHint {
+  grid-column: 1 / -1;
   font-size: 12px;
   color: var(--text-muted);
   font-style: italic;
@@ -428,9 +436,12 @@
 }
 
 .selectedChip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
   padding: 4px 8px 4px 5px;
   background: var(--blue-50);
   border: 1.5px solid var(--blue-100);
@@ -835,4 +846,9 @@
 @media (max-width: 700px) {
   .kpiRow   { grid-template-columns: repeat(2, 1fr); }
   .viewGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .fieldsGrid        { grid-template-columns: 1fr; }
+  .selectedChipsWrap { grid-template-columns: 1fr; }
 }

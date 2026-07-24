@@ -179,6 +179,8 @@ export default function DailyActivities() {
 
   const siteInputRef = useRef<HTMLInputElement>(null);
   const formCardRef = useRef<HTMLDivElement>(null);
+  const memberSearchInputRef = useRef<HTMLInputElement>(null);
+  const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -610,79 +612,81 @@ export default function DailyActivities() {
             {/* ── Sub-card 1: Location & Scope ── */}
             <div className={styles.subCard}>
               <div className={styles.subCardHdr}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                   <circle cx="12" cy="10" r="3"/>
                 </svg>
                 <div className={styles.subCardTitle}>Location & Scope</div>
               </div>
               <div className={styles.subCardBody}>
-                <div className={styles.field}>
-                  <label>Project <span className={styles.req}>*</span></label>
-                  <select value={project} onChange={e => setProject(e.target.value)}>
-                    {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label>Section <span className={styles.req}>*</span></label>
-                  <select
-                    value={sectionId}
-                    onChange={e => {
-                      const opt = e.target.options[e.target.selectedIndex];
-                      setSectionId(e.target.value);
-                      setSectionLabel(opt.text || '');
-                    }}
-                  >
-                    <option value="">{sections.length === 0 ? '— Select project first —' : '— Select section —'}</option>
-                    {sections.map(s => {
-                      const lbl = s.section_label || s.section_name || '';
-                      return <option key={s.id} value={s.id}>{lbl}</option>;
-                    })}
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label>Site ID <span className={styles.req}>*</span></label>
-                  <div
-                    className={styles.siteTagsWrap}
-                    onClick={() => siteInputRef.current?.focus()}
-                  >
-                    {siteTags.map((tag, i) => (
-                      <span key={i} className={styles.siteTag}>
-                        {getSiteLabel(tag)}
-                        <button type="button" onClick={e => { e.stopPropagation(); removeSiteTag(i); }}>×</button>
-                      </span>
-                    ))}
-                    <input
-                      ref={siteInputRef}
-                      className={styles.siteInput}
-                      type="text"
-                      placeholder={siteTags.length ? '' : 'Type or select a site, Enter to add…'}
-                      value={siteInput}
-                      list="da-site-list"
-                      autoComplete="off"
-                      onChange={e => {
-                        setSiteInput(e.target.value);
-                        autoFillGovernate(e.target.value.trim());
-                      }}
-                      onKeyDown={siteKeydown}
-                      onBlur={commitSiteInput}
-                    />
-                    <datalist id="da-site-list">
-                      {siteOptions.map(o => <option key={o} value={o} />)}
-                    </datalist>
-                    <svg className={styles.siteChevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
+                <div className={styles.fieldsGrid}>
+                  <div className={styles.field}>
+                    <label>Project <span className={styles.req}>*</span></label>
+                    <select value={project} onChange={e => setProject(e.target.value)}>
+                      {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
                   </div>
-                </div>
-                <div className={styles.field}>
-                  <label>Governate</label>
-                  <input
-                    type="text"
-                    placeholder="Auto-fills or type new…"
-                    value={governate}
-                    onChange={e => setGovernate(e.target.value)}
-                  />
+                  <div className={styles.field}>
+                    <label>Section <span className={styles.req}>*</span></label>
+                    <select
+                      value={sectionId}
+                      onChange={e => {
+                        const opt = e.target.options[e.target.selectedIndex];
+                        setSectionId(e.target.value);
+                        setSectionLabel(opt.text || '');
+                      }}
+                    >
+                      <option value="">{sections.length === 0 ? '— Select project first —' : '— Select section —'}</option>
+                      {sections.map(s => {
+                        const lbl = s.section_label || s.section_name || '';
+                        return <option key={s.id} value={s.id}>{lbl}</option>;
+                      })}
+                    </select>
+                  </div>
+                  <div className={styles.field}>
+                    <label>Site ID <span className={styles.req}>*</span></label>
+                    <div
+                      className={styles.siteTagsWrap}
+                      onClick={() => siteInputRef.current?.focus()}
+                    >
+                      {siteTags.map((tag, i) => (
+                        <span key={i} className={styles.siteTag}>
+                          {getSiteLabel(tag)}
+                          <button type="button" onClick={e => { e.stopPropagation(); removeSiteTag(i); }}>×</button>
+                        </span>
+                      ))}
+                      <input
+                        ref={siteInputRef}
+                        className={styles.siteInput}
+                        type="text"
+                        placeholder={siteTags.length ? '' : 'Type or select a site, Enter to add…'}
+                        value={siteInput}
+                        list="da-site-list"
+                        autoComplete="off"
+                        onChange={e => {
+                          setSiteInput(e.target.value);
+                          autoFillGovernate(e.target.value.trim());
+                        }}
+                        onKeyDown={siteKeydown}
+                        onBlur={commitSiteInput}
+                      />
+                      <datalist id="da-site-list">
+                        {siteOptions.map(o => <option key={o} value={o} />)}
+                      </datalist>
+                      <svg className={styles.siteChevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <div className={styles.field}>
+                    <label>Governate</label>
+                    <input
+                      type="text"
+                      placeholder="Auto-fills or type new…"
+                      value={governate}
+                      onChange={e => setGovernate(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -690,7 +694,7 @@ export default function DailyActivities() {
             {/* ── Sub-card 2: Work Details ── */}
             <div className={styles.subCard}>
               <div className={styles.subCardHdr}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
                   <line x1="16" y1="13" x2="8" y2="13"/>
@@ -699,29 +703,31 @@ export default function DailyActivities() {
                 <div className={styles.subCardTitle}>Work Details</div>
               </div>
               <div className={styles.subCardBody}>
-                <div className={styles.field}>
-                  <label>Date <span className={styles.req}>*</span></label>
-                  <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-                </div>
-                <div className={styles.field}>
-                  <label>Activity Type <span className={styles.req}>*</span></label>
-                  <select value={activityType} onChange={e => setActivityType(e.target.value)}>
-                    {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label>Status <span className={styles.req}>*</span></label>
-                  <select value={status} onChange={e => setStatus(e.target.value)}>
-                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label>Notes</label>
-                  <textarea
-                    placeholder="Describe the work done…"
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                  />
+                <div className={styles.fieldsGrid}>
+                  <div className={styles.field}>
+                    <label>Date <span className={styles.req}>*</span></label>
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+                  </div>
+                  <div className={styles.field}>
+                    <label>Activity Type <span className={styles.req}>*</span></label>
+                    <select value={activityType} onChange={e => setActivityType(e.target.value)}>
+                      {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className={styles.field}>
+                    <label>Status <span className={styles.req}>*</span></label>
+                    <select value={status} onChange={e => setStatus(e.target.value)}>
+                      {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className={styles.field}>
+                    <label>Notes</label>
+                    <textarea
+                      placeholder="Describe the work done…"
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -729,7 +735,7 @@ export default function DailyActivities() {
             {/* ── Sub-card 3: Team Members ── */}
             <div className={styles.subCard}>
               <div className={styles.subCardHdr}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                   <circle cx="9" cy="7" r="4"/>
                   <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
@@ -738,15 +744,21 @@ export default function DailyActivities() {
                 <div className={styles.subCardTitle}>Team Members</div>
               </div>
               <div className={styles.subCardBody}>
-                <div className={styles.memberSearchWrap}>
+                <div
+                  className={styles.memberSearchWrap}
+                  onClick={() => memberSearchInputRef.current?.focus()}
+                >
                   <svg className={styles.memberSearchIcon} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
                   <input
+                    ref={memberSearchInputRef}
                     className={styles.memberSearchInput}
                     type="text"
                     placeholder="Search team members…"
                     value={memberSearch}
+                    onFocus={() => setMemberDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setMemberDropdownOpen(false), 150)}
                     onChange={e => setMemberSearch(e.target.value)}
                   />
                   <svg className={styles.memberSearchChevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -754,7 +766,7 @@ export default function DailyActivities() {
                   </svg>
                 </div>
 
-                {memberSearch.trim() && (
+                {(memberDropdownOpen || memberSearch.trim()) && (
                   <div className={styles.memberSearchResults}>
                     {filteredNonSelected.length === 0 ? (
                       <div className={styles.memberSearchEmpty}>No members found</div>
