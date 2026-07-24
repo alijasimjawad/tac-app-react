@@ -20,7 +20,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 22px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
 }
 
@@ -28,16 +28,16 @@
 
 .pageTitle {
   margin: 0;
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 800;
   color: #0F172A;
   line-height: 1.2;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.4px;
 }
 
 .pageSubtitle {
-  margin-top: 4px;
-  font-size: 13px;
+  margin-top: 2px;
+  font-size: 11px;
   color: var(--text-secondary);
 }
 
@@ -90,8 +90,8 @@
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 14px;
-  margin-bottom: 22px;
+  gap: 10px;
+  margin-bottom: 18px;
 }
 
 .kpiCard {
@@ -100,9 +100,9 @@
   border-bottom: 3px solid transparent; /* accent color injected inline per card */
   border-radius: 14px;
   overflow: hidden;
-  padding: 16px 18px 14px;
+  padding: 12px 14px 10px;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
-  min-height: 108px;
+  min-height: 90px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -111,13 +111,13 @@
 .kpiTop {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin-bottom: 10px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .kpiIconWrap {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -134,12 +134,12 @@
 }
 
 .kpiValue {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.5px;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .kpiSupport {
