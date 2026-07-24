@@ -279,10 +279,18 @@
   border-radius: var(--radius-sm);
   font-size: 13px;
   font-family: inherit;
+  line-height: 1.4;
   background: #fff;
   color: var(--text-primary);
   outline: none;
   transition: border-color .15s;
+}
+
+/* Native date/select inputs render at slightly different intrinsic heights
+   across browsers — pin them to the same height so paired fields line up. */
+.field input,
+.field select {
+  height: 38px;
 }
 
 .field input:focus,
