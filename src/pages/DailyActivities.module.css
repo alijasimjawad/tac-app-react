@@ -1,5 +1,5 @@
 .page {
-  max-width: 1100px;
+  max-width: 1200px;
   position: relative;
 }
 
@@ -24,6 +24,55 @@
   to   { transform: translateY(0);    opacity: 1; }
 }
 
+/* ── Page Header ── */
+.pageHdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pageTitleBlock {}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--slate-900);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.pageTitleSub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 3px 0 0;
+}
+
+.hdrActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btnNewActivity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: var(--transition-fast);
+}
+.btnNewActivity:hover { background: var(--accent-hover); }
+
 /* ── KPI Row ── */
 .kpiRow {
   display: grid;
@@ -44,9 +93,9 @@
 }
 
 .kpiIcon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-sm);
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,6 +121,13 @@
   font-weight: 800;
   color: var(--text-primary);
   line-height: 1;
+}
+
+.kpiSub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.3;
 }
 
 /* ── Form Card ── */
@@ -117,40 +173,75 @@
 }
 
 .formBody {
-  padding: 20px;
+  padding: 16px;
+  background: var(--slate-50);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-.formSection {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.secLabel {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: .7px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.grid3 {
+/* ── 3-column sub-card grid ── */
+.formCardsGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 14px;
+  align-items: start;
 }
 
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+.subCard {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
+.subCardHdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1.5px solid var(--border);
+  background: var(--slate-50);
+}
+
+.subCardIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.subCardIconBlue  { background: var(--blue-50); }
+.subCardIconAmber { background: var(--amber-50); }
+.subCardIconGreen { background: var(--green-50); }
+
+.subCardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.subCardSub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.subCardBody {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+/* ── Form fields ── */
 .field {
   display: flex;
   flex-direction: column;
@@ -241,54 +332,114 @@
   background: transparent;
   color: var(--text-primary);
   flex: 1;
-  min-width: 140px;
+  min-width: 120px;
 }
 
-/* ── Team Member Chips ── */
-.teamChipsWrap {
+/* ── Team member search ── */
+.memberSearchResults {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  overflow: hidden;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.memberSearchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition: background .1s;
+  border-bottom: 1px solid var(--slate-50);
+}
+.memberSearchRow:last-child { border-bottom: none; }
+.memberSearchRow:hover { background: var(--blue-50); }
+
+.memberSearchName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.memberSearchEmpty {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.memberMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.memberCount {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate-600);
+}
+
+.clearAllBtn {
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  font-weight: 600;
+}
+.clearAllBtn:hover { text-decoration: underline; }
+
+.selectedChipsWrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  min-height: 32px;
 }
 
-.teamChip {
+.noSelectionHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  align-self: center;
+}
+
+.selectedChip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-full);
-  cursor: pointer;
-  user-select: none;
-  transition: var(--transition-fast);
-  background: #fff;
-  position: relative;
-}
-
-.teamChip input[type="checkbox"] {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-  pointer-events: none;
-}
-
-.teamChip.chipSelected {
-  border-color: var(--accent);
+  gap: 6px;
+  padding: 4px 8px 4px 5px;
   background: var(--blue-50);
+  border: 1.5px solid var(--blue-100);
+  border-radius: var(--radius-full);
 }
 
-.teamChip.chipSelected .chipAv {
+.selectedChip .chipAv {
   background: var(--accent);
   color: #fff;
 }
 
-/* progressive enhancement — keeps :has() for browsers that support it */
-.teamChip:has(input:checked) {
-  border-color: var(--accent);
-  background: var(--blue-50);
+.chipRemoveBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--slate-400);
+  padding: 0;
+  display: flex;
+  align-items: center;
 }
+.chipRemoveBtn:hover { color: var(--red); }
 
+/* ── Avatar chip (shared) ── */
 .chipAv {
   width: 24px;
   height: 24px;
@@ -303,20 +454,10 @@
   flex-shrink: 0;
 }
 
-.teamChip:has(input:checked) .chipAv {
-  background: var(--accent);
-  color: #fff;
-}
-
 .chipName {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
-}
-
-.chipBusy {
-  border-color: #f59e0b;
-  background: var(--amber-50);
 }
 
 .chipBusyTag {
@@ -524,7 +665,15 @@
   cursor: pointer;
   transition: var(--transition-fast);
 }
-.actBtn:hover { background: var(--slate-50); }
+
+.actBtnPurple { background: #f5f3ff; border-color: #ddd6fe; }
+.actBtnPurple:hover { background: #ede9fe; }
+.actBtnBlue { background: var(--blue-50); border-color: var(--blue-100); }
+.actBtnBlue:hover { background: var(--blue-100); }
+.actBtnGreen { background: var(--green-50); border-color: var(--green-100); }
+.actBtnGreen:hover { background: var(--green-100); }
+.actBtnRed { background: var(--red-50); border-color: var(--red-100); }
+.actBtnRed:hover { background: var(--red-100); }
 
 /* ── Reason Modal ── */
 .modalOverlay {
@@ -624,9 +773,12 @@
   color: var(--slate-500);
 }
 
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .formCardsGrid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 700px) {
   .kpiRow   { grid-template-columns: repeat(2, 1fr); }
-  .grid3    { grid-template-columns: 1fr; }
-  .grid2    { grid-template-columns: 1fr; }
   .viewGrid { grid-template-columns: 1fr; }
 }

@@ -163,6 +163,7 @@ export default function DailyActivities() {
   const [status, setStatus] = useState(STATUS_OPTIONS[0]);
   const [notes, setNotes] = useState('');
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+  const [memberSearch, setMemberSearch] = useState('');
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -402,6 +403,7 @@ export default function DailyActivities() {
     setStatus(STATUS_OPTIONS[0]);
     setNotes('');
     setSelectedMemberIds(new Set());
+    setMemberSearch('');
   }
 
   // ── Edit ──
@@ -416,6 +418,7 @@ export default function DailyActivities() {
     setStatus(a.status || STATUS_OPTIONS[0]);
     setNotes(a.notes || '');
     setSelectedMemberIds(new Set(a.team_member_ids || []));
+    setMemberSearch('');
     formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     showToast('Editing activity — update the form and click Update Activity.', true);
   }
@@ -470,8 +473,15 @@ export default function DailyActivities() {
   const completed = activities.filter(a => a.status === 'Completed').length;
   const inProg = activities.filter(a => a.status === 'In Progress').length;
   const blocked = activities.filter(a => a.status === 'Blocked').length;
+  const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
 
   const { busyIds, busyInfo } = getBusyMap();
+
+  const filteredNonSelected = memberSearch.trim()
+    ? teamMembers
+        .filter(m => !selectedMemberIds.has(m.id) && m.full_name.toLowerCase().includes(memberSearch.toLowerCase()))
+        .slice(0, 6)
+    : [];
 
   function statusPill(s: string | null) {
     if (s === 'Completed') return <span className={`${styles.pill} ${styles.pillDone}`}><span className={styles.dot} />{s}</span>;
@@ -488,42 +498,81 @@ export default function DailyActivities() {
         </div>
       )}
 
+      {/* ── Page Header ── */}
+      <div className={styles.pageHdr}>
+        <div className={styles.pageTitleBlock}>
+          <h1 className={styles.pageTitle}>Daily Activities</h1>
+          <p className={styles.pageTitleSub}>Plan, assign and track field activities</p>
+        </div>
+        <div className={styles.hdrActions}>
+          <button
+            className={styles.btnNewActivity}
+            onClick={() => {
+              setEditingId(null);
+              resetForm();
+              formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Activity
+          </button>
+        </div>
+      </div>
+
       {/* ── KPI Row ── */}
       <div className={styles.kpiRow}>
         <div className={`${styles.kpiCard} ${styles.kpiBlue}`}>
           <div className={styles.kpiIcon}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
               <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
               <rect x="9" y="3" width="6" height="4" rx="2"/>
               <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
             </svg>
           </div>
-          <div><div className={styles.kpiLabel}>Total Activities</div><div className={styles.kpiValue}>{loading ? '—' : total}</div></div>
+          <div>
+            <div className={styles.kpiLabel}>Total Activities</div>
+            <div className={styles.kpiValue}>{loading ? '—' : total}</div>
+            <div className={styles.kpiSub}>All recorded activities</div>
+          </div>
         </div>
         <div className={`${styles.kpiCard} ${styles.kpiGreen}`}>
           <div className={styles.kpiIcon}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
             </svg>
           </div>
-          <div><div className={styles.kpiLabel}>Completed</div><div className={styles.kpiValue}>{loading ? '—' : completed}</div></div>
+          <div>
+            <div className={styles.kpiLabel}>Completed</div>
+            <div className={styles.kpiValue}>{loading ? '—' : completed}</div>
+            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(completed)}% of total activities`}</div>
+          </div>
         </div>
         <div className={`${styles.kpiCard} ${styles.kpiAmber}`}>
           <div className={styles.kpiIcon}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
           </div>
-          <div><div className={styles.kpiLabel}>In Progress</div><div className={styles.kpiValue}>{loading ? '—' : inProg}</div></div>
+          <div>
+            <div className={styles.kpiLabel}>In Progress</div>
+            <div className={styles.kpiValue}>{loading ? '—' : inProg}</div>
+            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(inProg)}% of total activities`}</div>
+          </div>
         </div>
         <div className={`${styles.kpiCard} ${styles.kpiRed}`}>
           <div className={styles.kpiIcon}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
           </div>
-          <div><div className={styles.kpiLabel}>Blocked</div><div className={styles.kpiValue}>{loading ? '—' : blocked}</div></div>
+          <div>
+            <div className={styles.kpiLabel}>Blocked</div>
+            <div className={styles.kpiValue}>{loading ? '—' : blocked}</div>
+            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(blocked)}% of total activities`}</div>
+          </div>
         </div>
       </div>
 
@@ -542,141 +591,230 @@ export default function DailyActivities() {
         </div>
 
         <div className={styles.formBody}>
-          {/* Location */}
-          <div className={styles.formSection}>
-            <div className={styles.secLabel}>Location</div>
-            <div className={styles.grid3}>
-              <div className={styles.field}>
-                <label>Project</label>
-                <select value={project} onChange={e => setProject(e.target.value)}>
-                  {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label>Section</label>
-                <select
-                  value={sectionId}
-                  onChange={e => {
-                    const opt = e.target.options[e.target.selectedIndex];
-                    setSectionId(e.target.value);
-                    setSectionLabel(opt.text || '');
-                  }}
-                >
-                  <option value="">{sections.length === 0 ? '— Select project first —' : '— Select section —'}</option>
-                  {sections.map(s => {
-                    const lbl = s.section_label || s.section_name || '';
-                    return <option key={s.id} value={s.id}>{lbl}</option>;
-                  })}
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label>Date</label>
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-              </div>
-            </div>
-            <div className={styles.grid2}>
-              <div className={styles.field}>
-                <label>Site ID</label>
-                <div
-                  className={styles.siteTagsWrap}
-                  onClick={() => siteInputRef.current?.focus()}
-                >
-                  {siteTags.map((tag, i) => (
-                    <span key={i} className={styles.siteTag}>
-                      {tag}
-                      <button type="button" onClick={e => { e.stopPropagation(); removeSiteTag(i); }}>×</button>
-                    </span>
-                  ))}
-                  <input
-                    ref={siteInputRef}
-                    className={styles.siteInput}
-                    type="text"
-                    placeholder={siteTags.length ? '' : 'Type/select a site, Enter to add…'}
-                    value={siteInput}
-                    list="da-site-list"
-                    autoComplete="off"
-                    onChange={e => {
-                      setSiteInput(e.target.value);
-                      autoFillGovernate(e.target.value.trim());
-                    }}
-                    onKeyDown={siteKeydown}
-                    onBlur={commitSiteInput}
-                  />
-                  <datalist id="da-site-list">
-                    {siteOptions.map(o => <option key={o} value={o} />)}
-                  </datalist>
+          <div className={styles.formCardsGrid}>
+
+            {/* ── Sub-card 1: Location & Scope ── */}
+            <div className={styles.subCard}>
+              <div className={styles.subCardHdr}>
+                <div className={`${styles.subCardIcon} ${styles.subCardIconBlue}`}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className={styles.subCardTitle}>Location & Scope</div>
+                  <div className={styles.subCardSub}>Project, section and site details</div>
                 </div>
               </div>
-              <div className={styles.field}>
-                <label>Governate</label>
-                <input
-                  type="text"
-                  placeholder="Auto-fills or type new…"
-                  value={governate}
-                  onChange={e => setGovernate(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Activity */}
-          <div className={styles.formSection}>
-            <div className={styles.secLabel}>Activity</div>
-            <div className={styles.grid3}>
-              <div className={styles.field}>
-                <label>Activity Type</label>
-                <select value={activityType} onChange={e => setActivityType(e.target.value)}>
-                  {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label>Status</label>
-                <select value={status} onChange={e => setStatus(e.target.value)}>
-                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className={styles.field}>
-                <label>Notes</label>
-                <textarea
-                  placeholder="Describe the work done…"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Team Members */}
-          <div className={styles.formSection}>
-            <div className={styles.secLabel}>Team Members</div>
-            <div className={styles.teamChipsWrap}>
-              {loading ? (
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading…</span>
-              ) : teamMembers.length === 0 ? (
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>No active team members</span>
-              ) : teamMembers.map(m => {
-                const isBusy = busyIds.has(m.id);
-                const isChecked = selectedMemberIds.has(m.id);
-                return (
-                  <label
-                    key={m.id}
-                    className={`${styles.teamChip} ${isBusy ? styles.chipBusy : ''} ${isChecked ? styles.chipSelected : ''}`}
+              <div className={styles.subCardBody}>
+                <div className={styles.field}>
+                  <label>Project</label>
+                  <select value={project} onChange={e => setProject(e.target.value)}>
+                    {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label>Section</label>
+                  <select
+                    value={sectionId}
+                    onChange={e => {
+                      const opt = e.target.options[e.target.selectedIndex];
+                      setSectionId(e.target.value);
+                      setSectionLabel(opt.text || '');
+                    }}
                   >
+                    <option value="">{sections.length === 0 ? '— Select project first —' : '— Select section —'}</option>
+                    {sections.map(s => {
+                      const lbl = s.section_label || s.section_name || '';
+                      return <option key={s.id} value={s.id}>{lbl}</option>;
+                    })}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label>Site ID</label>
+                  <div
+                    className={styles.siteTagsWrap}
+                    onClick={() => siteInputRef.current?.focus()}
+                  >
+                    {siteTags.map((tag, i) => (
+                      <span key={i} className={styles.siteTag}>
+                        {tag}
+                        <button type="button" onClick={e => { e.stopPropagation(); removeSiteTag(i); }}>×</button>
+                      </span>
+                    ))}
                     <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggleMember(m.id, m.full_name, isBusy, busyInfo[m.id] || [])}
+                      ref={siteInputRef}
+                      className={styles.siteInput}
+                      type="text"
+                      placeholder={siteTags.length ? '' : 'Type or select a site, Enter to add…'}
+                      value={siteInput}
+                      list="da-site-list"
+                      autoComplete="off"
+                      onChange={e => {
+                        setSiteInput(e.target.value);
+                        autoFillGovernate(e.target.value.trim());
+                      }}
+                      onKeyDown={siteKeydown}
+                      onBlur={commitSiteInput}
                     />
-                    <span className={styles.chipAv}>{initials(m.full_name)}</span>
-                    <span className={styles.chipName}>{m.full_name}</span>
-                    {isBusy && <span className={styles.chipBusyTag}>Assigned</span>}
-                  </label>
-                );
-              })}
+                    <datalist id="da-site-list">
+                      {siteOptions.map(o => <option key={o} value={o} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div className={styles.field}>
+                  <label>Governate</label>
+                  <input
+                    type="text"
+                    placeholder="Auto-fills or type new…"
+                    value={governate}
+                    onChange={e => setGovernate(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Actions */}
+            {/* ── Sub-card 2: Work Details ── */}
+            <div className={styles.subCard}>
+              <div className={styles.subCardHdr}>
+                <div className={`${styles.subCardIcon} ${styles.subCardIconAmber}`}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className={styles.subCardTitle}>Work Details</div>
+                  <div className={styles.subCardSub}>Activity type, status and notes</div>
+                </div>
+              </div>
+              <div className={styles.subCardBody}>
+                <div className={styles.field}>
+                  <label>Date</label>
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+                </div>
+                <div className={styles.field}>
+                  <label>Activity Type</label>
+                  <select value={activityType} onChange={e => setActivityType(e.target.value)}>
+                    {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label>Status</label>
+                  <select value={status} onChange={e => setStatus(e.target.value)}>
+                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label>Notes</label>
+                  <textarea
+                    placeholder="Describe the work done…"
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Sub-card 3: Team Members ── */}
+            <div className={styles.subCard}>
+              <div className={styles.subCardHdr}>
+                <div className={`${styles.subCardIcon} ${styles.subCardIconGreen}`}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className={styles.subCardTitle}>Team Members</div>
+                  <div className={styles.subCardSub}>Search and assign field staff</div>
+                </div>
+              </div>
+              <div className={styles.subCardBody}>
+                <div className={styles.field}>
+                  <label>Search members</label>
+                  <input
+                    type="text"
+                    placeholder="Type a name to search…"
+                    value={memberSearch}
+                    onChange={e => setMemberSearch(e.target.value)}
+                  />
+                </div>
+
+                {memberSearch.trim() && (
+                  <div className={styles.memberSearchResults}>
+                    {filteredNonSelected.length === 0 ? (
+                      <div className={styles.memberSearchEmpty}>No members found</div>
+                    ) : filteredNonSelected.map(m => {
+                      const isBusy = busyIds.has(m.id);
+                      return (
+                        <div
+                          key={m.id}
+                          className={styles.memberSearchRow}
+                          onClick={() => {
+                            toggleMember(m.id, m.full_name, isBusy, busyInfo[m.id] || []);
+                            setMemberSearch('');
+                          }}
+                        >
+                          <span className={styles.chipAv}>{initials(m.full_name)}</span>
+                          <span className={styles.memberSearchName}>{m.full_name}</span>
+                          {isBusy && <span className={styles.chipBusyTag}>Assigned</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className={styles.memberMeta}>
+                  <span className={styles.memberCount}>
+                    {selectedMemberIds.size} member{selectedMemberIds.size !== 1 ? 's' : ''} selected
+                  </span>
+                  {selectedMemberIds.size > 0 && (
+                    <button
+                      type="button"
+                      className={styles.clearAllBtn}
+                      onClick={() => setSelectedMemberIds(new Set())}
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+
+                <div className={styles.selectedChipsWrap}>
+                  {selectedMemberIds.size === 0 ? (
+                    <span className={styles.noSelectionHint}>Search above to add team members</span>
+                  ) : [...selectedMemberIds].map(id => {
+                    const member = teamMembers.find(m => m.id === id);
+                    if (!member) return null;
+                    return (
+                      <span key={id} className={styles.selectedChip}>
+                        <span className={styles.chipAv}>{initials(member.full_name)}</span>
+                        <span className={styles.chipName}>{member.full_name}</span>
+                        <button
+                          type="button"
+                          className={styles.chipRemoveBtn}
+                          onClick={() => {
+                            const next = new Set(selectedMemberIds);
+                            next.delete(id);
+                            setSelectedMemberIds(next);
+                          }}
+                        >×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+          </div>{/* end formCardsGrid */}
+
+          {/* ── Form Actions ── */}
           <div className={styles.formActions}>
             <button className={styles.btnPrimary} onClick={save} disabled={saving}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -750,23 +888,23 @@ export default function DailyActivities() {
                     <td style={{ fontSize: 12.5, color: 'var(--slate-600)' }}>{a.created_by || '—'}</td>
                     <td>
                       <div className={styles.actBtns}>
-                        <button className={styles.actBtn} title="Edit" onClick={() => startEdit(a)}>
+                        <button className={`${styles.actBtn} ${styles.actBtnPurple}`} title="Edit" onClick={() => startEdit(a)}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                             <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>
                           </svg>
                         </button>
-                        <button className={styles.actBtn} title="View" onClick={() => setViewActivity(a)}>
+                        <button className={`${styles.actBtn} ${styles.actBtnBlue}`} title="View" onClick={() => setViewActivity(a)}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                           </svg>
                         </button>
-                        <button className={styles.actBtn} title="Share via WhatsApp" onClick={() => shareWa(a)}>
+                        <button className={`${styles.actBtn} ${styles.actBtnGreen}`} title="Share via WhatsApp" onClick={() => shareWa(a)}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.2">
                             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
                           </svg>
                         </button>
-                        <button className={styles.actBtn} title="Delete" onClick={() => deleteActivity(a.id)}>
+                        <button className={`${styles.actBtn} ${styles.actBtnRed}`} title="Delete" onClick={() => deleteActivity(a.id)}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.2">
                             <polyline points="3 6 5 6 21 6"/>
                             <path d="M19 6l-1 14H6L5 6"/>
