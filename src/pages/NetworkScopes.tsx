@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
+import { logActivity } from '../lib/activityLog';
 import styles from './NetworkScopes.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ function parseToDateInput(v: string): string {
 
 export default function NetworkScopes() {
   const { proj, sec } = useParams<{ proj: string; sec: string }>();
-  const { hasPerm } = useAuth();
+  const { hasPerm, currentUser } = useAuth();
 
   // Grid data
   const [columns, setColumns] = useState<string[]>([]);
@@ -293,18 +294,34 @@ export default function NetworkScopes() {
     const isNew = modal.rowId === null;
     setModal(null);
     showToast(isNew ? 'Site added' : 'Changes saved', true);
+    const siteId = modal.cells[0] || '(empty)';
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: isNew ? 'Added Row' : 'Edited Row',
+      projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+      sectionName: secMeta.section_label || sec,
+      details: isNew ? `Site ID: ${siteId} | Project: ${proj ? (PROJ_NAMES[proj] || proj) : ''}` : `Site ID: ${siteId}`,
+    });
     await loadSection();
   }
 
   async function confirmDelete() {
     if (!modal?.rowId) return;
     setModalSaving(true);
+    const delSiteId = modal.cells[0] || '(empty)';
     const { error } = await supabase.from('rows').delete().eq('id', modal.rowId);
     setModalSaving(false);
     if (error) { showToast('Delete failed: ' + error.message, false); return; }
     setDeleteConfirm(false);
     setModal(null);
     showToast('Site deleted', true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Deleted Row',
+      projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+      sectionName: sec,
+      details: `Site ID: ${delSiteId} deleted from ${proj ? (PROJ_NAMES[proj] || proj) : ''}`,
+    });
     await loadSection();
   }
 
@@ -414,6 +431,13 @@ export default function NetworkScopes() {
 
       const count = allRowCells.length;
       showToast(`${count} row${count !== 1 ? 's' : ''} imported (${finalHeaders.length} columns)`, true);
+      logActivity({
+        userFullName: currentUser?.full_name ?? currentUser?.username,
+        action: 'Imported Data',
+        projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+        sectionName: secMeta.section_label || sec,
+        details: `Imported ${count} row${count !== 1 ? 's' : ''} into ${proj ? (PROJ_NAMES[proj] || proj) : ''} - ${secMeta.section_label || sec}`,
+      });
       await loadSection();
     } catch (err) {
       showToast('Import failed — ' + ((err as Error).message || 'Unknown error'), false);
@@ -543,6 +567,13 @@ export default function NetworkScopes() {
     setAddColModal(false);
     setAddColName('');
     showToast(`Column "${name}" added`, true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Added Column',
+      projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+      sectionName: secMeta.section_label || sec,
+      details: `Added Column: "${name}"`,
+    });
     await loadSection();
   }
 
@@ -579,6 +610,13 @@ export default function NetworkScopes() {
     invalidateSections();
     setRenameColModal(null);
     showToast(`Column renamed to "${newName}"`, true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Renamed Column',
+      projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+      sectionName: secMeta.section_label || sec,
+      details: `Renamed Column: "${oldName}" → "${newName}"`,
+    });
     setColOpSaving(false);
     await loadSection();
   }
@@ -613,6 +651,13 @@ export default function NetworkScopes() {
     invalidateSections();
     setDeleteColModal(null);
     showToast(`Column "${colName}" deleted`, true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Deleted Column',
+      projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+      sectionName: secMeta.section_label || sec,
+      details: `Deleted Column: "${colName}"`,
+    });
     setColOpSaving(false);
     await loadSection();
   }
@@ -652,6 +697,13 @@ export default function NetworkScopes() {
     const n = matchingRows.length;
     const missed = siteIdSet.size - n;
     showToast(`Updated ${n} row${n !== 1 ? 's' : ''}${missed > 0 ? ` · ${missed} not found` : ''}`, true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Bulk Updated Rows',
+      projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+      sectionName: secMeta.section_label || sec,
+      details: `Updated ${n} row${n !== 1 ? 's' : ''} (field: ${colName})`,
+    });
     await loadSection();
   }
 
@@ -701,6 +753,13 @@ export default function NetworkScopes() {
     const n = matchingRows.length;
     const missed = updateMap.size - n;
     showToast(`Updated ${n} row${n !== 1 ? 's' : ''}${missed > 0 ? ` · ${missed} not found` : ''}`, true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Bulk Updated Rows',
+      projectName: proj ? (PROJ_NAMES[proj] || proj) : null,
+      sectionName: secMeta.section_label || sec,
+      details: `Updated ${n} row${n !== 1 ? 's' : ''} (multi-column)`,
+    });
     await loadSection();
   }
 

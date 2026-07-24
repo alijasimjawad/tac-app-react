@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import styles from './FinTeam.module.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -98,7 +99,7 @@ function today(): string { return new Date().toISOString().split('T')[0]; }
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function FinTeam() {
-  const { hasPerm } = useAuth();
+  const { hasPerm, currentUser } = useAuth();
 
   // Data
   const [members, setMembers]   = useState<TeamMember[]>([]);
@@ -324,12 +325,14 @@ export default function FinTeam() {
       const { error } = await supabase.from('team_members').update(payload).eq('id', editModal.id);
       if (error) { setEditModal(p => p && ({ ...p, saving: false, error: error.message })); return; }
       showToast('Member updated', true);
+      logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Edited Team Member', details: `Edited Team Member: ${name}` });
     } else {
       const { error } = await supabase.from('team_members').insert({
         ...payload, is_active: true, activated_at: today(), deactivated_at: null,
       });
       if (error) { setEditModal(p => p && ({ ...p, saving: false, error: error.message })); return; }
       showToast('Member added', true);
+      logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Added Team Member', details: `Added Team Member: ${name}` });
     }
     setEditModal(null);
     loadData();
@@ -377,6 +380,7 @@ export default function FinTeam() {
       return;
     }
     showToast('Member deleted', true);
+    logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Deleted Team Member', details: `Deleted Team Member: ${delModal.name}` });
     setDelModal(null);
     loadData();
   }
@@ -388,6 +392,7 @@ export default function FinTeam() {
       .update({ is_active: false, deactivated_at: today() }).eq('id', delModal.id);
     if (error) { showToast(error.message, false); setDelModal(p => p && ({ ...p, deactivateSaving: false })); return; }
     showToast(`${delModal.name} deactivated`, true);
+    logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Deactivated Team Member', details: `Deactivated: ${delModal.name}` });
     setDelModal(null);
     loadData();
   }
@@ -459,6 +464,7 @@ export default function FinTeam() {
       await Promise.all(updates.map(u => supabase.from('team_members').update(u.payload).eq('id', u.id)));
       setBulkOpen(false);
       showToast(miss > 0 ? `Updated ${hit} · ${miss} not found` : `Updated ${hit} member${hit !== 1 ? 's' : ''}`, true);
+      logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Bulk Updated Team Members', details: `Bulk updated ${hit} member${hit !== 1 ? 's' : ''} (${bulkColSame})` });
       loadData();
     } catch (e) { showToast('Update failed: ' + (e as Error).message, false); }
     finally { setBulkSaving(false); }
@@ -499,6 +505,7 @@ export default function FinTeam() {
       await Promise.all(updates.map(u => supabase.from('team_members').update(u.payload).eq('id', u.id)));
       setBulkOpen(false);
       showToast(miss > 0 ? `Updated ${hit} · ${miss} not found` : `Updated ${hit} member${hit !== 1 ? 's' : ''}`, true);
+      logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Bulk Updated Team Members', details: `Bulk updated ${hit} member${hit !== 1 ? 's' : ''} (${cols.join(', ')})` });
       loadData();
     } catch (e) { showToast('Update failed: ' + (e as Error).message, false); }
     finally { setBulkSaving(false); }
@@ -586,6 +593,7 @@ export default function FinTeam() {
     }
     setBulkAddOpen(false);
     showToast(failures.length ? `Added ${added} · ${failures.length} failed` : `Added ${added} member${added !== 1 ? 's' : ''} successfully`, !failures.length);
+    logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Bulk Added Team Members', details: `Bulk added ${added} member${added !== 1 ? 's' : ''}` });
     loadData();
   }
 

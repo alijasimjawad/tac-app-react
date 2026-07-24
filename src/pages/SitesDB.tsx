@@ -7,6 +7,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import { cacheOk, getSitesByOperator, loadPreview as loadSitePreview, ensureFullLoad as ensureSitesFullLoad, invalidateCache } from '../lib/sitesCache';
 import { haversineKm, fmtDist } from '../lib/sitesNearest';
 import styles from './SitesDB.module.css';
@@ -564,6 +565,7 @@ export default function SitesDB() {
         }));
         invalidateCache();
         showToast('Site updated', true);
+        logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Edited Site', details: `Edited site: ${payload.operator} - ${payload.site_code}` });
       } else {
         const { data, error } = await supabase.from('sites').insert(payload).select('id').single();
         if (error) throw error;
@@ -574,6 +576,7 @@ export default function SitesDB() {
         }));
         invalidateCache();
         showToast('Site added', true);
+        logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Added Site', details: `Added site: ${payload.operator} - ${payload.site_code}` });
       }
       setEditOpen(false);
       setEditId(null);
@@ -600,6 +603,7 @@ export default function SitesDB() {
       setDeleteOpen(false);
       setDetailRow(null);
       showToast('Site deleted', true);
+      logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Deleted Site', details: `Deleted site: ${detailRow.operator} - ${detailRow.site_code}` });
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : 'Delete failed', false);
     }
@@ -785,6 +789,7 @@ export default function SitesDB() {
       return;
     }
     showToast(`Imported ${inserted} new site${inserted !== 1 ? 's' : ''}`, true);
+    logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Imported Sites', details: `Imported ${inserted} site${inserted !== 1 ? 's' : ''} — ${importOperator}` });
     setImportNewRows([]);
     setImportStatus(`Done — ${inserted} site${inserted !== 1 ? 's' : ''} added.`);
     setImporting(false);
@@ -869,6 +874,7 @@ export default function SitesDB() {
     XLSX.utils.book_append_sheet(wb, ws, 'Enriched');
     XLSX.writeFile(wb, `Enriched_Sites_${new Date().toISOString().slice(0, 10)}.xlsx`);
     showToast('Enriched file downloaded', true);
+    logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Enriched Sheet', details: `Enriched sheet: ${enrichFileName || 'file'} (${rows.length} rows)` });
   }
 
   // ── Render helpers ──

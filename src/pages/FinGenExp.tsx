@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import styles from './FinPages.module.css';
 
 const FIN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -121,11 +122,21 @@ export default function FinGenExp() {
         if (error) throw error;
         setRows(prev => prev.map(r => r.id === editId ? { ...r, ...payload } : r));
         showToast('Updated');
+        logActivity({
+          userFullName: currentUser?.full_name ?? currentUser?.username,
+          action: 'Edited General Expense',
+          details: `Edited: ${desc} ${iqd(amt)}`,
+        });
       } else {
         const { data, error } = await supabase.from('general_expenses').insert(payload).select('id').single();
         if (error) throw error;
         setRows(prev => [{ id: (data as { id: string }).id, ...payload } as GenExpRow, ...prev]);
         showToast('Added');
+        logActivity({
+          userFullName: currentUser?.full_name ?? currentUser?.username,
+          action: 'Added General Expense',
+          details: `Added: ${desc} ${iqd(amt)}`,
+        });
       }
       setModalOpen(false);
     } catch (e: unknown) { setModalErr(e instanceof Error ? e.message : String(e)); }
@@ -141,11 +152,17 @@ export default function FinGenExp() {
   async function confirmDelete() {
     if (!delId) return;
     setDelSaving(true);
+    const r = rows.find(x => x.id === delId);
     const { error } = await supabase.from('general_expenses').delete().eq('id', delId);
     if (error) { showToast('Error: ' + error.message); setDelSaving(false); return; }
     setRows(prev => prev.filter(r => r.id !== delId));
     setDelId(null); setDelSaving(false);
     showToast('Deleted');
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Deleted General Expense',
+      details: `Deleted: ${r?.description || ''} ${iqd(r?.amount)}`,
+    });
   }
 
   async function handleExport() {

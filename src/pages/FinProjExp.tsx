@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import styles from './FinPages.module.css';
 
 const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
@@ -261,11 +262,13 @@ export default function FinProjExp() {
         if (error) throw error;
         setRows(prev => prev.map(r => r.id === editId ? { ...r, ...payload } as ProjExpRow : r));
         showToast('Updated');
+        logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Edited Project Expense', projectName: form.proj, details: `Edited: ${form.proj} - ${desc} ${iqd(amt)}` });
       } else {
         const { data, error } = await supabase.from('project_expenses').insert(payload).select('id').single();
         if (error) throw error;
         setRows(prev => [{ id: (data as { id: string }).id, ...payload } as ProjExpRow, ...prev]);
         showToast('Added');
+        logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Added Project Expense', projectName: form.proj, details: `Added: ${form.proj} - ${desc} ${iqd(amt)}` });
       }
       setModalOpen(false);
     } catch (e: unknown) { setModalErr(e instanceof Error ? e.message : String(e)); }
@@ -280,12 +283,14 @@ export default function FinProjExp() {
 
   async function confirmDelete() {
     if (!delId) return;
+    const r = rows.find(x => x.id === delId);
     setDelSaving(true);
     const { error } = await supabase.from('project_expenses').delete().eq('id', delId);
     if (error) { showToast('Error: ' + error.message); setDelSaving(false); return; }
     setRows(prev => prev.filter(r => r.id !== delId));
     setDelId(null); setDelSaving(false);
     showToast('Deleted');
+    logActivity({ userFullName: currentUser?.full_name ?? currentUser?.username, action: 'Deleted Project Expense', projectName: r?.project_name, details: `Deleted: ${r?.project_name || '—'} - ${r?.description || '—'} ${iqd(r?.amount || 0)}` });
   }
 
   async function handleExport() {

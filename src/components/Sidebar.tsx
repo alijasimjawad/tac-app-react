@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { logActivity } from '../lib/activityLog';
 import styles from './Sidebar.module.css';
 import tacLogoLight from '../assets/tac-logo-light.png';
 import { SiteLookupIcon } from '../pages/SiteLookup';
@@ -60,7 +61,7 @@ function CollapseIcon({ collapsed }: { collapsed: boolean }) {
 // ── Network Scopes sidebar tree ───────────────────────────────────────────────
 
 function NetworkScopesTree() {
-  const { hasPerm } = useAuth();
+  const { hasPerm, currentUser } = useAuth();
   const params = useParams<{ proj?: string; sec?: string }>();
   const navigate = useNavigate();
   const [sections, setSections] = useState<SectionMeta[]>([]);
@@ -180,6 +181,13 @@ function NetworkScopesTree() {
     await reloadSections();
     setAddSecState(null);
     navigate(`/network-scopes/${savedProj}/${key}`);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Added Section',
+      projectName: PROJ_NAMES[savedProj] || savedProj,
+      sectionName: name,
+      details: `New section: ${name} added to ${PROJ_NAMES[savedProj] || savedProj}`,
+    });
   }
 
   async function confirmRenameSection() {
@@ -194,6 +202,13 @@ function NetworkScopesTree() {
     setSecModalSaving(false);
     if (error) { setSecError(error.message); return; }
     await reloadSections();
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Renamed Section',
+      projectName: PROJ_NAMES[renameSecState.proj] || renameSecState.proj,
+      sectionName: label,
+      details: `Renamed section to: "${label}"`,
+    });
     setRenameSecState(null);
   }
 
@@ -219,6 +234,13 @@ function NetworkScopesTree() {
       navigate('/network-scopes');
     }
     await reloadSections();
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Deleted Section',
+      projectName: PROJ_NAMES[deleteSecState.proj] || deleteSecState.proj,
+      sectionName: deleteSecState.label,
+      details: `Section: ${deleteSecState.label} deleted from ${PROJ_NAMES[deleteSecState.proj] || deleteSecState.proj}`,
+    });
     setDeleteSecState(null);
   }
 

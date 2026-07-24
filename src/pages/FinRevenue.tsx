@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { isAtpAccepted, findImpColIdx, findAtpColIdx, PROJ_NAMES, SEC_LABELS } from './NetworkScopes';
 import { ensureSectionsLoaded, getSections } from '../lib/sectionsCache';
+import { logActivity } from '../lib/activityLog';
 import styles from './FinPages.module.css';
 
 const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
@@ -178,11 +179,23 @@ export default function FinRevenue() {
         if (error) throw error;
         setRows(prev => prev.map(r => r.id === editId ? { ...r, ...payload } : r));
         showToast('Revenue updated');
+        logActivity({
+          userFullName: currentUser?.full_name ?? currentUser?.username,
+          action: 'Edited Revenue',
+          projectName: form.proj,
+          details: `Edited Revenue: ${form.proj} ${iqd(amt)}`,
+        });
       } else {
         const { data, error } = await supabase.from('revenue').insert(payload).select('id').single();
         if (error) throw error;
         setRows(prev => [{ id: (data as { id: string }).id, ...payload } as RevRow, ...prev]);
         showToast('Revenue added');
+        logActivity({
+          userFullName: currentUser?.full_name ?? currentUser?.username,
+          action: 'Added Revenue',
+          projectName: form.proj,
+          details: `Added Revenue: ${form.proj} ${iqd(amt)}`,
+        });
       }
       setModalOpen(false);
     } catch (e: unknown) { setModalErr(e instanceof Error ? e.message : String(e)); }
@@ -198,11 +211,18 @@ export default function FinRevenue() {
   async function confirmDelete() {
     if (!delId) return;
     setDelSaving(true);
+    const r = rows.find(x => x.id === delId);
     const { error } = await supabase.from('revenue').delete().eq('id', delId);
     if (error) { showToast('Error: ' + error.message); setDelSaving(false); return; }
     setRows(prev => prev.filter(r => r.id !== delId));
     setDelId(null); setDelSaving(false);
     showToast('Deleted');
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Deleted Revenue',
+      projectName: r?.project_name,
+      details: `Deleted Revenue: ${r?.project_name || ''} ${iqd(r?.amount)} (Site: ${r?.site_id || '—'})`,
+    });
   }
 
   async function handleSync() {
