@@ -591,4 +591,14 @@
   .sidebarCollapsed .navItem { justify-content: flex-start; padding: 0 12px; }
   .sidebarCollapsed .navLabel { display: inline; }
   .sidebarCollapsed .nsSection { display: block; }
+
+  /* Drawer is a fixed, full-height overlay on mobile — its own top edge sits
+     behind the iOS status bar/notch in standalone (installed) mode, so give
+     the brand row extra top padding to clear it instead of being covered. */
+  .brand {
+    height: auto;
+    min-height: calc(64px + env(safe-area-inset-top, 0px));
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
 }
