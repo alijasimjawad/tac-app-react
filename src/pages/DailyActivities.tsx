@@ -556,11 +556,15 @@ export default function DailyActivities() {
   }
 
   // ── History table: filter → sort → paginate ──
+  const issuedByOptions = Array.from(
+    new Set(activities.map(a => (a.created_by || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
   const filteredActivities = activities.filter(a => {
     if (filterProject !== 'All' && a.project !== filterProject) return false;
     if (filterStatus !== 'All' && a.status !== filterStatus) return false;
     if (filterActivityType !== 'All' && a.activity_type !== filterActivityType) return false;
-    if (filterIssuedBy.trim() && !(a.created_by || '').toLowerCase().includes(filterIssuedBy.trim().toLowerCase())) return false;
+    if (filterIssuedBy && a.created_by !== filterIssuedBy) return false;
     if (dateFrom && a.date < dateFrom) return false;
     if (dateTo && a.date > dateTo) return false;
     if (searchQuery.trim()) {
@@ -962,59 +966,69 @@ export default function DailyActivities() {
             Activity History
             <span className={styles.countBadge}>{sortedActivities.length} records</span>
           </div>
-        </div>
 
-        <div className={styles.historyToolbar}>
-          <div className={styles.searchBox}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              placeholder="Search by site, project, team…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <select className={styles.filterSelect} value={filterProject} onChange={e => setFilterProject(e.target.value)}>
-            <option value="All">All Projects</option>
-            {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <select className={styles.filterSelect} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-            <option value="All">All Status</option>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <div className={styles.dateRangeBox}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            <div className={styles.dateInputWrap}>
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-              {!dateFrom && <span className={styles.dateInputPlaceholder}>From</span>}
+          <div className={styles.historyToolbar}>
+            <div className={styles.searchBox}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by site, project, team…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
             </div>
-            <span className={styles.dateRangeSep}>–</span>
-            <div className={styles.dateInputWrap}>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-              {!dateTo && <span className={styles.dateInputPlaceholder}>To</span>}
+            <select className={styles.filterSelect} value={filterProject} onChange={e => setFilterProject(e.target.value)}>
+              <option value="All">All Projects</option>
+              {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select className={styles.filterSelect} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+              <option value="All">All Status</option>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <div className={styles.dateRangeBox}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              <div className={styles.dateInputWrap}>
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                {!dateFrom && <span className={styles.dateInputPlaceholder}>From</span>}
+              </div>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={styles.dateRangeArrow}>
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
+              <div className={styles.dateInputWrap}>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+                {!dateTo && <span className={styles.dateInputPlaceholder}>To</span>}
+              </div>
+              {(dateFrom || dateTo) && (
+                <button
+                  type="button"
+                  className={styles.dateRangeClearBtn}
+                  title="Clear date range"
+                  onClick={() => { setDateFrom(''); setDateTo(''); }}
+                >×</button>
+              )}
             </div>
-          </div>
-          <button
-            type="button"
-            className={`${styles.filtersBtn} ${showAdvancedFilters || hasAdvancedFilters ? styles.filtersBtnActive : ''}`}
-            onClick={() => setShowAdvancedFilters(v => !v)}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
-            </svg>
-            Filters
-            {hasAdvancedFilters && <span className={styles.filtersDot} />}
-          </button>
-          {hasActiveFilters && (
-            <button type="button" className={styles.clearFiltersBtn} onClick={clearFilters}>
-              Clear Filters
+            <button
+              type="button"
+              className={`${styles.filtersBtn} ${showAdvancedFilters || hasAdvancedFilters ? styles.filtersBtnActive : ''}`}
+              onClick={() => setShowAdvancedFilters(v => !v)}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+              </svg>
+              Filters
+              {hasAdvancedFilters && <span className={styles.filtersDot} />}
             </button>
-          )}
+            {hasActiveFilters && (
+              <button type="button" className={styles.clearFiltersBtn} onClick={clearFilters}>
+                Clear Filters
+              </button>
+            )}
+          </div>
         </div>
 
         {showAdvancedFilters && (
@@ -1028,12 +1042,10 @@ export default function DailyActivities() {
             </div>
             <div className={styles.advFilterField}>
               <label>Issued By</label>
-              <input
-                type="text"
-                placeholder="Filter by who issued it…"
-                value={filterIssuedBy}
-                onChange={e => setFilterIssuedBy(e.target.value)}
-              />
+              <select value={filterIssuedBy} onChange={e => setFilterIssuedBy(e.target.value)}>
+                <option value="">All Issuers</option>
+                {issuedByOptions.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
             </div>
           </div>
         )}

@@ -630,8 +630,10 @@
 
 .historyHdr {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 14px 20px;
   border-bottom: 1.5px solid var(--border);
   background: var(--slate-50);
@@ -644,6 +646,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .countBadge {
@@ -655,23 +658,23 @@
   border-radius: var(--radius-full);
 }
 
-/* ── History Toolbar (search / filters) ── */
+/* ── History Toolbar (search / filters) — lives inline with the title ── */
 .historyToolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  padding: 12px 20px;
-  border-bottom: 1.5px solid var(--border);
-  background: #fff;
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 .searchBox {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1 1 220px;
-  min-width: 180px;
+  flex: 1 1 200px;
+  min-width: 140px;
+  max-width: 280px;
 }
 
 .searchBox svg {
@@ -721,6 +724,7 @@
 .filterSelect:focus { border-color: var(--accent); }
 
 .dateRangeBox {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -728,9 +732,16 @@
   height: 34px;
   padding: 0 10px;
   border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   background: #fff;
   color: var(--text-muted);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .03);
+  transition: border-color .15s, box-shadow .15s;
+}
+.dateRangeBox:hover { border-color: var(--slate-300); }
+.dateRangeBox:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--blue-50);
 }
 
 .dateRangeBox input[type="date"] {
@@ -741,13 +752,34 @@
   color: var(--text-primary);
   background: transparent;
   padding: 0;
-  width: 108px;
+  width: 98px;
+  cursor: pointer;
 }
 
-.dateRangeSep {
-  color: var(--text-muted);
-  font-size: 12px;
+.dateRangeArrow {
+  color: var(--slate-300);
+  flex-shrink: 0;
 }
+
+.dateRangeClearBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--slate-100);
+  color: var(--slate-500);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition-fast);
+}
+.dateRangeClearBtn:hover { background: var(--slate-200); color: var(--text-primary); }
 
 .dateInputWrap {
   position: relative;
@@ -860,7 +892,9 @@
 .clearFiltersBtn:hover { background: var(--blue-50); }
 
 @media (max-width: 700px) {
-  .historyToolbar { flex-direction: column; align-items: stretch; }
+  .historyHdr { flex-direction: column; align-items: stretch; }
+  .historyToolbar { flex-direction: column; align-items: stretch; justify-content: flex-start; }
+  .searchBox { max-width: none; }
   .dateRangeBox { justify-content: space-between; }
   .dateRangeBox input[type="date"] { width: auto; flex: 1; }
 }
