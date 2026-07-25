@@ -728,12 +728,18 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     });
   }
 
+  // Engineers/technicians get a trimmed-down field nav: Dashboard (analytics)
+  // and Daily Activities are hidden, leaving Sites DB / My Profile / My
+  // Attendance / My Trips / My Expenses as their default section.
+  const roleLower = currentUser?.role?.toLowerCase();
+  const isFieldRole = roleLower === 'engineer' || roleLower === 'technician';
+
   const NAV_TOP = [
-    { to: '/dashboard', label: 'Dashboard', icon: GridIcon },
+    ...(isFieldRole ? [] : [{ to: '/dashboard', label: 'Dashboard', icon: GridIcon }]),
   ];
 
   const NAV_MID = [
-    { to: '/daily-activities', label: 'Daily Activities', icon: ActivityIcon },
+    ...(isFieldRole ? [] : [{ to: '/daily-activities', label: 'Daily Activities', icon: ActivityIcon }]),
     ...(hasPerm('view_site_lookup')   ? [{ to: '/site-lookup',   label: 'Site Lookup',   icon: SiteLookupIcon }] : []),
     ...(hasPerm('view_route_planner') ? [{ to: '/route-planner', label: 'Route Planner', icon: RouteIcon }]      : []),
     { to: '/sites-db',    label: 'Sites DB',      icon: DatabaseIcon },
