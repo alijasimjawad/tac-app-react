@@ -19,8 +19,8 @@ self.addEventListener('push', function(event) {
   const data = event.data.json();
   const options = {
     body: data.body,
-    icon: '/tac-logo-192.png',
-    badge: '/tac-logo-192.png',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     vibrate: [200, 100, 200],
     data: { url: data.url || '/' },
     actions: [{ action: 'open', title: 'Open App' }]
