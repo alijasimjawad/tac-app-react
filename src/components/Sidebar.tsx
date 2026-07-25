@@ -672,7 +672,7 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
 
 // ── Field-role nav ────────────────────────────────────────────────────────────
 
-function FieldRoleNav() {
+function FieldRoleNav({ expandedGroup, toggleGroup }: { expandedGroup: MajorGroup | null; toggleGroup: (group: MajorGroup) => void }) {
   const { hasPerm } = useAuth();
   const dashboardDef     = VIEW_CORE.find(d => d.key === 'view_dashboard')!;
   const dailyActivityDef = VIEW_DAILY_WORK.find(d => d.key === 'view_daily_activities')!;
@@ -750,6 +750,18 @@ function FieldRoleNav() {
         <ReceiptIcon />
         <span className={styles.navLabel}>My Expenses</span>
       </NavLink>
+
+      {/* Finance/HR/Admin sub-page permissions (e.g. Revenue, Employee
+          Profiles, Activity Log) are granted per-user like any other
+          permission and must reflect here too — these groups already
+          self-hide (return null) when the user has none of their perms,
+          and their own admin-only hardcoded entries (Live Trips, User
+          Management, Backup & Restore, Attendance) stay admin-only via
+          their internal isAdmin check, so mounting them for field roles
+          only ever exposes what was actually granted. */}
+      <FinanceNavGroup isExpanded={expandedGroup === 'finance'} onToggle={() => toggleGroup('finance')} />
+      <HrNavGroup isExpanded={expandedGroup === 'hr'} onToggle={() => toggleGroup('hr')} />
+      <AdminNavGroup isExpanded={expandedGroup === 'admin'} onToggle={() => toggleGroup('admin')} />
 
       <div className={styles.fieldNavLabel}>ACCOUNT</div>
 
@@ -893,7 +905,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         </div>
 
         {isFieldRole ? (
-          <FieldRoleNav />
+          <FieldRoleNav expandedGroup={expandedGroup} toggleGroup={toggleGroup} />
         ) : (
           <>
             <nav className={styles.nav} aria-label="Main">
