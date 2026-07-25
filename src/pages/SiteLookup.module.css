@@ -2,7 +2,7 @@
 
 .page {
   padding: 24px 32px 48px;
-  max-width: 1200px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 
@@ -13,10 +13,10 @@
   font-size: 15px;
 }
 
-/* ── Search panel ────────────────────────────────────────────────────────────── */
+/* ── Page header ─────────────────────────────────────────────────────────────── */
 
 .pageHead {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .pageTitle {
@@ -32,10 +32,20 @@
   margin: 0;
 }
 
-.searchPanel {
+/* ── Search card ─────────────────────────────────────────────────────────────── */
+
+.searchCard {
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .05);
+  padding: 18px 20px;
+  margin-bottom: 22px;
+}
+
+.searchRow {
   display: flex;
   gap: 10px;
-  margin-bottom: 18px;
 }
 
 .searchBox {
@@ -73,7 +83,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 10px 20px;
+  padding: 10px 22px;
   background: var(--accent);
   color: #fff;
   border: none;
@@ -89,29 +99,164 @@
 .searchBtn:hover:not(:disabled) { background: var(--accent-hover); }
 .searchBtn:disabled { opacity: .6; cursor: not-allowed; }
 
-/* ── Summary & empty states ──────────────────────────────────────────────────── */
+/* ── Recent searches ─────────────────────────────────────────────────────────── */
 
-.summary {
+.recentRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.recentLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+
+.recentChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.recentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: var(--transition-fast);
+}
+.recentChip:hover {
+  background: var(--slate-100);
+  border-color: var(--slate-300);
+  color: var(--text-primary);
+}
+
+.clearRecentBtn {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  white-space: nowrap;
+}
+.clearRecentBtn:hover { color: var(--text-primary); }
+
+/* ── Results area ────────────────────────────────────────────────────────────── */
+
+.resultsArea { }
+
+/* ── State boxes (empty / no-results / error) ────────────────────────────────── */
+
+.stateBox {
+  text-align: center;
+  padding: 56px 24px 60px;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+}
+
+.stateIcon {
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.stateTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.stateTitleErr { color: var(--red-600); }
+
+.stateSub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 360px;
+  margin: 0 auto;
+  line-height: 1.55;
+}
+
+/* ── Results header (summary + project filter chips) ─────────────────────────── */
+
+.resultsHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.resultsSummary {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 16px;
-  min-height: 20px;
+  flex: 1;
 }
 
-.empty {
-  text-align: center;
+.filterChips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
-  padding: 56px 24px;
-  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: var(--transition-fast);
+}
+.filterChip:hover { background: var(--slate-100); border-color: var(--slate-300); }
+
+.filterChipActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.filterChipActive:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.filterChipCount {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: .75;
 }
 
-/* ── Results grid ────────────────────────────────────────────────────────────── */
+/* ── Results list ────────────────────────────────────────────────────────────── */
 
 .results {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 /* ── Site card ───────────────────────────────────────────────────────────────── */
@@ -119,30 +264,38 @@
 .card {
   background: var(--bg-panel);
   border: 1.5px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  border-radius: 12px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .04);
   overflow: hidden;
   border-left: 4px solid var(--slate-300);
+  transition: box-shadow var(--transition-fast);
 }
+.card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, .08); }
 
-.cardAccentBlue   { border-left-color: #3B82F6; }
-.cardAccentPurple { border-left-color: #8B5CF6; }
-.cardAccentOrange { border-left-color: #F59E0B; }
-.cardAccentGreen  { border-left-color: #10B981; }
+.cardAccentBlue    { border-left-color: #3B82F6; }
+.cardAccentPurple  { border-left-color: #8B5CF6; }
+.cardAccentOrange  { border-left-color: #F59E0B; }
+.cardAccentGreen   { border-left-color: #10B981; }
 .cardAccentNeutral { border-left-color: var(--slate-300); }
 
 .cardHead {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  padding: 16px 18px 14px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid var(--border);
 }
 
-.cardIcon {
+.cardIconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--slate-100);
+  border-radius: 50%;
   color: var(--text-muted);
   flex-shrink: 0;
-  margin-top: 1px;
 }
 
 .cardHeadTxt {
@@ -159,26 +312,30 @@
   margin-bottom: 4px;
 }
 
-.cardSub {
+.cardBreadcrumb {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 
 .cardProj {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   color: var(--accent);
+  background: var(--blue-50);
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
 }
 
-.cardProjSep {
-  font-size: 12px;
+.cardBreadSep {
+  font-size: 11px;
   color: var(--text-muted);
 }
 
 .cardSec {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 
@@ -200,7 +357,7 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
+  padding: 3px 8px;
   border-radius: var(--radius-full);
   font-size: 11px;
   font-weight: 700;
@@ -230,20 +387,19 @@
 }
 .actBtn:hover { background: var(--slate-100); color: var(--text-primary); border-color: var(--slate-300); }
 
-/* ── Card body (key-value fields) ────────────────────────────────────────────── */
+/* ── Card body (key-value field grid) ───────────────────────────────────────── */
 
 .cardBody {
-  padding: 12px 18px 14px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px 20px;
+  padding: 14px 16px 16px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 130px;
+  gap: 3px;
 }
 
 .fieldK {
@@ -258,6 +414,83 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* ── Expand / collapse button ────────────────────────────────────────────────── */
+
+.expandBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  padding: 8px;
+  background: var(--slate-50);
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition-fast);
+}
+.expandBtn:hover { background: var(--slate-100); color: var(--text-primary); }
+
+/* ── Skeleton loading ────────────────────────────────────────────────────────── */
+
+.skeletonCard {
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  border-left: 4px solid var(--slate-200);
+  overflow: hidden;
+}
+
+.skeletonHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.skeletonHeadInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skeletonBody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px 20px;
+  padding: 14px 16px 16px;
+}
+
+.skeletonField {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.skeletonPulse {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--slate-100) 25%, var(--slate-50) 50%, var(--slate-100) 75%);
+  background-size: 200% 100%;
+  animation: slSkeletonPulse 1.5s ease-in-out infinite;
+}
+
+.skeletonIconPh  { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
+.skeletonTitlePh { height: 14px; width: 120px; }
+.skeletonSubPh   { height: 10px; width: 80px; }
+.skeletonFieldK  { height: 9px;  width: 60%; }
+.skeletonFieldV  { height: 13px; width: 80%; }
+
+@keyframes slSkeletonPulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* ── Toast ───────────────────────────────────────────────────────────────────── */
@@ -282,7 +515,12 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+
 @media (max-width: 640px) {
-  .page { padding: 16px 16px 40px; }
-  .searchPanel { flex-direction: column; }
+  .page         { padding: 16px 16px 40px; }
+  .searchRow    { flex-direction: column; }
+  .resultsHeader { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .cardHead     { flex-wrap: wrap; }
+  .cardActions  { width: 100%; justify-content: flex-end; }
 }
