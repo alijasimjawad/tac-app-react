@@ -378,10 +378,11 @@ export default function RoutePlanner() {
   const [startLocRaw, setStartLocRaw] = useState('');
   const [startLocStatus, setStartLocStatus] = useState('');
   const [sitesText, setSitesText] = useState('');
-  const [priorityText, setPriorityText] = useState('');
+  const [priorityCodes, setPriorityCodes] = useState<string[]>([]);
+  const [priorityInput, setPriorityInput] = useState('');
+  const [priorityMenuOpen, setPriorityMenuOpen] = useState(false);
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [planError, setPlanError] = useState('');
-  const [resultsView, setResultsView] = useState<'list' | 'map'>('list');
   const [copyLabel, setCopyLabel] = useState('Copy as Text');
   const [generating, setGenerating] = useState(false);
   const [activeTeam, setActiveTeam] = useState(0);
@@ -389,6 +390,7 @@ export default function RoutePlanner() {
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -408,9 +410,11 @@ export default function RoutePlanner() {
     return () => { alive = false; };
   }, []);
 
-  // Map lifecycle: init/teardown
+  // Map lifecycle: init/teardown. The map is always shown alongside the
+  // results now (no more separate List/Map toggle), so this only depends on
+  // whether a plan exists.
   useEffect(() => {
-    if (resultsView !== 'map' || !plan) return;
+    if (!plan) return;
     const t = setTimeout(() => {
       if (!mapDivRef.current) return;
       if (!mapRef.current) {
@@ -426,12 +430,23 @@ export default function RoutePlanner() {
       setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 50);
     }, 50);
     return () => clearTimeout(t);
-  }, [resultsView, plan]);
+  }, [plan]);
 
   useEffect(() => {
     return () => {
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
     };
+  }, []);
+
+  // Keep map tiles sized correctly when entering/exiting the "View Full Map"
+  // fullscreen mode — Leaflet caches container dimensions and needs a nudge
+  // whenever they change outside of its own control.
+  useEffect(() => {
+    function onFsChange() {
+      setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 60);
+    }
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
   function renderMapLayers(p: RoutePlan) {
@@ -483,20 +498,18 @@ export default function RoutePlanner() {
     const result = generatePlan(
       operator, numTeams, numDays, dailyHours, speed,
       parseInt(maxSitesPerTeam) || 0, startLocRaw,
-      sitesText, priorityText, sitesDB
+      sitesText, priorityCodes.join('\n'), sitesDB
     );
     setGenerating(false);
     if ('error' in result) { setPlanError(result.error); setPlan(null); return; }
     setPlan(result.plan);
     setActiveTeam(0);
-    setResultsView('list');
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
   }
 
   function handleClear() {
     setPlan(null);
     setPlanError('');
-    setResultsView('list');
     setActiveTeam(0);
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
   }
@@ -517,8 +530,67 @@ export default function RoutePlanner() {
     );
   }
 
-  function handleSwitchView(v: 'list' | 'map') {
-    setResultsView(v);
+  // Site list: paste from clipboard / upload a .txt/.csv file / clear.
+  async function handlePasteSites() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setSitesText(prev => (prev.trim() ? `${prev}\n${text}` : text));
+    } catch {
+      // Clipboard permission denied or unsupported — user can still paste manually.
+    }
+  }
+
+  function handleUploadSitesClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleSitesFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      setSitesText(prev => (prev.trim() ? `${prev}\n${text}` : text));
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  function handleClearSites() {
+    setSitesText('');
+  }
+
+  // Priority sites: chip-style multi-select, backed by a plain string[].
+  function addPriorityCode(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    setPriorityCodes(prev => (prev.some(c => c.toLowerCase() === trimmed.toLowerCase()) ? prev : [...prev, trimmed]));
+    setPriorityInput('');
+  }
+
+  function removePriorityCode(code: string) {
+    setPriorityCodes(prev => prev.filter(c => c !== code));
+  }
+
+  function handlePriorityKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      if (priorityInput.trim()) addPriorityCode(priorityInput);
+    } else if (e.key === 'Backspace' && !priorityInput && priorityCodes.length) {
+      removePriorityCode(priorityCodes[priorityCodes.length - 1]);
+    }
+  }
+
+  const prioritySuggestions = parseCodes(sitesText).filter(c =>
+    !priorityCodes.some(p => p.toLowerCase() === c.toLowerCase()) &&
+    (!priorityInput.trim() || c.toLowerCase().includes(priorityInput.trim().toLowerCase()))
+  );
+
+  function handleFullscreenMap() {
+    const el = mapDivRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
   }
 
   function handleCopyText() {
@@ -570,33 +642,53 @@ export default function RoutePlanner() {
         </p>
       </div>
 
+      {/* Info banner */}
+      <div className={styles.infoBanner}>
+        <InfoIcon />
+        <p className={styles.infoBannerText}>
+          Route estimates use geographic distance and configured average speed, not live road routing.
+        </p>
+        <button type="button" className={styles.newPlanBtn} onClick={handleClear}>
+          <PlusIcon /> New Plan
+        </button>
+      </div>
+
       {/* Stepper */}
       <div className={styles.stepper}>
         <div className={styles.stepItem}>
           <div className={`${styles.stepDot} ${stepperStep >= 1 ? (stepperStep > 1 ? styles.stepDotDone : styles.stepDotActive) : ''}`}>
             {stepperStep > 1 ? <CheckSmIcon /> : '1'}
           </div>
-          <span className={`${styles.stepLabel} ${stepperStep === 1 ? styles.stepLabelActive : stepperStep > 1 ? styles.stepLabelDone : ''}`}>
-            Configure
-          </span>
+          <div className={styles.stepText}>
+            <span className={`${styles.stepLabel} ${stepperStep === 1 ? styles.stepLabelActive : stepperStep > 1 ? styles.stepLabelDone : ''}`}>
+              Configure
+            </span>
+            <span className={styles.stepSub}>Set plan rules</span>
+          </div>
         </div>
         <div className={`${styles.stepLine} ${stepperStep > 1 ? styles.stepLineDone : ''}`} />
         <div className={styles.stepItem}>
           <div className={`${styles.stepDot} ${stepperStep >= 2 ? (stepperStep > 2 ? styles.stepDotDone : styles.stepDotActive) : ''}`}>
             {stepperStep > 2 ? <CheckSmIcon /> : '2'}
           </div>
-          <span className={`${styles.stepLabel} ${stepperStep === 2 ? styles.stepLabelActive : stepperStep > 2 ? styles.stepLabelDone : ''}`}>
-            Add Sites
-          </span>
+          <div className={styles.stepText}>
+            <span className={`${styles.stepLabel} ${stepperStep === 2 ? styles.stepLabelActive : stepperStep > 2 ? styles.stepLabelDone : ''}`}>
+              Add Sites
+            </span>
+            <span className={styles.stepSub}>Paste or upload sites</span>
+          </div>
         </div>
         <div className={`${styles.stepLine} ${stepperStep > 2 ? styles.stepLineDone : ''}`} />
         <div className={styles.stepItem}>
           <div className={`${styles.stepDot} ${stepperStep >= 3 ? styles.stepDotActive : ''}`}>
             3
           </div>
-          <span className={`${styles.stepLabel} ${stepperStep === 3 ? styles.stepLabelActive : ''}`}>
-            Review Plan
-          </span>
+          <div className={styles.stepText}>
+            <span className={`${styles.stepLabel} ${stepperStep === 3 ? styles.stepLabelActive : ''}`}>
+              Review Plan
+            </span>
+            <span className={styles.stepSub}>Generate itinerary</span>
+          </div>
         </div>
       </div>
 
@@ -673,8 +765,28 @@ export default function RoutePlanner() {
 
           {/* Site List */}
           <div className={styles.configSection}>
-            <div className={styles.configSectionLabel}>Site List</div>
-            <div className={styles.field}>
+            <div className={styles.sectionHeadRow}>
+              <div className={styles.configSectionLabel} style={{ marginBottom: 0 }}>Site List</div>
+              <div className={styles.sectionHeadActions}>
+                <button type="button" className={styles.iconBtnSm} title="Paste from clipboard" aria-label="Paste from clipboard" onClick={handlePasteSites}>
+                  <ClipboardPasteIcon />
+                </button>
+                <button type="button" className={styles.iconBtnSm} title="Upload a file" aria-label="Upload a file" onClick={handleUploadSitesClick}>
+                  <UploadIcon />
+                </button>
+                <button type="button" className={styles.iconBtnSm} title="Clear list" aria-label="Clear list" onClick={handleClearSites}>
+                  <EraserIcon />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.csv"
+                  style={{ display: 'none' }}
+                  onChange={handleSitesFileChange}
+                />
+              </div>
+            </div>
+            <div className={styles.field} style={{ marginTop: 8 }}>
               <div className={styles.textareaWrap}>
                 <textarea
                   className={styles.textarea}
@@ -683,7 +795,7 @@ export default function RoutePlanner() {
                   onChange={e => setSitesText(e.target.value)}
                 />
                 {siteCount > 0 && (
-                  <span className={styles.textareaBadge}>{siteCount}</span>
+                  <span className={styles.textareaBadge}>{siteCount} valid</span>
                 )}
               </div>
               <div className={styles.fieldHint}>One code per line, or comma-separated</div>
@@ -692,22 +804,42 @@ export default function RoutePlanner() {
 
           {/* Priority Sites */}
           <div className={styles.configSection}>
-            <div className={styles.configSectionLabel}>Priority Sites <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span></div>
-            <div className={styles.field}>
-              <div className={styles.textareaWrap}>
-                <textarea
-                  className={styles.textarea}
-                  style={{ minHeight: 72 }}
-                  placeholder="Codes from the list above that must be visited first"
-                  value={priorityText}
-                  onChange={e => setPriorityText(e.target.value)}
-                />
-                {parseCodes(priorityText).length > 0 && (
-                  <span className={`${styles.textareaBadge} ${styles.textareaBadgeAmber}`}>
-                    {parseCodes(priorityText).length}
+            <div className={styles.configSectionLabel}>Priority Sites <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— visited first each day</span></div>
+            <div className={styles.chipInputWrap}>
+              <div className={styles.chipField}>
+                {priorityCodes.map(code => (
+                  <span key={code} className={styles.chip}>
+                    {code}
+                    <button type="button" className={styles.chipRemove} onClick={() => removePriorityCode(code)} aria-label={`Remove ${code}`}>
+                      <XIcon />
+                    </button>
                   </span>
-                )}
+                ))}
+                <input
+                  className={styles.chipInput}
+                  value={priorityInput}
+                  placeholder={priorityCodes.length ? '' : 'Type or pick a code…'}
+                  onChange={e => setPriorityInput(e.target.value)}
+                  onKeyDown={handlePriorityKeyDown}
+                  onFocus={() => setPriorityMenuOpen(true)}
+                  onBlur={() => setTimeout(() => setPriorityMenuOpen(false), 120)}
+                />
+                <ChevronDownIcon />
               </div>
+              {priorityMenuOpen && prioritySuggestions.length > 0 && (
+                <div className={styles.chipDropdown}>
+                  {prioritySuggestions.slice(0, 30).map(code => (
+                    <button
+                      type="button"
+                      key={code}
+                      className={styles.chipDropdownItem}
+                      onMouseDown={e => { e.preventDefault(); addPriorityCode(code); }}
+                    >
+                      {code}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -717,7 +849,7 @@ export default function RoutePlanner() {
               {generating ? <SpinnerInlineIcon /> : <SendIcon />}
               {generating ? 'Generating…' : 'Generate Plan'}
             </button>
-            <button className={styles.secondaryBtn} onClick={handleClear}>
+            <button className={styles.secondaryBtn} onClick={handleClear} title="Reset">
               <TrashIcon />
             </button>
           </div>
@@ -747,13 +879,12 @@ export default function RoutePlanner() {
           {!generating && plan && (
             <PlanResults
               plan={plan}
-              resultsView={resultsView}
               activeTeam={activeTeam}
-              onSwitchView={handleSwitchView}
               onCopyText={handleCopyText}
               copyLabel={copyLabel}
               mapDivRef={mapDivRef}
               onSelectTeam={setActiveTeam}
+              onFullscreenMap={handleFullscreenMap}
             />
           )}
         </div>
@@ -793,43 +924,70 @@ function RoutePlannerEmptyState() {
 // ── Results sub-component ──────────────────────────────────────────────────────
 
 function PlanResults({
-  plan, resultsView, activeTeam, onSwitchView, onCopyText, copyLabel, mapDivRef, onSelectTeam,
+  plan, activeTeam, onCopyText, copyLabel, mapDivRef, onSelectTeam, onFullscreenMap,
 }: {
   plan: RoutePlan;
-  resultsView: 'list' | 'map';
   activeTeam: number;
-  onSwitchView: (v: 'list' | 'map') => void;
   onCopyText: () => void;
   copyLabel: string;
   mapDivRef: React.RefObject<HTMLDivElement | null>;
   onSelectTeam: (i: number) => void;
+  onFullscreenMap: () => void;
 }) {
   const notFound = plan.unmatched.filter(u => u.reason === 'not_found');
   const noCoord = plan.unmatched.filter(u => u.reason === 'missing_coordinates');
+  const totalDistanceKm = plan.teamsPlan.reduce((s, t) => s + t.days.reduce((s2, d) => s2 + d.distanceKm, 0), 0);
+  const totalMinutes = plan.teamsPlan.reduce((s, t) => s + t.days.reduce((s2, d) => s2 + d.minutes, 0), 0);
 
   return (
     <>
       {/* Summary stat cards */}
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
+          <div className={styles.summaryTopRow}>
+            <div className={`${styles.summaryIconBox} ${styles.iconBlue}`}><TargetIcon /></div>
+            <span className={styles.summaryLabel}>Sites Matched</span>
+          </div>
           <div className={`${styles.summaryVal} ${styles.summaryValGood}`}>{plan.totalMatched}</div>
-          <div className={styles.summaryLabel}>Sites Matched</div>
         </div>
         <div className={styles.summaryCard}>
+          <div className={styles.summaryTopRow}>
+            <div className={`${styles.summaryIconBox} ${styles.iconPurple}`}><TeamsIcon /></div>
+            <span className={styles.summaryLabel}>Teams</span>
+          </div>
           <div className={styles.summaryVal}>{plan.numTeams}</div>
-          <div className={styles.summaryLabel}>Teams</div>
         </div>
         <div className={styles.summaryCard}>
+          <div className={styles.summaryTopRow}>
+            <div className={`${styles.summaryIconBox} ${styles.iconAmber}`}><SearchXIcon /></div>
+            <span className={styles.summaryLabel}>Not Found</span>
+          </div>
           <div className={`${styles.summaryVal} ${plan.unmatched.length > 0 ? styles.summaryValWarn : ''}`}>
             {plan.unmatched.length}
           </div>
-          <div className={styles.summaryLabel}>Not Found</div>
         </div>
         <div className={styles.summaryCard}>
+          <div className={styles.summaryTopRow}>
+            <div className={`${styles.summaryIconBox} ${styles.iconRed}`}><WarnTriangleIcon /></div>
+            <span className={styles.summaryLabel}>Left Over</span>
+          </div>
           <div className={`${styles.summaryVal} ${plan.leftoverCount > 0 ? styles.summaryValBad : ''}`}>
             {plan.leftoverCount}
           </div>
-          <div className={styles.summaryLabel}>Left Over</div>
+        </div>
+        <div className={styles.summaryCard}>
+          <div className={styles.summaryTopRow}>
+            <div className={`${styles.summaryIconBox} ${styles.iconCyan}`}><RouteDistanceIcon /></div>
+            <span className={styles.summaryLabel}>Est. Distance</span>
+          </div>
+          <div className={styles.summaryVal}>{totalDistanceKm.toFixed(0)} km</div>
+        </div>
+        <div className={styles.summaryCard}>
+          <div className={styles.summaryTopRow}>
+            <div className={`${styles.summaryIconBox} ${styles.iconIndigo}`}><ClockDurationIcon /></div>
+            <span className={styles.summaryLabel}>Est. Time</span>
+          </div>
+          <div className={styles.summaryVal}>{formatMin(totalMinutes)}</div>
         </div>
       </div>
 
@@ -882,129 +1040,115 @@ function PlanResults({
           </button>
         </div>
         <div className={styles.toolbarRight}>
-          <div className={styles.viewTabs}>
-            <button
-              className={`${styles.viewTab} ${resultsView === 'list' ? styles.viewTabActive : ''}`}
-              onClick={() => onSwitchView('list')}
-            >
-              <ListIcon /> List
-            </button>
-            <button
-              className={`${styles.viewTab} ${resultsView === 'map' ? styles.viewTabActive : ''}`}
-              onClick={() => onSwitchView('map')}
-            >
-              <MapIcon /> Map
-            </button>
-          </div>
+          <button className={styles.copyBtn} onClick={onFullscreenMap}>
+            <ExpandIcon /> View Full Map
+          </button>
         </div>
       </div>
 
-      {/* List view */}
-      <div style={{ display: resultsView === 'list' ? undefined : 'none' }}>
-        {/* Team tabs */}
-        {plan.numTeams > 1 && (
-          <div className={styles.teamTabs}>
-            {plan.teamsPlan.map((team, ti) => {
-              const count = team.days.reduce((s, d) => s + d.stops.length, 0);
-              const color = TEAM_COLORS[ti % TEAM_COLORS.length];
-              const isActive = activeTeam === ti;
-              return (
-                <button
-                  key={ti}
-                  className={`${styles.teamTab} ${isActive ? styles.teamTabActive : ''}`}
-                  style={isActive ? { background: color, borderColor: color } : {}}
-                  onClick={() => onSelectTeam(ti)}
-                >
-                  <span className={styles.teamTabDot} style={{ background: isActive ? '#fff' : color }} />
-                  {team.name}
-                  <span className={styles.teamTabCount}>· {count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {plan.teamsPlan.map((team, ti) => {
-          if (plan.numTeams > 1 && ti !== activeTeam) return null;
-          const totalKm = team.days.reduce((s, d) => s + d.distanceKm, 0);
-          const totalMin = team.days.reduce((s, d) => s + d.minutes, 0);
-          const totalStops = team.days.reduce((s, d) => s + d.stops.length, 0);
-          const color = TEAM_COLORS[ti % TEAM_COLORS.length];
-          return (
-            <div key={ti} className={styles.teamCard}>
-              <div className={styles.teamHead}>
-                <div className={styles.teamName}>
-                  <span className={styles.teamBadge} style={{ background: color }}>{ti + 1}</span>
-                  {team.name}
-                </div>
-                <div className={styles.teamTotals}>
-                  <span><b>{totalStops}</b> sites</span>
-                  <span><b>{totalKm.toFixed(1)}</b> km</span>
-                  <span><b>{formatMin(totalMin)}</b> drive</span>
-                </div>
-              </div>
-              {!team.days.length && (
-                <div className={styles.noSites}>No sites assigned to this team.</div>
-              )}
-              {team.days.map(day => (
-                <div key={day.dayNum} className={styles.dayCard}>
-                  <div className={styles.dayHead}>
-                    <span className={styles.dayTitle}>Day {day.dayNum}</span>
-                    <span className={styles.dayMeta}>
-                      <span className={styles.dayMetaChip}>{day.stops.length} sites</span>
-                      <span className={styles.dayMetaChip}>{day.distanceKm.toFixed(1)} km</span>
-                      <span className={styles.dayMetaChip}>{formatMin(day.minutes)} drive</span>
-                    </span>
-                  </div>
-                  <div className={styles.timeline}>
-                    {day.stops.map((stop, si) => {
-                      const s = stop.site;
-                      const isVeryFirst = day.dayNum === 1 && si === 0;
-                      let legLabel: string;
-                      if (isVeryFirst && !plan.startLoc) legLabel = 'Route start';
-                      else if (isVeryFirst && plan.startLoc) legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from ${plan.startLoc._label || 'start'}`;
-                      else if (si === 0) legLabel = stop.legMin > 0 ? `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} continuing` : 'Continues from previous day';
-                      else legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from prev`;
-                      return (
-                        <div key={si} className={styles.stop}>
-                          <div className={`${styles.stopDot} ${s._priority ? styles.stopDotPriority : ''}`} style={{ background: color, borderColor: color }}>
-                            {si + 1}
-                          </div>
-                          <div className={styles.stopBody}>
-                            <div className={styles.stopCode}>
-                              {s.site_code || '—'}
-                              {s._priority && <span className={styles.priorityChip}>Priority</span>}
-                            </div>
-                            <div className={styles.stopName}>{s.site_name || '—'}{s.governorate ? ` · ${s.governorate}` : ''}</div>
-                            <div className={styles.stopLeg}>{legLabel}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-
-        {plan.allLeftover.length > 0 && (
-          <div className={styles.leftoverCard}>
-            <div className={styles.leftoverTitle}>{plan.allLeftover.length} site(s) didn't fit within the day/hour budget</div>
-            <div className={styles.leftoverList}>
-              {plan.allLeftover.map((s, i) => (
-                <span key={i} className={styles.leftoverChip}>{s.site_code || '—'} · {s.team}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Map view */}
-      <div style={{ display: resultsView === 'map' ? undefined : 'none' }}>
+      {/* Map — always shown above the results now */}
+      <div className={styles.mapWrap}>
         <div ref={mapDivRef} className={styles.mapBox} />
         <MapLegend plan={plan} />
       </div>
+
+      {/* Team tabs */}
+      {plan.numTeams > 1 && (
+        <div className={styles.teamTabs}>
+          {plan.teamsPlan.map((team, ti) => {
+            const count = team.days.reduce((s, d) => s + d.stops.length, 0);
+            const color = TEAM_COLORS[ti % TEAM_COLORS.length];
+            const isActive = activeTeam === ti;
+            return (
+              <button
+                key={ti}
+                className={`${styles.teamTab} ${isActive ? styles.teamTabActive : ''}`}
+                style={isActive ? { background: color, borderColor: color } : {}}
+                onClick={() => onSelectTeam(ti)}
+              >
+                <span className={styles.teamTabDot} style={{ background: isActive ? '#fff' : color }} />
+                {team.name}
+                <span className={styles.teamTabCount}>· {count}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {plan.teamsPlan.map((team, ti) => {
+        if (plan.numTeams > 1 && ti !== activeTeam) return null;
+        const totalKm = team.days.reduce((s, d) => s + d.distanceKm, 0);
+        const totalMin = team.days.reduce((s, d) => s + d.minutes, 0);
+        const totalStops = team.days.reduce((s, d) => s + d.stops.length, 0);
+        const color = TEAM_COLORS[ti % TEAM_COLORS.length];
+        return (
+          <div key={ti} className={styles.teamCard}>
+            <div className={styles.teamHead}>
+              <div className={styles.teamName}>
+                <span className={styles.teamBadge} style={{ background: color }}>{ti + 1}</span>
+                {team.name}
+              </div>
+              <div className={styles.teamTotals}>
+                <span><b>{totalStops}</b> sites</span>
+                <span><b>{totalKm.toFixed(1)}</b> km</span>
+                <span><b>{formatMin(totalMin)}</b> drive</span>
+              </div>
+            </div>
+            {!team.days.length && (
+              <div className={styles.noSites}>No sites assigned to this team.</div>
+            )}
+            {team.days.map(day => (
+              <div key={day.dayNum} className={styles.dayCard}>
+                <div className={styles.dayHead}>
+                  <span className={styles.dayTitle}>Day {day.dayNum}</span>
+                  <span className={styles.dayMeta}>
+                    <span className={styles.dayMetaChip}>{day.stops.length} sites</span>
+                    <span className={styles.dayMetaChip}>{day.distanceKm.toFixed(1)} km</span>
+                    <span className={styles.dayMetaChip}>{formatMin(day.minutes)} drive</span>
+                  </span>
+                </div>
+                <div className={styles.timeline}>
+                  {day.stops.map((stop, si) => {
+                    const s = stop.site;
+                    const isVeryFirst = day.dayNum === 1 && si === 0;
+                    let legLabel: string;
+                    if (isVeryFirst && !plan.startLoc) legLabel = 'Route start';
+                    else if (isVeryFirst && plan.startLoc) legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from ${plan.startLoc._label || 'start'}`;
+                    else if (si === 0) legLabel = stop.legMin > 0 ? `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} continuing` : 'Continues from previous day';
+                    else legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from prev`;
+                    return (
+                      <div key={si} className={styles.stop}>
+                        <div className={`${styles.stopDot} ${s._priority ? styles.stopDotPriority : ''}`} style={{ background: color, borderColor: color }}>
+                          {si + 1}
+                        </div>
+                        <div className={styles.stopBody}>
+                          <div className={styles.stopCode}>
+                            {s.site_code || '—'}
+                            {s._priority && <span className={styles.priorityChip}>Priority</span>}
+                          </div>
+                          <div className={styles.stopName}>{s.site_name || '—'}{s.governorate ? ` · ${s.governorate}` : ''}</div>
+                          <div className={styles.stopLeg}>{legLabel}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+
+      {plan.allLeftover.length > 0 && (
+        <div className={styles.leftoverCard}>
+          <div className={styles.leftoverTitle}>{plan.allLeftover.length} site(s) didn't fit within the day/hour budget</div>
+          <div className={styles.leftoverList}>
+            {plan.allLeftover.map((s, i) => (
+              <span key={i} className={styles.leftoverChip}>{s.site_code || '—'} · {s.team}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -1087,24 +1231,6 @@ function CheckSmIcon() {
   );
 }
 
-function ListIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-    </svg>
-  );
-}
-
-function MapIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
-      <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
-    </svg>
-  );
-}
-
 function MapEmptyIcon() {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -1119,6 +1245,127 @@ function SpinnerInlineIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
       style={{ animation: 'spin 0.75s linear infinite' }}>
       <path d="M21 12a9 9 0 1 1-6.219-8.56" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function InfoIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10"/><path d="M12 16v-5"/><path d="M12 8h.01"/>
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  );
+}
+
+function ClipboardPasteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+      <path d="M9 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3"/>
+      <path d="M9 14h6"/><path d="M9 18h6"/>
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+  );
+}
+
+function EraserIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 20H8.5L3 14.5a1 1 0 0 1 0-1.41l9.5-9.5a1 1 0 0 1 1.41 0L20 9.7a1 1 0 0 1 0 1.41L11.6 19.5"/>
+      <line x1="8.5" y1="20" x2="15" y2="13.5"/>
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" style={{ flexShrink: 0, opacity: 0.6 }}>
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+}
+
+function ExpandIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/>
+      <path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/>
+    </svg>
+  );
+}
+
+function TargetIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>
+    </svg>
+  );
+}
+
+function TeamsIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  );
+}
+
+function SearchXIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="10.5" cy="10.5" r="6.5"/><line x1="21" y1="21" x2="15.5" y2="15.5"/>
+      <line x1="8" y1="8" x2="13" y2="13"/><line x1="13" y1="8" x2="8" y2="13"/>
+    </svg>
+  );
+}
+
+function WarnTriangleIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  );
+}
+
+function RouteDistanceIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/>
+      <path d="M8 19h6a4 4 0 0 0 4-4v0a4 4 0 0 0-4-4H10a4 4 0 0 1-4-4v0a4 4 0 0 1 4-4h2"/>
+    </svg>
+  );
+}
+
+function ClockDurationIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>
     </svg>
   );
 }

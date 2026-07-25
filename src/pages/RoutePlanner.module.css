@@ -29,6 +29,49 @@
   line-height: 1.5;
 }
 
+/* ── Info banner ── */
+.infoBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  color: #1e40af;
+  margin-bottom: 16px;
+}
+
+.infoBannerText {
+  flex: 1;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.newPlanBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fff;
+  border: 1.5px solid #bfdbfe;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  color: #1e40af;
+  white-space: nowrap;
+  transition: var(--transition-fast);
+}
+
+.newPlanBtn:hover {
+  background: #1e40af;
+  border-color: #1e40af;
+  color: #fff;
+}
+
 /* ── Stepper ── */
 .stepper {
   display: flex;
@@ -74,6 +117,12 @@
   border-color: #86efac;
 }
 
+.stepText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 .stepLabel {
   font-size: 12px;
   font-weight: 600;
@@ -87,6 +136,13 @@
 
 .stepLabelDone {
   color: #16a34a;
+}
+
+.stepSub {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  opacity: 0.8;
 }
 
 .stepLine {
@@ -158,6 +214,40 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 10px;
+}
+
+/* ── Section header row (label + icon actions) ── */
+.sectionHeadRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sectionHeadActions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.iconBtnSm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: var(--transition-fast);
+}
+
+.iconBtnSm:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ── Grids ── */
@@ -279,6 +369,107 @@
 
 .textareaBadgeAmber {
   background: #d97706;
+}
+
+/* ── Chip-style multi-select input (Priority Sites) ── */
+.chipInputWrap {
+  position: relative;
+}
+
+.chipField {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--slate-200);
+  background: var(--bg-panel);
+  transition: var(--transition-fast);
+}
+
+.chipField:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px 3px 9px;
+  background: var(--blue-100, #dbeafe);
+  color: var(--blue-600, #2563eb);
+  border-radius: var(--radius-full, 9999px);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chipRemove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(37,99,235,0.14);
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chipRemove:hover {
+  background: rgba(37,99,235,0.28);
+}
+
+.chipInput {
+  flex: 1;
+  min-width: 90px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  padding: 3px 2px;
+}
+
+.chipDropdown {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md, 0 8px 20px rgba(0,0,0,0.1));
+  padding: 4px;
+}
+
+.chipDropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.chipDropdownItem:hover {
+  background: var(--slate-100);
+  color: var(--text-primary);
 }
 
 /* ── Config footer actions ── */
@@ -508,7 +699,7 @@
 /* ── Summary stat cards ── */
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 
@@ -524,6 +715,30 @@
   box-shadow: var(--shadow-sm);
 }
 
+.summaryTopRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.summaryIconBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.iconBlue   { background: var(--blue-100, #dbeafe);   color: var(--blue-600, #2563eb); }
+.iconPurple { background: #ede9fe; color: #7c3aed; }
+.iconAmber  { background: var(--amber-100, #fef3c7);  color: var(--amber-600, #d97706); }
+.iconRed    { background: var(--red-100, #fee2e2);    color: var(--red-600, #dc2626); }
+.iconCyan   { background: #cffafe; color: #0891b2; }
+.iconIndigo { background: #e0e7ff; color: #4f46e5; }
+
 .summaryVal {
   font-size: 24px;
   font-weight: 800;
@@ -537,7 +752,6 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-top: 4px;
 }
 
 .summaryValWarn { color: #d97706; }
@@ -882,6 +1096,12 @@
 }
 
 /* ── Map ── */
+.mapWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .mapBox {
   height: 520px;
   border-radius: var(--radius-md, var(--radius));
