@@ -59,6 +59,23 @@ function initials(name: string) {
   return name.trim().split(/\s+/).map(w => w[0] || '').slice(0, 2).join('').toUpperCase();
 }
 
+const AVATAR_COLORS = [
+  { bg: '#dbeafe', fg: '#1e40af' },
+  { bg: '#dcfce7', fg: '#166534' },
+  { bg: '#fce7f3', fg: '#9d174d' },
+  { bg: '#fef3c7', fg: '#92400e' },
+  { bg: '#ede9fe', fg: '#5b21b6' },
+  { bg: '#cffafe', fg: '#155e75' },
+  { bg: '#ffe4e6', fg: '#9f1239' },
+  { bg: '#e0e7ff', fg: '#3730a3' },
+];
+
+function avatarColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
 function buildWaMsg(
   date: string,
   project: string,
@@ -181,6 +198,20 @@ export default function DailyActivities() {
   const formCardRef = useRef<HTMLDivElement>(null);
   const memberSearchInputRef = useRef<HTMLInputElement>(null);
   const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
+
+  // History table: search / filters / sort / pagination
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterProject, setFilterProject] = useState('All');
+  const [filterStatus, setFilterStatus] = useState('All');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterProject, filterStatus, dateFrom, dateTo, rowsPerPage]);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -500,6 +531,66 @@ export default function DailyActivities() {
     if (s === 'Blocked') return <span className={`${styles.pill} ${styles.pillBlocked}`}><span className={styles.dot} />{s}</span>;
     return <span className={styles.pill}>{s || '—'}</span>;
   }
+
+  function teamAvatars(names: string[] | null) {
+    const list = Array.isArray(names) ? names.filter(Boolean) : [];
+    if (list.length === 0) return <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>;
+    const shown = list.slice(0, 3);
+    const extra = list.length - shown.length;
+    return (
+      <div className={styles.teamAvatars}>
+        {shown.map((n, i) => {
+          const c = avatarColor(n);
+          return (
+            <span key={i} className={styles.teamAvatar} style={{ background: c.bg, color: c.fg }} title={n}>
+              {initials(n)}
+            </span>
+          );
+        })}
+        {extra > 0 && <span className={styles.teamAvatarMore} title={list.slice(3).join(', ')}>+{extra}</span>}
+      </div>
+    );
+  }
+
+  // ── History table: filter → sort → paginate ──
+  const filteredActivities = activities.filter(a => {
+    if (filterProject !== 'All' && a.project !== filterProject) return false;
+    if (filterStatus !== 'All' && a.status !== filterStatus) return false;
+    if (dateFrom && a.date < dateFrom) return false;
+    if (dateTo && a.date > dateTo) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names.join(' ') : '';
+      const haystack = [a.project, a.site_id, a.governate, a.activity_type, teamNames, a.notes, a.created_by]
+        .filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const sortedActivities = [...filteredActivities].sort((a, b) => {
+    const cmp = a.date === b.date
+      ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      : (a.date < b.date ? -1 : 1);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sortedActivities.length / rowsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = (safePage - 1) * rowsPerPage;
+  const pagedActivities = sortedActivities.slice(pageStart, pageStart + rowsPerPage);
+  const hasActiveFilters = !!(searchQuery || filterProject !== 'All' || filterStatus !== 'All' || dateFrom || dateTo);
+
+  function clearFilters() {
+    setSearchQuery('');
+    setFilterProject('All');
+    setFilterStatus('All');
+    setDateFrom('');
+    setDateTo('');
+  }
+
+  const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
+    .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1);
 
   return (
     <div className={styles.page}>
@@ -861,14 +952,61 @@ export default function DailyActivities() {
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
             Activity History
-            <span className={styles.countBadge}>{total} records</span>
+            <span className={styles.countBadge}>{sortedActivities.length} records</span>
           </div>
         </div>
+
+        <div className={styles.historyToolbar}>
+          <div className={styles.searchBox}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by site, project, team…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <select className={styles.filterSelect} value={filterProject} onChange={e => setFilterProject(e.target.value)}>
+            <option value="All">All Projects</option>
+            {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select className={styles.filterSelect} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+            <option value="All">All Status</option>
+            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className={styles.dateRangeBox}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <span className={styles.dateRangeSep}>–</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+          {hasActiveFilters && (
+            <button type="button" className={styles.clearFiltersBtn} onClick={clearFilters}>
+              Clear Filters
+            </button>
+          )}
+        </div>
+
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Date</th>
+                <th
+                  className={styles.sortableTh}
+                  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                >
+                  <span>
+                    Date
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4, transform: sortDir === 'asc' ? 'rotate(180deg)' : 'none' }}>
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </span>
+                </th>
                 <th>Project</th>
                 <th>Site ID</th>
                 <th>Governorate</th>
@@ -882,20 +1020,25 @@ export default function DailyActivities() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={9} className={styles.empty}>Loading…</td></tr>
-              ) : activities.length === 0 ? (
-                <tr><td colSpan={9} className={styles.empty}>No activities yet.</td></tr>
-              ) : activities.map(a => {
-                const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names.join(', ') : (a.team_member_names || '');
+              ) : pagedActivities.length === 0 ? (
+                <tr><td colSpan={9} className={styles.empty}>{activities.length === 0 ? 'No activities yet.' : 'No activities match your filters.'}</td></tr>
+              ) : pagedActivities.map(a => {
+                const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names : [];
                 const updatedTitle = a.is_edited
                   ? `Updated by ${a.updated_by || 'Unknown'}${a.updated_at ? ' on ' + new Date(a.updated_at).toLocaleString() : ''} — ${a.edit_reason || 'No reason provided'}`
                   : '';
                 return (
                   <tr key={a.id} className={a.is_edited ? styles.rowUpdated : ''}>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: 12, color: 'var(--slate-500)' }}>{fmtDate(a.date)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--slate-700)' }}>{fmtDate(a.date)}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
+                        {a.created_at ? new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </div>
+                    </td>
                     <td style={{ fontSize: 13, fontWeight: 600, color: 'var(--slate-700)' }}>{a.project || ''}</td>
                     <td><span className={styles.siteBadge} title={a.site_id || ''}>{a.site_id || '—'}</span></td>
                     <td style={{ fontSize: 13 }}>{a.governate || ''}</td>
-                    <td style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: 'var(--slate-500)' }} title={teamNames}>{teamNames || '—'}</td>
+                    <td>{teamAvatars(teamNames)}</td>
                     <td style={{ fontSize: 13 }}>{a.activity_type || ''}</td>
                     <td>
                       {statusPill(a.status)}
@@ -935,6 +1078,47 @@ export default function DailyActivities() {
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className={styles.paginationBar}>
+          <div className={styles.paginationInfo}>
+            {sortedActivities.length === 0
+              ? 'No entries'
+              : `Showing ${pageStart + 1} to ${Math.min(pageStart + rowsPerPage, sortedActivities.length)} of ${sortedActivities.length} entries`}
+          </div>
+          <div className={styles.paginationControls}>
+            <select
+              className={styles.rowsPerPageSelect}
+              value={rowsPerPage}
+              onChange={e => setRowsPerPage(Number(e.target.value))}
+            >
+              <option value={10}>10 per page</option>
+              <option value={25}>25 per page</option>
+              <option value={50}>50 per page</option>
+            </select>
+            <button
+              type="button"
+              className={styles.pageBtn}
+              disabled={safePage <= 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            >‹</button>
+            {pageNumbers.map((p, idx) => (
+              <span key={p} style={{ display: 'contents' }}>
+                {idx > 0 && pageNumbers[idx - 1] !== p - 1 && <span className={styles.pageEllipsis}>…</span>}
+                <button
+                  type="button"
+                  className={`${styles.pageBtn} ${p === safePage ? styles.pageBtnActive : ''}`}
+                  onClick={() => setCurrentPage(p)}
+                >{p}</button>
+              </span>
+            ))}
+            <button
+              type="button"
+              className={styles.pageBtn}
+              disabled={safePage >= totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            >›</button>
+          </div>
         </div>
       </div>
 
