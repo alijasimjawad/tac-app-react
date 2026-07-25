@@ -742,6 +742,8 @@ function FieldRoleNav() {
         <span className={styles.navLabel}>My Sites</span>
       </NavLink>
 
+      <NetworkScopesTree />
+
       <div className={styles.fieldNavLabel}>FINANCE</div>
 
       <NavLink to="/my-expenses" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
