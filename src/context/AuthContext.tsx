@@ -37,24 +37,11 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Same matching logic My Attendance already uses to resolve a `users` account
-// to its `team_members` row: by username first, then by full name.
-async function fetchTeamPhoto(username: string, fullName: string): Promise<string | null> {
-  const { data: byUsername } = await supabase
-    .from('team_members')
-    .select('profile_photo_url')
-    .ilike('username', username.trim())
-    .maybeSingle();
-  if (byUsername?.profile_photo_url) return byUsername.profile_photo_url;
-
-  const { data: byName } = await supabase
-    .from('team_members')
-    .select('profile_photo_url')
-    .ilike('full_name', fullName.trim())
-    .maybeSingle();
-  return byName?.profile_photo_url ?? null;
-}
-
+// Topbar/sidebar avatar is sourced only from the user's own `users.profile_photo_url`
+// (set via the My Profile page). It is intentionally independent from
+// `team_members.profile_photo_url` (set via HR Profiles) — the two are
+// separate photos with no cross-linking, so HR photo changes never affect
+// this, and vice versa.
 async function fetchProfile(authUserId: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from('users')
@@ -62,11 +49,7 @@ async function fetchProfile(authUserId: string): Promise<UserProfile | null> {
     .eq('auth_user_id', authUserId)
     .single();
   if (error || !data) return null;
-  // Prefer the linked team_members photo (payroll staff), fall back to the
-  // user's own profile_photo_url (e.g. owners/admins with no team_members row).
-  const teamPhoto = await fetchTeamPhoto(data.username, data.full_name).catch(() => null);
-  const profile_photo_url = teamPhoto ?? data.profile_photo_url ?? null;
-  return { ...data, profile_photo_url } as UserProfile;
+  return { ...data, profile_photo_url: data.profile_photo_url ?? null } as UserProfile;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
