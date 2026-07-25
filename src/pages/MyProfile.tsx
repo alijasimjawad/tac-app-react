@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
@@ -84,7 +83,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MyProfile() {
-  const { currentUser, refreshProfile, hasPerm } = useAuth();
+  const { currentUser, refreshProfile } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>(() => formFromUser());
   const [editErr, setEditErr] = useState('');
@@ -393,14 +392,6 @@ export default function MyProfile() {
 
       {/* Body */}
       <div className={styles.tabBody}>
-        {hrChecked && isHrLinked && (
-          <div className={styles.hrSyncNote}>
-            <span>Personal information is synced from your HR profile and can't be edited here.</span>
-            {hasPerm('view_hr_profiles') && (
-              <Link to="/hr-profiles" className={styles.hrSyncLink}>View in HR Profiles →</Link>
-            )}
-          </div>
-        )}
         <div className={styles.sectionTitle}>Personal Information</div>
         <div className={styles.fields}>
           <Field label="Full Name" value={currentUser.full_name} />
