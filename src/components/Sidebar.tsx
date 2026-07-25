@@ -851,11 +851,20 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   // stays off by default for everyone until an admin grants it. My Profile
   // and My Expenses are intentionally left unconditional here (self-service
   // pages), matching prior behavior.
-  const NAV_MID = [
+  //
+  // Split into two groups (each with its own section label below) instead
+  // of one flat list: work/data tools first, then personal/self-service
+  // pages together under "My Space" — mirrors the WORK/SITES/ACCOUNT labels
+  // FieldRoleNav already uses, so office and field roles share the same
+  // grouping convention.
+  const NAV_TOOLS = [
     ...(hasPerm(dailyActivityDef.key) ? [{ to: dailyActivityDef.to, label: dailyActivityDef.label, icon: ActivityIcon }] : []),
     ...(hasPerm(siteLookupDef.key)    ? [{ to: siteLookupDef.to,    label: siteLookupDef.label,    icon: SiteLookupIcon }] : []),
     ...(hasPerm(routePlannerDef.key)  ? [{ to: routePlannerDef.to,  label: routePlannerDef.label,  icon: RouteIcon }]      : []),
     ...(hasPerm(sitesDbDef.key)       ? [{ to: sitesDbDef.to,       label: sitesDbDef.label,       icon: DatabaseIcon }]   : []),
+  ];
+
+  const NAV_PERSONAL = [
     { to: '/my-profile',  label: 'My Profile',    icon: ProfileIcon },
     ...(hasPerm(myAttendanceDef.key)  ? [{ to: myAttendanceDef.to,  label: myAttendanceDef.label,  icon: ClockIcon }]      : []),
     ...(hasPerm(myTripsDef.key)       ? [{ to: myTripsDef.to,       label: myTripsDef.label,       icon: CarIcon }]        : []),
@@ -915,7 +924,11 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             <NetworkScopesTree />
 
             <nav className={styles.nav} aria-label="Tools">
-              {navLinks(NAV_MID)}
+              {NAV_TOOLS.length > 0 && <div className={styles.fieldNavLabel}>WORK TOOLS</div>}
+              {navLinks(NAV_TOOLS)}
+
+              <div className={styles.fieldNavLabel}>MY SPACE</div>
+              {navLinks(NAV_PERSONAL)}
             </nav>
 
             <FinanceNavGroup
