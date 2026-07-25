@@ -206,7 +206,7 @@ function optimizeRoute(orderedSites: Site[], startLoc: StartLoc | null): Site[] 
   return [...optPriority, ...optRest];
 }
 
-function splitIntoDays(ordered: Site[], numDays: number, dailyMin: number, speed: number, startLoc: StartLoc | null): { days: DayPlan[]; leftover: Site[] } {
+function splitIntoDays(ordered: Site[], numDays: number, dailyMin: number, speed: number, startLoc: StartLoc | null, maxSitesPerTeam: number): { days: DayPlan[]; leftover: Site[] } {
   const result: DayPlan[] = [];
   const leftover: Site[] = [];
   let dayNum = 1, dayMin = 0, dayDistance = 0, stops: Stop[] = [];
@@ -225,7 +225,11 @@ function splitIntoDays(ordered: Site[], numDays: number, dailyMin: number, speed
       legKm = haversineKm(prev.latitude, prev.longitude, site.latitude, site.longitude);
       legMin = (legKm / speed) * 60;
     }
-    if (prev && dayMin + legMin > dailyMin) {
+    // Max Sites/Team is a per-day cap on this team — once a day already holds
+    // that many stops, the next site has to start a new day even if there's
+    // still time left in the current one.
+    const dayFull = maxSitesPerTeam > 0 && stops.length >= maxSitesPerTeam;
+    if (prev && (dayMin + legMin > dailyMin || dayFull)) {
       if (dayNum >= numDays) { pushDay(); doneDays = true; leftover.push(site); continue; }
       pushDay();
       dayNum++;
@@ -253,15 +257,13 @@ function rebalanceLeftovers(teamsPlan: TeamPlan[], numDays: number, dailyMin: nu
 
     for (let ti = 0; ti < teamsPlan.length; ti++) {
       const team = teamsPlan[ti];
-      // Respect the Max Sites/Team cap here too — otherwise a leftover site
-      // could get reinserted into a team that's already at its limit, which
-      // would silently violate the constraint the team count was expanded
-      // to satisfy in the first place.
-      if (maxSitesPerTeam > 0) {
-        const currentCount = team.days.reduce((s, d) => s + d.stops.length, 0);
-        if (currentCount >= maxSitesPerTeam) continue;
-      }
-      if (team.days.length > 0) {
+      // Max Sites/Team is a per-day cap, so re-inserting a leftover into an
+      // already-full day would silently violate it — only consider the
+      // existing last day if it still has room. A brand-new day always has
+      // room (it starts empty), so that branch below needs no extra check.
+      const lastDayFull = team.days.length > 0 && maxSitesPerTeam > 0 &&
+        team.days[team.days.length - 1].stops.length >= maxSitesPerTeam;
+      if (team.days.length > 0 && !lastDayFull) {
         const lastDay = team.days[team.days.length - 1];
         const lastStop = lastDay.stops[lastDay.stops.length - 1];
         if (lastStop) {
@@ -341,8 +343,12 @@ function generatePlan(
   const startLocInvalid = !!(startLocResolved && '_invalid' in startLocResolved);
   const startLoc = (startLocResolved && !('_invalid' in startLocResolved)) ? startLocResolved as StartLoc : null;
 
+  // Max Sites/Team is a per-day cap on each team, so the real capacity of a
+  // team over the whole plan is maxSitesPerTeam × numDays — only bump the
+  // team count if what you asked for (Teams × Days × Max) genuinely isn't
+  // enough to cover every matched site.
   const actualNumTeams = maxSitesPerTeam > 0
-    ? Math.max(numTeamsRaw, Math.ceil(matched.length / maxSitesPerTeam))
+    ? Math.max(numTeamsRaw, Math.ceil(matched.length / (maxSitesPerTeam * numDays)))
     : numTeamsRaw;
 
   const teamsSites = clusterIntoTeams(matched, actualNumTeams);
@@ -351,7 +357,7 @@ function generatePlan(
     if (!sites.length) return { name: `Team ${idx + 1}`, days: [], leftover: [] };
     const nn = nearestNeighborRoute(sites, startLoc);
     const ordered = optimizeRoute(nn, startLoc);
-    const split = splitIntoDays(ordered, numDays, dailyMin, speed, startLoc);
+    const split = splitIntoDays(ordered, numDays, dailyMin, speed, startLoc, maxSitesPerTeam);
     return { name: `Team ${idx + 1}`, days: split.days, leftover: split.leftover };
   });
 
@@ -745,11 +751,16 @@ export default function RoutePlanner() {
                   onChange={e => setSpeed(Math.max(1, parseFloat(e.target.value) || 40))} />
               </div>
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Max Sites/Team</label>
+                <label className={styles.fieldLabel}>Max Sites/Team/Day</label>
                 <input type="number" min={1} max={200} placeholder="optional"
                   value={maxSitesPerTeam} onChange={e => setMaxSitesPerTeam(e.target.value)} />
               </div>
             </div>
+            {maxSitesPerTeam && (
+              <div className={styles.fieldHint} style={{ marginTop: 6 }}>
+                Each team visits at most {maxSitesPerTeam} sites per day. Teams only increase beyond what you set if Teams × Days × Max isn't enough to cover every site.
+              </div>
+            )}
             <div className={styles.field} style={{ marginTop: 10 }}>
               <label className={styles.fieldLabel}>Start Location — site code or "lat,lng"</label>
               <div className={styles.startLocRow}>
@@ -1033,7 +1044,7 @@ function PlanResults({
       {plan.maxSitesPerTeam > 0 && plan.numTeams > plan.requestedNumTeams && (
         <div className={`${styles.alert} ${styles.alertBlue}`}>
           <ClockAlertIcon />
-          <div>Team count increased from <b>{plan.requestedNumTeams}</b> to <b>{plan.numTeams}</b> to keep each team at or under <b>{plan.maxSitesPerTeam}</b> sites.</div>
+          <div>Team count increased from <b>{plan.requestedNumTeams}</b> to <b>{plan.numTeams}</b> — {plan.requestedNumTeams} team(s) over {plan.numDays} day(s) couldn't cover every site at <b>{plan.maxSitesPerTeam}</b>/day per team.</div>
         </div>
       )}
 
