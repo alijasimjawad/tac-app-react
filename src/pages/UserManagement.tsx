@@ -116,6 +116,10 @@ export default function UserManagement() {
   const [editSaving, setEditSaving]= useState(false);
   const [dbProjects, setDbProjects]= useState<string[]>([]);
   const [perms,      setPerms]     = useState<PermMap>({});
+  // Keys the admin has actually clicked in this edit session — see saveEdit()
+  // for why this matters (only touched keys get persisted as explicit
+  // overrides; untouched keys keep falling back to the code-level default).
+  const [touchedPerms, setTouchedPerms] = useState<Set<string>>(new Set());
 
   const [toast,    setToast]    = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -244,6 +248,7 @@ export default function UserManagement() {
         : isEditFieldRole && FIELD_ROLE_DEFAULT_KEYS.includes(key);
     });
     setPerms(initPerms);
+    setTouchedPerms(new Set());
 
     // Fetch DB projects in background, then update
     supabase.from('sections').select('project_name').neq('project_name', null).then(({ data }) => {
@@ -265,6 +270,7 @@ export default function UserManagement() {
 
   function togglePerm(key: string, val: boolean) {
     setPerms(p => ({ ...p, [key]: val }));
+    setTouchedPerms(t => new Set(t).add(key));
   }
 
   function togAll(group: 'view' | 'actions', val: boolean) {
@@ -272,6 +278,11 @@ export default function UserManagement() {
     setPerms(p => {
       const next = { ...p };
       defs.forEach(({ key }) => { next[key] = val; });
+      return next;
+    });
+    setTouchedPerms(t => {
+      const next = new Set(t);
+      defs.forEach(({ key }) => next.add(key));
       return next;
     });
   }
@@ -284,8 +295,18 @@ export default function UserManagement() {
     const conflict = users.find(u => u.username === editUser.trim() && u.id !== editId);
     if (conflict) { setEditErr('Username already taken by another user.'); return; }
 
-    const permissions: PermMap = {};
-    [...viewDefs, ...ACTION_DEFS].forEach(({ key }) => { permissions[key] = perms[key] === true; });
+    // Merge, don't overwrite: start from whatever is already stored for this
+    // user and only write keys the admin actually toggled in this session.
+    // Untouched keys keep falling through to the code-level field-role
+    // default in hasPerm() — otherwise every save would freeze the entire
+    // permission set as explicit values (whatever the UI happened to show at
+    // open time), silently shadowing any future default change for keys the
+    // admin never meant to touch. See touchedPerms above.
+    const editingUser = users.find(u => u.id === editId);
+    const permissions: PermMap = { ...(editingUser?.permissions || {}) };
+    [...viewDefs, ...ACTION_DEFS].forEach(({ key }) => {
+      if (touchedPerms.has(key)) permissions[key] = perms[key] === true;
+    });
 
     setEditSaving(true);
 
