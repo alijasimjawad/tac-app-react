@@ -24,6 +24,15 @@ export default function AppLayout() {
   const title = PAGE_TITLES[pathname] ?? 'TAC Network';
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Slim top progress bar shown whenever the route changes (i.e. switching
+  // between sidebar pages). Time-based, like GitHub/YouTube's nav loader —
+  // we don't have a real "page finished loading" signal from each page, so
+  // it just ramps up and completes on a fixed schedule to give a clear
+  // loading cue instead of an abrupt blank-then-content swap.
+  const [navProgress, setNavProgress] = useState(0);
+  const [navVisible, setNavVisible] = useState(false);
+  const navTimersRef = useRef<number[]>([]);
+
   // Bumping this remounts the routed page below, which re-runs its own
   // mount-time data fetch — a fast, in-app "refresh" of just the current
   // page's data, without reloading the whole app shell/bundle.
@@ -38,6 +47,19 @@ export default function AppLayout() {
 
   useEffect(() => {
     setMobileOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    navTimersRef.current.forEach(id => window.clearTimeout(id));
+    navTimersRef.current = [
+      window.setTimeout(() => setNavProgress(55), 120),
+      window.setTimeout(() => setNavProgress(82), 280),
+      window.setTimeout(() => setNavProgress(100), 420),
+      window.setTimeout(() => { setNavVisible(false); setNavProgress(0); }, 620),
+    ];
+    setNavVisible(true);
+    setNavProgress(20);
+    return () => navTimersRef.current.forEach(id => window.clearTimeout(id));
   }, [pathname]);
 
   const triggerRefresh = useCallback(() => {
@@ -131,6 +153,12 @@ export default function AppLayout() {
 
   return (
     <div className={styles.shell}>
+      {navVisible && (
+        <div
+          className={styles.navProgress}
+          style={{ width: `${navProgress}%`, opacity: navProgress >= 100 ? 0 : 1 }}
+        />
+      )}
       <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <div className={styles.main}>
         <Topbar title={title} onMenuOpen={() => setMobileOpen(true)} onRefresh={triggerRefresh} refreshing={refreshing} />

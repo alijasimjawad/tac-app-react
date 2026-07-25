@@ -3,6 +3,22 @@
   min-height: 100vh;
 }
 
+/* ── Top navigation progress bar (route switches) ── */
+.navProgress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  z-index: 3000;
+  transition: width 0.25s ease-out, opacity 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navProgress { transition: opacity 0.2s ease; }
+}
+
 .main {
   flex: 1;
   display: flex;
