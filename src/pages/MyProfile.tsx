@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
@@ -19,6 +20,17 @@ interface EditForm {
   emergency_contact_phone: string;
   start_date: string;
   notes: string;
+}
+
+interface HrLinkedInfo {
+  phone: string | null;
+  national_id: string | null;
+  date_of_birth: string | null;
+  address: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  start_date: string | null;
+  notes: string | null;
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
@@ -72,7 +84,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MyProfile() {
-  const { currentUser, refreshProfile } = useAuth();
+  const { currentUser, refreshProfile, hasPerm } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>(() => formFromUser());
   const [editErr, setEditErr] = useState('');
@@ -81,6 +93,38 @@ export default function MyProfile() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // ── HR-linked profile (read-only source when this user has a matching team_members row) ──
+  const [hrInfo, setHrInfo] = useState<HrLinkedInfo | null>(null);
+  const [hrChecked, setHrChecked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHrLink() {
+      if (!currentUser) return;
+      const cols = 'phone, national_id, date_of_birth, address, emergency_contact_name, emergency_contact_phone, start_date, notes';
+      let row: HrLinkedInfo | null = null;
+      if (currentUser.username) {
+        const { data } = await supabase.from('team_members').select(cols).ilike('username', currentUser.username).limit(1).maybeSingle();
+        if (data) row = data as HrLinkedInfo;
+      }
+      if (!row && currentUser.full_name) {
+        const { data } = await supabase.from('team_members').select(cols).ilike('full_name', currentUser.full_name).limit(1).maybeSingle();
+        if (data) row = data as HrLinkedInfo;
+      }
+      if (!cancelled) { setHrInfo(row); setHrChecked(true); }
+    }
+    loadHrLink();
+    return () => { cancelled = true; };
+  }, [currentUser?.username, currentUser?.full_name]);
+
+  // ── Change Password modal state ────────────────────────────────────────────
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwErr, setPwErr] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
 
   // ── Photo crop/zoom modal state ────────────────────────────────────────────
   const [cropOpen, setCropOpen] = useState(false);
@@ -112,6 +156,19 @@ export default function MyProfile() {
   }
 
   if (!currentUser) return null;
+
+  const isHrLinked = !!hrInfo;
+  // Display source: HR profile wins (read-only) when linked, otherwise this user's own record.
+  const disp: HrLinkedInfo = isHrLinked ? hrInfo : {
+    phone: currentUser.phone,
+    national_id: currentUser.national_id,
+    date_of_birth: currentUser.date_of_birth,
+    address: currentUser.address,
+    emergency_contact_name: currentUser.emergency_contact_name,
+    emergency_contact_phone: currentUser.emergency_contact_phone,
+    start_date: currentUser.start_date,
+    notes: currentUser.notes,
+  };
 
   // ── Photo upload (opens crop/zoom modal first) ────────────────────────────
 
@@ -250,6 +307,44 @@ export default function MyProfile() {
     });
   }
 
+  // ── Change password ───────────────────────────────────────────────────────
+
+  function openPwModal() {
+    setPwCurrent(''); setPwNew(''); setPwConfirm(''); setPwErr(''); setPwOpen(true);
+  }
+  function closePwModal() {
+    if (pwSaving) return;
+    setPwOpen(false);
+  }
+
+  async function handleChangePassword() {
+    if (!currentUser) return;
+    setPwErr('');
+    if (!pwCurrent) { setPwErr('Enter your current password'); return; }
+    if (pwNew.length < 6) { setPwErr('New password must be at least 6 characters'); return; }
+    if (pwNew !== pwConfirm) { setPwErr('New password and confirmation do not match'); return; }
+
+    setPwSaving(true);
+    const email = `${currentUser.username.trim().toLowerCase()}@tac.internal`;
+    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password: pwCurrent });
+    if (authErr) {
+      setPwSaving(false);
+      setPwErr('Current password is incorrect');
+      return;
+    }
+    const { error: updErr } = await supabase.auth.updateUser({ password: pwNew });
+    setPwSaving(false);
+    if (updErr) { setPwErr(updErr.message); return; }
+    setPwOpen(false);
+    showToast('Password changed', true);
+    logActivity({
+      userFullName: currentUser.full_name ?? currentUser.username,
+      action: 'Changed Password',
+      sectionName: 'Profile',
+      details: `Changed own password: ${currentUser.full_name}`,
+    });
+  }
+
   const grad = avatarGrad(currentUser.role);
   const bc = badgeColors(currentUser.role);
 
@@ -279,33 +374,48 @@ export default function MyProfile() {
             {currentUser.role && (
               <span className={styles.bannerBadge} style={{ background: bc.bg, color: bc.color }}>{currentUser.role}</span>
             )}
-            {currentUser.start_date && (
-              <span className={styles.bannerStart}>Joined {fmtDate(currentUser.start_date)}</span>
+            {disp.start_date && (
+              <span className={styles.bannerStart}>Joined {fmtDate(disp.start_date)}</span>
             )}
           </div>
         </div>
-        <button className={styles.editBtn} onClick={() => { setEditForm(formFromUser()); setEditErr(''); setEditOpen(true); }}>
-          Edit Profile
-        </button>
+        <div className={styles.bannerActions}>
+          <button className={styles.editBtnSecondary} onClick={openPwModal}>
+            Change Password
+          </button>
+          {hrChecked && !isHrLinked && (
+            <button className={styles.editBtn} onClick={() => { setEditForm(formFromUser()); setEditErr(''); setEditOpen(true); }}>
+              Edit Profile
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Body */}
       <div className={styles.tabBody}>
+        {hrChecked && isHrLinked && (
+          <div className={styles.hrSyncNote}>
+            <span>Personal information is synced from your HR profile and can't be edited here.</span>
+            {hasPerm('view_hr_profiles') && (
+              <Link to="/hr-profiles" className={styles.hrSyncLink}>View in HR Profiles →</Link>
+            )}
+          </div>
+        )}
         <div className={styles.sectionTitle}>Personal Information</div>
         <div className={styles.fields}>
           <Field label="Full Name" value={currentUser.full_name} />
-          <Field label="Phone" value={currentUser.phone} />
-          <Field label="National ID" value={currentUser.national_id} />
-          <Field label="Date of Birth" value={fmtDate(currentUser.date_of_birth) || null} />
-          <Field label="Address" value={currentUser.address} />
-          <Field label="Emergency Contact Name" value={currentUser.emergency_contact_name} />
-          <Field label="Emergency Contact Phone" value={currentUser.emergency_contact_phone} />
+          <Field label="Phone" value={disp.phone} />
+          <Field label="National ID" value={disp.national_id} />
+          <Field label="Date of Birth" value={fmtDate(disp.date_of_birth) || null} />
+          <Field label="Address" value={disp.address} />
+          <Field label="Emergency Contact Name" value={disp.emergency_contact_name} />
+          <Field label="Emergency Contact Phone" value={disp.emergency_contact_phone} />
         </div>
 
         <div className={styles.sectionTitleSpaced}>Additional Information</div>
         <div className={styles.fields}>
-          <Field label="Start Date" value={fmtDate(currentUser.start_date) || null} />
-          <Field label="Notes" value={currentUser.notes} />
+          <Field label="Start Date" value={fmtDate(disp.start_date) || null} />
+          <Field label="Notes" value={disp.notes} />
         </div>
       </div>
 
@@ -359,6 +469,41 @@ export default function MyProfile() {
               <button className={styles.modalCancelBtn} onClick={() => setEditOpen(false)}>Cancel</button>
               <button className={styles.modalSaveBtn} onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving…' : 'Save Profile'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password modal */}
+      {pwOpen && (
+        <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) closePwModal(); }}>
+          <div className={styles.modal} style={{ maxWidth: 420 }}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalTitle}>Change Password</div>
+              <button className={styles.modalClose} onClick={closePwModal} disabled={pwSaving}>×</button>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.modalGrid} style={{ gridTemplateColumns: '1fr' }}>
+                <div className={styles.modalField}>
+                  <label>Current Password</label>
+                  <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} autoComplete="current-password" />
+                </div>
+                <div className={styles.modalField}>
+                  <label>New Password</label>
+                  <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} autoComplete="new-password" />
+                </div>
+                <div className={styles.modalField}>
+                  <label>Confirm New Password</label>
+                  <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} autoComplete="new-password" />
+                </div>
+              </div>
+              {pwErr && <div className={styles.modalErr}>{pwErr}</div>}
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.modalCancelBtn} onClick={closePwModal} disabled={pwSaving}>Cancel</button>
+              <button className={styles.modalSaveBtn} onClick={handleChangePassword} disabled={pwSaving}>
+                {pwSaving ? 'Saving…' : 'Change Password'}
               </button>
             </div>
           </div>
