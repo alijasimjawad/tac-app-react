@@ -159,7 +159,7 @@ export default function AppLayout() {
           style={{ width: `${navProgress}%`, opacity: navProgress >= 100 ? 0 : 1 }}
         />
       )}
-      <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+      <Sidebar key={refreshKey} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <div className={styles.main}>
         <Topbar title={title} onMenuOpen={() => setMobileOpen(true)} onRefresh={triggerRefresh} refreshing={refreshing} />
         <div className={styles.content} ref={contentRef}>
