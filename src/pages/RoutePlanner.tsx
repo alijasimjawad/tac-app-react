@@ -382,7 +382,9 @@ export default function RoutePlanner() {
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [planError, setPlanError] = useState('');
   const [resultsView, setResultsView] = useState<'list' | 'map'>('list');
-  const [copyLabel, setCopyLabel] = useState('Copy Plan as Text');
+  const [copyLabel, setCopyLabel] = useState('Copy as Text');
+  const [generating, setGenerating] = useState(false);
+  const [activeTeam, setActiveTeam] = useState(0);
 
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -474,15 +476,19 @@ export default function RoutePlanner() {
     if (allPts.length) mapRef.current.fitBounds(allPts, { padding: [30, 30], maxZoom: 14 });
   }
 
-  function handleGenerate() {
+  async function handleGenerate() {
     setPlanError('');
+    setGenerating(true);
+    await new Promise(resolve => setTimeout(resolve, 0));
     const result = generatePlan(
       operator, numTeams, numDays, dailyHours, speed,
       parseInt(maxSitesPerTeam) || 0, startLocRaw,
       sitesText, priorityText, sitesDB
     );
+    setGenerating(false);
     if ('error' in result) { setPlanError(result.error); setPlan(null); return; }
     setPlan(result.plan);
+    setActiveTeam(0);
     setResultsView('list');
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
   }
@@ -491,6 +497,7 @@ export default function RoutePlanner() {
     setPlan(null);
     setPlanError('');
     setResultsView('list');
+    setActiveTeam(0);
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
   }
 
@@ -538,9 +545,13 @@ export default function RoutePlanner() {
     if (p.allLeftover.length) lines.push(`Left over (didn't fit): ${p.allLeftover.map(s => `${s.site_code} (${s.team})`).join(', ')}`);
 
     navigator.clipboard.writeText(lines.join('\n'))
-      .then(() => { setCopyLabel('✓ Copied'); setTimeout(() => setCopyLabel('Copy Plan as Text'), 1500); })
+      .then(() => { setCopyLabel('✓ Copied'); setTimeout(() => setCopyLabel('Copy as Text'), 1500); })
       .catch(() => alert('Could not copy to clipboard.'));
   }
+
+  // Stepper logic
+  const siteCount = parseCodes(sitesText).length;
+  const stepperStep = plan ? 3 : siteCount > 0 ? 2 : 1;
 
   if (!hasPerm('view_route_planner')) {
     return (
@@ -555,120 +566,225 @@ export default function RoutePlanner() {
       <div className={styles.pageHead}>
         <h1 className={styles.pageTitle}>Route Planner</h1>
         <p className={styles.pageSub}>
-          Paste a site list, split it across teams, and get a day-by-day itinerary based on geographic
-          distribution and travel time. Estimates use straight-line distance, not real road routing.
+          Paste a site list, split across teams, and get a day-by-day itinerary. Estimates use straight-line distance.
         </p>
       </div>
 
-      {/* Settings card */}
-      <div className={styles.card}>
-        <div className={styles.cardTitle}>Plan Settings</div>
-
-        <div className={styles.grid4}>
-          <div className={styles.field}>
-            <label>Operator</label>
-            <select value={operator} onChange={e => setOperator(e.target.value)}>
-              {operators.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+      {/* Stepper */}
+      <div className={styles.stepper}>
+        <div className={styles.stepItem}>
+          <div className={`${styles.stepDot} ${stepperStep >= 1 ? (stepperStep > 1 ? styles.stepDotDone : styles.stepDotActive) : ''}`}>
+            {stepperStep > 1 ? <CheckSmIcon /> : '1'}
           </div>
-          <div className={styles.field}>
-            <label>Teams</label>
-            <input type="number" min={1} max={20} value={numTeams}
-              onChange={e => setNumTeams(Math.max(1, parseInt(e.target.value) || 1))} />
-          </div>
-          <div className={styles.field}>
-            <label>Days</label>
-            <input type="number" min={1} max={30} value={numDays}
-              onChange={e => setNumDays(Math.max(1, parseInt(e.target.value) || 1))} />
-          </div>
-          <div className={styles.field}>
-            <label>Daily Hours</label>
-            <input type="number" min={1} max={16} step={0.5} value={dailyHours}
-              onChange={e => setDailyHours(Math.max(0.5, parseFloat(e.target.value) || 8))} />
-          </div>
+          <span className={`${styles.stepLabel} ${stepperStep === 1 ? styles.stepLabelActive : stepperStep > 1 ? styles.stepLabelDone : ''}`}>
+            Configure
+          </span>
         </div>
-
-        <div className={styles.grid3}>
-          <div className={styles.field}>
-            <label>Avg Road Speed (km/h)</label>
-            <input type="number" min={5} max={140} value={speed}
-              onChange={e => setSpeed(Math.max(1, parseFloat(e.target.value) || 40))} />
+        <div className={`${styles.stepLine} ${stepperStep > 1 ? styles.stepLineDone : ''}`} />
+        <div className={styles.stepItem}>
+          <div className={`${styles.stepDot} ${stepperStep >= 2 ? (stepperStep > 2 ? styles.stepDotDone : styles.stepDotActive) : ''}`}>
+            {stepperStep > 2 ? <CheckSmIcon /> : '2'}
           </div>
-          <div className={styles.field}>
-            <label>Max Sites per Team (optional)</label>
-            <input type="number" min={1} max={200} placeholder="e.g. 8"
-              value={maxSitesPerTeam} onChange={e => setMaxSitesPerTeam(e.target.value)} />
-            <div className={styles.fieldHint}>If set, adds more teams automatically to keep each team at or under this count.</div>
-          </div>
-          <div className={styles.field}>
-            <label>Start Location (optional) — site code or "lat,lng"</label>
-            <div className={styles.startLocRow}>
-              <input
-                type="text"
-                className={styles.startLocInput}
-                placeholder='e.g. ZN-00123 or 33.31,44.36'
-                value={startLocRaw}
-                onChange={e => setStartLocRaw(e.target.value)}
-              />
-              <button type="button" className={styles.secondaryBtn} onClick={handleUseMyLocation}>
-                <PinIcon /> My Location
-              </button>
-            </div>
-            {startLocStatus && <div className={styles.fieldHint}>{startLocStatus}</div>}
-          </div>
+          <span className={`${styles.stepLabel} ${stepperStep === 2 ? styles.stepLabelActive : stepperStep > 2 ? styles.stepLabelDone : ''}`}>
+            Add Sites
+          </span>
         </div>
-
-        <div className={styles.grid2}>
-          <div className={styles.field}>
-            <label>Site List — one code per line (or comma-separated)</label>
-            <textarea
-              className={styles.textarea}
-              placeholder={'ZN-00123\nZN-00456\nZN-00789...'}
-              value={sitesText}
-              onChange={e => setSitesText(e.target.value)}
-            />
+        <div className={`${styles.stepLine} ${stepperStep > 2 ? styles.stepLineDone : ''}`} />
+        <div className={styles.stepItem}>
+          <div className={`${styles.stepDot} ${stepperStep >= 3 ? styles.stepDotActive : ''}`}>
+            3
           </div>
-          <div className={styles.field}>
-            <label>Priority Sites (optional) — visited first each day</label>
-            <textarea
-              className={styles.textarea}
-              placeholder="Codes from the list above that must be visited first"
-              value={priorityText}
-              onChange={e => setPriorityText(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className={styles.btnRow}>
-          <button className={styles.generateBtn} onClick={handleGenerate}>
-            <SendIcon /> Generate Plan
-          </button>
-          <button className={styles.secondaryBtn} onClick={handleClear}>
-            <TrashIcon /> Clear Plan
-          </button>
+          <span className={`${styles.stepLabel} ${stepperStep === 3 ? styles.stepLabelActive : ''}`}>
+            Review Plan
+          </span>
         </div>
       </div>
 
-      {/* Results */}
-      <div className={styles.results}>
-        {!plan && !planError && (
-          <div className={styles.empty}>Fill in the settings above and generate a plan to see the itinerary.</div>
-        )}
+      {/* Two-column workspace */}
+      <div className={styles.workspace}>
 
-        {planError && (
-          <div className={`${styles.alert} ${styles.alertRed}`}>
-            <AlertIcon /> <div>{planError}</div>
+        {/* ── Left: Config panel ── */}
+        <div className={styles.configPanel}>
+          <div className={styles.configPanelHead}>
+            <p className={styles.configPanelTitle}>Plan Configuration</p>
+            <p className={styles.configPanelSub}>Set parameters, add sites, then generate.</p>
           </div>
-        )}
 
-        {plan && <PlanResults
-          plan={plan}
-          resultsView={resultsView}
-          onSwitchView={handleSwitchView}
-          onCopyText={handleCopyText}
-          copyLabel={copyLabel}
-          mapDivRef={mapDivRef}
-        />}
+          {/* Plan Basics */}
+          <div className={styles.configSection}>
+            <div className={styles.configSectionLabel}>Plan Basics</div>
+            <div className={styles.field} style={{ marginBottom: 10 }}>
+              <label className={styles.fieldLabel}>Operator</label>
+              <select value={operator} onChange={e => setOperator(e.target.value)}>
+                {operators.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div className={styles.grid3}>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel}>Teams</label>
+                <input type="number" min={1} max={20} value={numTeams}
+                  onChange={e => setNumTeams(Math.max(1, parseInt(e.target.value) || 1))} />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel}>Days</label>
+                <input type="number" min={1} max={30} value={numDays}
+                  onChange={e => setNumDays(Math.max(1, parseInt(e.target.value) || 1))} />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel}>Hours/Day</label>
+                <input type="number" min={1} max={16} step={0.5} value={dailyHours}
+                  onChange={e => setDailyHours(Math.max(0.5, parseFloat(e.target.value) || 8))} />
+              </div>
+            </div>
+          </div>
+
+          {/* Travel Rules */}
+          <div className={styles.configSection}>
+            <div className={styles.configSectionLabel}>Travel Rules</div>
+            <div className={styles.grid2}>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel}>Speed (km/h)</label>
+                <input type="number" min={5} max={140} value={speed}
+                  onChange={e => setSpeed(Math.max(1, parseFloat(e.target.value) || 40))} />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel}>Max Sites/Team</label>
+                <input type="number" min={1} max={200} placeholder="optional"
+                  value={maxSitesPerTeam} onChange={e => setMaxSitesPerTeam(e.target.value)} />
+              </div>
+            </div>
+            <div className={styles.field} style={{ marginTop: 10 }}>
+              <label className={styles.fieldLabel}>Start Location — site code or "lat,lng"</label>
+              <div className={styles.startLocRow}>
+                <input
+                  type="text"
+                  className={styles.startLocInput}
+                  placeholder='e.g. ZN-00123 or 33.31,44.36'
+                  value={startLocRaw}
+                  onChange={e => setStartLocRaw(e.target.value)}
+                />
+                <button type="button" className={styles.secondaryBtn} onClick={handleUseMyLocation}>
+                  <PinIcon />
+                </button>
+              </div>
+              {startLocStatus && <div className={styles.fieldHint}>{startLocStatus}</div>}
+            </div>
+          </div>
+
+          {/* Site List */}
+          <div className={styles.configSection}>
+            <div className={styles.configSectionLabel}>Site List</div>
+            <div className={styles.field}>
+              <div className={styles.textareaWrap}>
+                <textarea
+                  className={styles.textarea}
+                  placeholder={'ZN-00123\nZN-00456\nZN-00789...'}
+                  value={sitesText}
+                  onChange={e => setSitesText(e.target.value)}
+                />
+                {siteCount > 0 && (
+                  <span className={styles.textareaBadge}>{siteCount}</span>
+                )}
+              </div>
+              <div className={styles.fieldHint}>One code per line, or comma-separated</div>
+            </div>
+          </div>
+
+          {/* Priority Sites */}
+          <div className={styles.configSection}>
+            <div className={styles.configSectionLabel}>Priority Sites <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— optional</span></div>
+            <div className={styles.field}>
+              <div className={styles.textareaWrap}>
+                <textarea
+                  className={styles.textarea}
+                  style={{ minHeight: 72 }}
+                  placeholder="Codes from the list above that must be visited first"
+                  value={priorityText}
+                  onChange={e => setPriorityText(e.target.value)}
+                />
+                {parseCodes(priorityText).length > 0 && (
+                  <span className={`${styles.textareaBadge} ${styles.textareaBadgeAmber}`}>
+                    {parseCodes(priorityText).length}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer actions */}
+          <div className={styles.configFooter}>
+            <button className={styles.generateBtn} onClick={handleGenerate} disabled={generating || !sitesText.trim()}>
+              {generating ? <SpinnerInlineIcon /> : <SendIcon />}
+              {generating ? 'Generating…' : 'Generate Plan'}
+            </button>
+            <button className={styles.secondaryBtn} onClick={handleClear}>
+              <TrashIcon />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Right: Results panel ── */}
+        <div className={styles.resultsPanel}>
+
+          {generating && (
+            <div className={styles.spinnerState}>
+              <div className={styles.spinner} />
+              <div className={styles.spinnerText}>Building your route plan…</div>
+              <div className={styles.spinnerSub}>Clustering sites, optimizing routes, splitting days</div>
+            </div>
+          )}
+
+          {!generating && planError && (
+            <div className={styles.errorBanner}>
+              <AlertIcon /> <div>{planError}</div>
+            </div>
+          )}
+
+          {!generating && !plan && !planError && (
+            <RoutePlannerEmptyState />
+          )}
+
+          {!generating && plan && (
+            <PlanResults
+              plan={plan}
+              resultsView={resultsView}
+              activeTeam={activeTeam}
+              onSwitchView={handleSwitchView}
+              onCopyText={handleCopyText}
+              copyLabel={copyLabel}
+              mapDivRef={mapDivRef}
+              onSelectTeam={setActiveTeam}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Empty state ────────────────────────────────────────────────────────────────
+
+function RoutePlannerEmptyState() {
+  return (
+    <div className={styles.emptyState}>
+      <div className={styles.emptyIcon}>
+        <MapEmptyIcon />
+      </div>
+      <p className={styles.emptyTitle}>No plan generated yet</p>
+      <p className={styles.emptyDesc}>Configure your plan and paste a list of sites to get started.</p>
+      <div className={styles.emptySteps}>
+        <div className={styles.emptyStep}>
+          <span className={styles.emptyStepNum}>1</span>
+          Set teams, days, and travel rules
+        </div>
+        <div className={styles.emptyStep}>
+          <span className={styles.emptyStepNum}>2</span>
+          Paste site codes in the list
+        </div>
+        <div className={styles.emptyStep}>
+          <span className={styles.emptyStepNum}>3</span>
+          Hit Generate Plan
+        </div>
       </div>
     </div>
   );
@@ -677,41 +793,43 @@ export default function RoutePlanner() {
 // ── Results sub-component ──────────────────────────────────────────────────────
 
 function PlanResults({
-  plan, resultsView, onSwitchView, onCopyText, copyLabel, mapDivRef,
+  plan, resultsView, activeTeam, onSwitchView, onCopyText, copyLabel, mapDivRef, onSelectTeam,
 }: {
   plan: RoutePlan;
   resultsView: 'list' | 'map';
+  activeTeam: number;
   onSwitchView: (v: 'list' | 'map') => void;
   onCopyText: () => void;
   copyLabel: string;
   mapDivRef: React.RefObject<HTMLDivElement | null>;
+  onSelectTeam: (i: number) => void;
 }) {
   const notFound = plan.unmatched.filter(u => u.reason === 'not_found');
   const noCoord = plan.unmatched.filter(u => u.reason === 'missing_coordinates');
 
   return (
     <>
-      {/* Summary stats */}
-      <div className={styles.statRow}>
-        <div className={styles.stat}>
-          <div className={styles.statVal}>{plan.totalMatched}</div>
-          <div className={styles.statLabel}>Sites Matched</div>
+      {/* Summary stat cards */}
+      <div className={styles.summaryGrid}>
+        <div className={styles.summaryCard}>
+          <div className={`${styles.summaryVal} ${styles.summaryValGood}`}>{plan.totalMatched}</div>
+          <div className={styles.summaryLabel}>Sites Matched</div>
         </div>
-        {plan.unmatched.length > 0 && (
-          <div className={`${styles.stat} ${styles.statWarn}`}>
-            <div className={styles.statVal}>{plan.unmatched.length}</div>
-            <div className={styles.statLabel}>Not Found</div>
+        <div className={styles.summaryCard}>
+          <div className={styles.summaryVal}>{plan.numTeams}</div>
+          <div className={styles.summaryLabel}>Teams</div>
+        </div>
+        <div className={styles.summaryCard}>
+          <div className={`${styles.summaryVal} ${plan.unmatched.length > 0 ? styles.summaryValWarn : ''}`}>
+            {plan.unmatched.length}
           </div>
-        )}
-        {plan.leftoverCount > 0 && (
-          <div className={`${styles.stat} ${styles.statBad}`}>
-            <div className={styles.statVal}>{plan.leftoverCount}</div>
-            <div className={styles.statLabel}>Left Over</div>
+          <div className={styles.summaryLabel}>Not Found</div>
+        </div>
+        <div className={styles.summaryCard}>
+          <div className={`${styles.summaryVal} ${plan.leftoverCount > 0 ? styles.summaryValBad : ''}`}>
+            {plan.leftoverCount}
           </div>
-        )}
-        <div className={styles.stat}>
-          <div className={styles.statVal}>{plan.numTeams}</div>
-          <div className={styles.statLabel}>Teams</div>
+          <div className={styles.summaryLabel}>Left Over</div>
         </div>
       </div>
 
@@ -727,7 +845,7 @@ function PlanResults({
             )}
             {noCoord.length > 0 && (
               <div style={{ marginTop: notFound.length ? 6 : 0 }}>
-                <b>{noCoord.length} code(s) found but missing coordinates</b>, can't be placed on a route:{' '}
+                <b>{noCoord.length} code(s) missing coordinates</b>:{' '}
                 {noCoord.map(u => <code key={u.code} className={styles.code}>{u.code}</code>)}
               </div>
             )}
@@ -738,7 +856,7 @@ function PlanResults({
       {plan.startLocInvalid && (
         <div className={`${styles.alert} ${styles.alertAmber}`}>
           <AlertIcon />
-          <div><b>Start location not recognized:</b> "{plan.startLocRaw}" didn't match a site code or "lat,lng" pair — routes were built without a fixed start point.</div>
+          <div><b>Start location not recognized:</b> "{plan.startLocRaw}" — routes built without a fixed start point.</div>
         </div>
       )}
 
@@ -758,24 +876,56 @@ function PlanResults({
 
       {/* Toolbar */}
       <div className={styles.toolbar}>
-        <button className={styles.copyBtn} onClick={onCopyText}>
-          <CopyIcon /> {copyLabel}
-        </button>
-        <div className={styles.viewTabs}>
-          <button
-            className={`${styles.viewTab} ${resultsView === 'list' ? styles.viewTabActive : ''}`}
-            onClick={() => onSwitchView('list')}
-          >List</button>
-          <button
-            className={`${styles.viewTab} ${resultsView === 'map' ? styles.viewTabActive : ''}`}
-            onClick={() => onSwitchView('map')}
-          >Map</button>
+        <div className={styles.toolbarLeft}>
+          <button className={styles.copyBtn} onClick={onCopyText}>
+            <CopyIcon /> {copyLabel}
+          </button>
+        </div>
+        <div className={styles.toolbarRight}>
+          <div className={styles.viewTabs}>
+            <button
+              className={`${styles.viewTab} ${resultsView === 'list' ? styles.viewTabActive : ''}`}
+              onClick={() => onSwitchView('list')}
+            >
+              <ListIcon /> List
+            </button>
+            <button
+              className={`${styles.viewTab} ${resultsView === 'map' ? styles.viewTabActive : ''}`}
+              onClick={() => onSwitchView('map')}
+            >
+              <MapIcon /> Map
+            </button>
+          </div>
         </div>
       </div>
 
       {/* List view */}
       <div style={{ display: resultsView === 'list' ? undefined : 'none' }}>
+        {/* Team tabs */}
+        {plan.numTeams > 1 && (
+          <div className={styles.teamTabs}>
+            {plan.teamsPlan.map((team, ti) => {
+              const count = team.days.reduce((s, d) => s + d.stops.length, 0);
+              const color = TEAM_COLORS[ti % TEAM_COLORS.length];
+              const isActive = activeTeam === ti;
+              return (
+                <button
+                  key={ti}
+                  className={`${styles.teamTab} ${isActive ? styles.teamTabActive : ''}`}
+                  style={isActive ? { background: color, borderColor: color } : {}}
+                  onClick={() => onSelectTeam(ti)}
+                >
+                  <span className={styles.teamTabDot} style={{ background: isActive ? '#fff' : color }} />
+                  {team.name}
+                  <span className={styles.teamTabCount}>· {count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {plan.teamsPlan.map((team, ti) => {
+          if (plan.numTeams > 1 && ti !== activeTeam) return null;
           const totalKm = team.days.reduce((s, d) => s + d.distanceKm, 0);
           const totalMin = team.days.reduce((s, d) => s + d.minutes, 0);
           const totalStops = team.days.reduce((s, d) => s + d.stops.length, 0);
@@ -790,19 +940,21 @@ function PlanResults({
                 <div className={styles.teamTotals}>
                   <span><b>{totalStops}</b> sites</span>
                   <span><b>{totalKm.toFixed(1)}</b> km</span>
-                  <span><b>{formatMin(totalMin)}</b> driving</span>
+                  <span><b>{formatMin(totalMin)}</b> drive</span>
                 </div>
               </div>
               {!team.days.length && (
-                <div className={styles.dayWrap}>
-                  <div className={styles.empty} style={{ padding: 20 }}>No sites assigned to this team.</div>
-                </div>
+                <div className={styles.noSites}>No sites assigned to this team.</div>
               )}
               {team.days.map(day => (
-                <div key={day.dayNum} className={styles.dayWrap}>
+                <div key={day.dayNum} className={styles.dayCard}>
                   <div className={styles.dayHead}>
-                    Day {day.dayNum}
-                    <span className={styles.dayMeta}>· {day.stops.length} sites · {day.distanceKm.toFixed(1)} km · {formatMin(day.minutes)} driving</span>
+                    <span className={styles.dayTitle}>Day {day.dayNum}</span>
+                    <span className={styles.dayMeta}>
+                      <span className={styles.dayMetaChip}>{day.stops.length} sites</span>
+                      <span className={styles.dayMetaChip}>{day.distanceKm.toFixed(1)} km</span>
+                      <span className={styles.dayMetaChip}>{formatMin(day.minutes)} drive</span>
+                    </span>
                   </div>
                   <div className={styles.timeline}>
                     {day.stops.map((stop, si) => {
@@ -810,9 +962,9 @@ function PlanResults({
                       const isVeryFirst = day.dayNum === 1 && si === 0;
                       let legLabel: string;
                       if (isVeryFirst && !plan.startLoc) legLabel = 'Route start';
-                      else if (isVeryFirst && plan.startLoc) legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} drive from ${plan.startLoc._label || 'start location'}`;
-                      else if (si === 0) legLabel = stop.legMin > 0 ? `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} drive continuing from previous day` : 'Continues from previous day';
-                      else legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} drive from previous stop`;
+                      else if (isVeryFirst && plan.startLoc) legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from ${plan.startLoc._label || 'start'}`;
+                      else if (si === 0) legLabel = stop.legMin > 0 ? `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} continuing` : 'Continues from previous day';
+                      else legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from prev`;
                       return (
                         <div key={si} className={styles.stop}>
                           <div className={`${styles.stopDot} ${s._priority ? styles.stopDotPriority : ''}`} style={{ background: color, borderColor: color }}>
@@ -904,7 +1056,7 @@ function PinIcon() {
 
 function CopyIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <rect x="9" y="9" width="13" height="13" rx="2"/>
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
     </svg>
@@ -913,7 +1065,7 @@ function CopyIcon() {
 
 function AlertIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
       <path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="10"/>
     </svg>
   );
@@ -921,9 +1073,52 @@ function AlertIcon() {
 
 function ClockAlertIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, marginTop: 1 }}>
       <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
     </svg>
   );
 }
 
+function CheckSmIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function ListIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+    </svg>
+  );
+}
+
+function MapIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+      <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+    </svg>
+  );
+}
+
+function MapEmptyIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+      <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+    </svg>
+  );
+}
+
+function SpinnerInlineIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+      style={{ animation: 'spin 0.75s linear infinite' }}>
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" strokeLinecap="round"/>
+    </svg>
+  );
+}
