@@ -243,7 +243,7 @@ function splitIntoDays(ordered: Site[], numDays: number, dailyMin: number, speed
   return { days: result, leftover };
 }
 
-function rebalanceLeftovers(teamsPlan: TeamPlan[], numDays: number, dailyMin: number, speed: number): void {
+function rebalanceLeftovers(teamsPlan: TeamPlan[], numDays: number, dailyMin: number, speed: number, maxSitesPerTeam: number): void {
   const pool: Site[] = [];
   teamsPlan.forEach(t => { pool.push(...t.leftover); t.leftover = []; });
   if (!pool.length) return;
@@ -253,6 +253,14 @@ function rebalanceLeftovers(teamsPlan: TeamPlan[], numDays: number, dailyMin: nu
 
     for (let ti = 0; ti < teamsPlan.length; ti++) {
       const team = teamsPlan[ti];
+      // Respect the Max Sites/Team cap here too — otherwise a leftover site
+      // could get reinserted into a team that's already at its limit, which
+      // would silently violate the constraint the team count was expanded
+      // to satisfy in the first place.
+      if (maxSitesPerTeam > 0) {
+        const currentCount = team.days.reduce((s, d) => s + d.stops.length, 0);
+        if (currentCount >= maxSitesPerTeam) continue;
+      }
       if (team.days.length > 0) {
         const lastDay = team.days[team.days.length - 1];
         const lastStop = lastDay.stops[lastDay.stops.length - 1];
@@ -347,7 +355,7 @@ function generatePlan(
     return { name: `Team ${idx + 1}`, days: split.days, leftover: split.leftover };
   });
 
-  rebalanceLeftovers(teamsPlan, numDays, dailyMin, speed);
+  rebalanceLeftovers(teamsPlan, numDays, dailyMin, speed, maxSitesPerTeam);
 
   const allLeftover: (Site & { team: string })[] = [];
   teamsPlan.forEach(t => t.leftover.forEach(s => allLeftover.push({ ...s, team: t.name })));
