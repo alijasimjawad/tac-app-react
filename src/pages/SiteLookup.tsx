@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { ensureSectionsLoaded, getSections } from '../lib/sectionsCache';
+import { ensureSectionsLoaded, getSections, type SectionMeta } from '../lib/sectionsCache';
 import { PROJ_NAMES, SEC_LABELS } from './NetworkScopes';
 import styles from './SiteLookup.module.css';
 
@@ -60,9 +61,9 @@ function slBadgeText(h: string, val: string): string {
 
 function slStatClass(val: string): string {
   const v = String(val ?? '').trim().toLowerCase();
-  if (/^(done|complete|completed|pass|passed|approved|ok|active|yes|integrated)$/.test(v)) return styles.badgeGreen;
+  if (/^(done|complete|completed|pass|passed|approved|ok|active|yes|integrated|accepted)$/.test(v)) return styles.badgeGreen;
   if (/^(pending|progress|in progress|in-progress|hold|on hold|scheduled)$/.test(v)) return styles.badgeAmber;
-  if (/^(fail|failed|rejected|cancelled|canceled|no|blocked)$/.test(v)) return styles.badgeRed;
+  if (/^(fail|failed|rejected|cancelled|canceled|no|blocked|not integrated)$/.test(v)) return styles.badgeRed;
   return styles.badgeSlate;
 }
 
@@ -95,6 +96,43 @@ function slRecordText(result: MatchResult, q: string): string {
   return lines.join('\n');
 }
 
+function slGetSiteId(result: MatchResult, fallback: string): string {
+  const idx = result.headers.findIndex(h => /^site.{0,3}id$/i.test(h));
+  const hdr = idx >= 0 ? result.headers[idx] : result.headers[0] ?? '';
+  return (result.rowData[hdr] ?? fallback).trim() || fallback;
+}
+
+function slGetGov(result: MatchResult): string {
+  const h = result.headers.find(h => /\bgov/i.test(h));
+  const v = h ? (result.rowData[h] ?? '').trim() : '';
+  return v || '—';
+}
+
+function slGetFields(result: MatchResult) {
+  const available: Array<{ h: string; val: string; p: number; i: number }> = [];
+  result.headers.forEach((h, i) => {
+    const val = (result.rowData[h] ?? '').trim();
+    if (/^site.{0,3}(id|code)$/i.test(h) || val === '') return;
+    available.push({ h, val, p: slPriority(h), i });
+  });
+  available.sort((a, b) => a.p - b.p || a.i - b.i);
+  const statFields  = available.filter(f => /status|atp|integrat/i.test(f.h));
+  const plainFields = available.filter(f => !/status|atp|integrat/i.test(f.h));
+  return { available, statFields, plainFields };
+}
+
+function slMatchesSiteTag(raw: string | null | undefined, siteId: string): boolean {
+  const tags = String(raw ?? '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  return tags.includes(siteId.trim().toLowerCase());
+}
+
+function fmtDate(d?: string | null): string {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface MatchResult {
@@ -105,9 +143,67 @@ interface MatchResult {
   rowData: Record<string, string>;
 }
 
-// ── Skeleton card ─────────────────────────────────────────────────────────────
+interface SlActivity {
+  id: string;
+  date: string;
+  activity_type: string;
+  status: string;
+  notes: string | null;
+  team_member_names: string[] | null;
+  created_by: string;
+  site_id: string;
+}
 
-function SkeletonCard() {
+interface SlTrip {
+  id: string;
+  date: string;
+  status: string;
+  notes: string | null;
+  team_member_names: string[] | null;
+  created_by: string;
+  site_id: string;
+}
+
+interface SlExpense {
+  id: string;
+  activity_date: string;
+  description: string | null;
+  total_amount: number | null;
+  status: string;
+  site_id: string | null;
+}
+
+type TabKey = 'overview' | 'activity' | 'technical' | 'trips' | 'expenses';
+
+// ── Cross-reference data loader ─────────────────────────────────────────────
+
+async function loadSiteCrossRefs(siteId: string, canViewExpenses: boolean) {
+  const [actRes, tripRes, expRes] = await Promise.all([
+    supabase.from('daily_activities').select('id, date, activity_type, status, notes, team_member_names, created_by, site_id').ilike('site_id', `%${siteId}%`),
+    supabase.from('field_trips').select('id, date, status, notes, team_member_names, created_by, site_id').ilike('site_id', `%${siteId}%`),
+    canViewExpenses
+      ? supabase.from('expense_claims').select('id, activity_date, description, total_amount, status, site_id').ilike('site_id', `%${siteId}%`)
+      : Promise.resolve({ data: [] as SlExpense[], error: null }),
+  ]);
+
+  const activities = ((actRes.data ?? []) as SlActivity[])
+    .filter(a => slMatchesSiteTag(a.site_id, siteId))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const trips = ((tripRes.data ?? []) as SlTrip[])
+    .filter(t => slMatchesSiteTag(t.site_id, siteId))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const expenses = ((expRes.data ?? []) as SlExpense[])
+    .filter(e => slMatchesSiteTag(e.site_id, siteId))
+    .sort((a, b) => (b.activity_date || '').localeCompare(a.activity_date || ''));
+
+  return { activities, trips, expenses };
+}
+
+// ── Skeleton (summary) ───────────────────────────────────────────────────────
+
+function SkeletonSummary() {
   return (
     <div className={styles.skeletonCard}>
       <div className={styles.skeletonHead}>
@@ -116,6 +212,11 @@ function SkeletonCard() {
           <div className={`${styles.skeletonPulse} ${styles.skeletonTitlePh}`} />
           <div className={`${styles.skeletonPulse} ${styles.skeletonSubPh}`} />
         </div>
+      </div>
+      <div className={styles.skeletonStats}>
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} className={`${styles.skeletonPulse} ${styles.skeletonStatPh}`} />
+        ))}
       </div>
       <div className={styles.skeletonBody}>
         {[0, 1, 2, 3].map(i => (
@@ -129,43 +230,101 @@ function SkeletonCard() {
   );
 }
 
-// ── Site card (with expand/collapse) ─────────────────────────────────────────
+// ── Stat mini-card ───────────────────────────────────────────────────────────
 
-function SiteCard({
+function StatMini({ icon, label, value, cls }: { icon: React.ReactNode; label: string; value: string; cls?: string }) {
+  return (
+    <div className={styles.statMini}>
+      <div className={`${styles.statMiniIcon} ${cls ?? ''}`}>{icon}</div>
+      <div className={styles.statMiniText}>
+        <span className={styles.statMiniLabel}>{label}</span>
+        <span className={styles.statMiniValue}>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Definition list (key/value grid) reused across tabs ──────────────────────
+
+function FieldGrid({ fields }: { fields: Array<{ h: string; val: string }> }) {
+  if (fields.length === 0) {
+    return <div className={styles.tabEmpty}>No additional fields recorded for this site.</div>;
+  }
+  return (
+    <div className={styles.cardBody}>
+      {fields.map(({ h, val }) => (
+        <div key={h} className={styles.field}>
+          <span className={styles.fieldK}>{slNormalizeLabel(h)}</span>
+          <span className={styles.fieldV}>{slDisplayValue(val)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Site summary (header + stats + tabs) ─────────────────────────────────────
+
+function SiteSummary({
   result,
   lastQuery,
   onShare,
   onExport,
+  onOpenProject,
 }: {
   result: MatchResult;
   lastQuery: string;
   onShare: () => void;
   onExport: () => void;
+  onOpenProject: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const { hasPerm } = useAuth();
+  const canViewExpenses = hasPerm('view_my_expenses');
 
-  const available: Array<{ h: string; val: string; p: number; i: number }> = [];
-  result.headers.forEach((h, i) => {
-    const val = (result.rowData[h] ?? '').trim();
-    if (/^site.{0,3}(id|code)$/i.test(h) || val === '') return;
-    available.push({ h, val, p: slPriority(h), i });
-  });
-  available.sort((a, b) => a.p - b.p || a.i - b.i);
+  const [activeTab, setActiveTab]     = useState<TabKey>('overview');
+  const [detailsLoading, setDetailsLoading] = useState(true);
+  const [activities, setActivities]   = useState<SlActivity[]>([]);
+  const [trips, setTrips]             = useState<SlTrip[]>([]);
+  const [expenses, setExpenses]       = useState<SlExpense[]>([]);
 
-  const statFields  = available.filter(f => /status|atp|integrat/i.test(f.h));
-  const plainFields = available.filter(f => !/status|atp|integrat/i.test(f.h));
+  const siteId = slGetSiteId(result, lastQuery);
+  const { statFields, plainFields, available } = useMemo(() => slGetFields(result), [result]);
+  const gov = slGetGov(result);
 
-  const COLLAPSED = 4;
-  const visible   = expanded ? plainFields : plainFields.slice(0, COLLAPSED);
-  const hasMore   = plainFields.length > COLLAPSED;
+  useEffect(() => {
+    let cancelled = false;
+    setActiveTab('overview');
+    setDetailsLoading(true);
+    loadSiteCrossRefs(siteId, canViewExpenses)
+      .then(r => { if (!cancelled) { setActivities(r.activities); setTrips(r.trips); setExpenses(r.expenses); } })
+      .finally(() => { if (!cancelled) setDetailsLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId, canViewExpenses]);
 
-  const siteIdx   = result.headers.findIndex(h => /^site.{0,3}id$/i.test(h));
-  const siteHdr   = siteIdx >= 0 ? result.headers[siteIdx] : result.headers[0] ?? '';
-  const siteId    = (result.rowData[siteHdr] ?? lastQuery).trim() || lastQuery;
+  const lastActivity = activities[0];
+  const primaryStat = statFields[0];
+
+  const TABS: Array<{ key: TabKey; label: string; show: boolean }> = [
+    { key: 'overview',   label: 'Overview',            show: true },
+    { key: 'activity',   label: 'Activity History',    show: activities.length > 0 },
+    { key: 'technical',  label: 'Technical Information', show: available.length > 0 },
+    { key: 'trips',      label: 'Trips',                show: trips.length > 0 },
+    { key: 'expenses',   label: 'Expenses',             show: canViewExpenses && expenses.length > 0 },
+  ];
+  const visibleTabs = TABS.filter(t => t.show);
+
+  function onTabKeyDown(e: React.KeyboardEvent, idx: number) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    const next = (idx + dir + visibleTabs.length) % visibleTabs.length;
+    setActiveTab(visibleTabs[next].key);
+    (document.getElementById(`sl-tab-${visibleTabs[next].key}`) as HTMLButtonElement | null)?.focus();
+  }
 
   return (
-    <div className={`${styles.card} ${slWorkTypeAccentClass(result.secLabel)}`}>
-      <div className={styles.cardHead}>
+    <div className={`${styles.summaryCard} ${slWorkTypeAccentClass(result.secLabel)}`}>
+      <div className={styles.summaryHead}>
         <div className={styles.cardIconWrap}>
           <BuildingIcon />
         </div>
@@ -175,57 +334,221 @@ function SiteCard({
             <span className={styles.cardProj}>{PROJ_NAMES[result.proj] || result.proj}</span>
             <span className={styles.cardBreadSep}>›</span>
             <span className={styles.cardSec}>{result.secLabel}</span>
+            {primaryStat && (
+              <span className={`${styles.badge} ${slStatClass(primaryStat.val)}`}>
+                {slBadgeText(primaryStat.h, primaryStat.val)}
+              </span>
+            )}
           </div>
         </div>
-        <div className={styles.cardActions}>
-          {statFields.length > 0 && (
-            <div className={styles.badges}>
-              {statFields.map(({ h, val }) => (
-                <span key={h} className={`${styles.badge} ${slStatClass(val)}`}>
-                  {slBadgeText(h, val)}
-                </span>
-              ))}
-            </div>
-          )}
-          <button
-            className={styles.actBtn}
-            title="Copy to clipboard"
-            aria-label="Share site record"
-            onClick={onShare}
-          >
+        <div className={styles.summaryActions}>
+          <button className={styles.primaryActBtn} onClick={onOpenProject}>
+            <ExternalLinkIcon /> Open Project
+          </button>
+          <button className={styles.actBtn} title="Copy to clipboard" aria-label="Share site record" onClick={onShare}>
             <ShareIcon />
           </button>
-          <button
-            className={styles.actBtn}
-            title="Download as .txt"
-            aria-label="Download site report"
-            onClick={onExport}
-          >
+          <button className={styles.actBtn} title="Download as .txt" aria-label="Download site report" onClick={onExport}>
             <DownloadIcon />
           </button>
         </div>
       </div>
 
-      {visible.length > 0 && (
-        <div className={styles.cardBody}>
-          {visible.map(({ h, val }) => (
-            <div key={h} className={styles.field}>
-              <span className={styles.fieldK}>{slNormalizeLabel(h)}</span>
-              <span className={styles.fieldV}>{slDisplayValue(val)}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className={styles.statRow}>
+        <StatMini icon={<PinIcon />} label="Governorate" value={gov} />
+        {statFields.slice(0, 2).map(f => (
+          <StatMini
+            key={f.h}
+            icon={<CheckCircleIcon />}
+            cls={slStatClass(f.val)}
+            label={slNormalizeLabel(f.h)}
+            value={slDisplayValue(f.val)}
+          />
+        ))}
+        <StatMini
+          icon={<ClockIcon />}
+          label="Last Activity"
+          value={detailsLoading ? '…' : (lastActivity ? fmtDate(lastActivity.date) : 'No recorded activity')}
+        />
+        <StatMini
+          icon={<TeamIcon />}
+          label="Assigned Team"
+          value={detailsLoading ? '…' : ((lastActivity?.team_member_names ?? []).join(', ') || '—')}
+        />
+      </div>
 
-      {hasMore && (
-        <button className={styles.expandBtn} onClick={() => setExpanded(e => !e)}>
-          {expanded ? (
-            <><ChevronUpIcon /> Show less</>
-          ) : (
-            <><ChevronDownIcon /> Show {plainFields.length - COLLAPSED} more fields</>
-          )}
-        </button>
-      )}
+      <div className={styles.tabBar} role="tablist" aria-label="Site information">
+        {visibleTabs.map((t, idx) => (
+          <button
+            key={t.key}
+            id={`sl-tab-${t.key}`}
+            role="tab"
+            aria-selected={activeTab === t.key}
+            aria-controls={`sl-panel-${t.key}`}
+            tabIndex={activeTab === t.key ? 0 : -1}
+            className={`${styles.tabBtn} ${activeTab === t.key ? styles.tabBtnActive : ''}`}
+            onClick={() => setActiveTab(t.key)}
+            onKeyDown={e => onTabKeyDown(e, idx)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.tabPanel} role="tabpanel" id={`sl-panel-${activeTab}`} aria-labelledby={`sl-tab-${activeTab}`}>
+        {activeTab === 'overview' && (
+          <div className={styles.overviewGrid}>
+            <div className={styles.overviewCol}>
+              <h3 className={styles.tabSectionTitle}>Site Details</h3>
+              <FieldGrid fields={plainFields} />
+            </div>
+            <div className={styles.overviewCol}>
+              <h3 className={styles.tabSectionTitle}>Delivery Status</h3>
+              {statFields.length === 0 ? (
+                <div className={styles.tabEmpty}>No status fields recorded for this site.</div>
+              ) : (
+                <div className={styles.badges}>
+                  {statFields.map(f => (
+                    <span key={f.h} className={`${styles.badge} ${styles.badgeLg} ${slStatClass(f.val)}`}>
+                      {slBadgeText(f.h, f.val)}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <h3 className={`${styles.tabSectionTitle} ${styles.tabSectionTitleSpaced}`}>Assignment</h3>
+              {detailsLoading ? (
+                <div className={styles.tabEmpty}>Loading…</div>
+              ) : lastActivity ? (
+                <div className={styles.cardBody}>
+                  <div className={styles.field}>
+                    <span className={styles.fieldK}>Last Team</span>
+                    <span className={styles.fieldV}>{(lastActivity.team_member_names ?? []).join(', ') || '—'}</span>
+                  </div>
+                  <div className={styles.field}>
+                    <span className={styles.fieldK}>Last Activity</span>
+                    <span className={styles.fieldV}>{lastActivity.activity_type || '—'}</span>
+                  </div>
+                  <div className={styles.field}>
+                    <span className={styles.fieldK}>Date</span>
+                    <span className={styles.fieldV}>{fmtDate(lastActivity.date)}</span>
+                  </div>
+                  <div className={styles.field}>
+                    <span className={styles.fieldK}>Issued By</span>
+                    <span className={styles.fieldV}>{lastActivity.created_by || '—'}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.tabEmpty}>No recorded activity yet for this site.</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'activity' && (
+          <div className={styles.tableWrap}>
+            <table className={styles.dataTable}>
+              <thead>
+                <tr>
+                  <th>Date</th><th>Activity</th><th>Status</th><th>Team</th><th>Issued By</th><th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activities.map(a => (
+                  <tr key={a.id}>
+                    <td>{fmtDate(a.date)}</td>
+                    <td>{a.activity_type || '—'}</td>
+                    <td><span className={`${styles.badge} ${slStatClass(a.status)}`}>{a.status || '—'}</span></td>
+                    <td>{(a.team_member_names ?? []).join(', ') || '—'}</td>
+                    <td>{a.created_by || '—'}</td>
+                    <td className={styles.notesCell}>{a.notes || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'technical' && <FieldGrid fields={available} />}
+
+        {activeTab === 'trips' && (
+          <div className={styles.tableWrap}>
+            <table className={styles.dataTable}>
+              <thead>
+                <tr><th>Date</th><th>Status</th><th>Team</th><th>Issued By</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                {trips.map(t => (
+                  <tr key={t.id}>
+                    <td>{fmtDate(t.date)}</td>
+                    <td><span className={`${styles.badge} ${slStatClass(t.status)}`}>{t.status || '—'}</span></td>
+                    <td>{(t.team_member_names ?? []).join(', ') || '—'}</td>
+                    <td>{t.created_by || '—'}</td>
+                    <td className={styles.notesCell}>{t.notes || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'expenses' && (
+          <div className={styles.tableWrap}>
+            <table className={styles.dataTable}>
+              <thead>
+                <tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {expenses.map(e => (
+                  <tr key={e.id}>
+                    <td>{fmtDate(e.activity_date)}</td>
+                    <td>{e.description || '—'}</td>
+                    <td>{typeof e.total_amount === 'number' ? e.total_amount.toLocaleString() : '—'}</td>
+                    <td><span className={`${styles.badge} ${slStatClass(e.status)}`}>{e.status || '—'}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Multi-match results table ────────────────────────────────────────────────
+
+function ResultsTable({ results, onView }: { results: MatchResult[]; onView: (r: MatchResult) => void }) {
+  return (
+    <div className={styles.tableWrap}>
+      <table className={styles.dataTable}>
+        <thead>
+          <tr>
+            <th>Site</th><th>Project</th><th>Section</th><th>Governorate</th><th>Status</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((r, idx) => {
+            const { statFields } = slGetFields(r);
+            const primary = statFields[0];
+            return (
+              <tr key={idx}>
+                <td className={styles.siteIdCell}>{slGetSiteId(r, '—')}</td>
+                <td>{PROJ_NAMES[r.proj] || r.proj}</td>
+                <td>{r.secLabel}</td>
+                <td>{slGetGov(r)}</td>
+                <td>
+                  {primary ? (
+                    <span className={`${styles.badge} ${slStatClass(primary.val)}`}>{slBadgeText(primary.h, primary.val)}</span>
+                  ) : '—'}
+                </td>
+                <td>
+                  <button className={styles.viewBtn} onClick={() => onView(r)}>View</button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -234,6 +557,7 @@ function SiteCard({
 
 export default function SiteLookup() {
   const { hasPerm } = useAuth();
+  const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [query,           setQuery]           = useState('');
@@ -242,6 +566,10 @@ export default function SiteLookup() {
   const [lastQuery,       setLastQuery]       = useState('');
   const [projFilter,      setProjFilter]      = useState<string | null>(null);
   const [error,           setError]           = useState<string | null>(null);
+  const [selected,        setSelected]        = useState<MatchResult | null>(null);
+  const [sectionsMeta,    setSectionsMeta]    = useState<SectionMeta[]>([]);
+  const [preProj,         setPreProj]         = useState<string>('');
+  const [preSec,          setPreSec]          = useState<string>('');
   const [recentSearches,  setRecentSearches]  = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('tac_sl_recent') ?? '[]') as string[]; }
     catch { return []; }
@@ -250,6 +578,36 @@ export default function SiteLookup() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { ensureSectionsLoaded().then(() => setSectionsMeta(getSections())); }, []);
+
+  const permittedSections = useMemo(
+    () => sectionsMeta.filter(s => !s.is_deleted && hasPerm(`view_${s.project_name}`)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sectionsMeta]
+  );
+  const projectOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Array<{ value: string; label: string }> = [];
+    for (const s of permittedSections) {
+      if (seen.has(s.project_name)) continue;
+      seen.add(s.project_name);
+      list.push({ value: s.project_name, label: PROJ_NAMES[s.project_name] || s.project_name });
+    }
+    return list.sort((a, b) => a.label.localeCompare(b.label));
+  }, [permittedSections]);
+  const sectionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Array<{ value: string; label: string }> = [];
+    for (const s of permittedSections) {
+      if (preProj && s.project_name !== preProj) continue;
+      if (seen.has(s.section_name)) continue;
+      seen.add(s.section_name);
+      list.push({ value: s.section_name, label: s.section_label ?? SEC_LABELS[s.section_name] ?? s.section_name });
+    }
+    return list.sort((a, b) => a.label.localeCompare(b.label));
+  }, [permittedSections, preProj]);
+
+  const filtersActive = preProj !== '' || preSec !== '';
 
   function showToast(msg: string, ok: boolean) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -258,9 +616,11 @@ export default function SiteLookup() {
   }
 
   function saveRecent(q: string) {
-    const updated = [q, ...recentSearches.filter(r => r !== q)].slice(0, 5);
-    setRecentSearches(updated);
-    localStorage.setItem('tac_sl_recent', JSON.stringify(updated));
+    setRecentSearches(prev => {
+      const updated = [q, ...prev.filter(r => r !== q)].slice(0, 5);
+      localStorage.setItem('tac_sl_recent', JSON.stringify(updated));
+      return updated;
+    });
   }
 
   function clearRecent() {
@@ -277,10 +637,16 @@ export default function SiteLookup() {
     setLastQuery(q);
     setError(null);
     setProjFilter(null);
+    setSelected(null);
 
     try {
       await ensureSectionsLoaded();
-      const sections = getSections().filter(s => !s.is_deleted && hasPerm(`view_${s.project_name}`));
+      const sections = getSections().filter(s =>
+        !s.is_deleted &&
+        hasPerm(`view_${s.project_name}`) &&
+        (!preProj || s.project_name === preProj) &&
+        (!preSec || s.section_name === preSec)
+      );
       const sectionIds = sections.map(s => s.id).filter(Boolean);
 
       const rowsBySecId: Record<string, Record<string, string>[]> = {};
@@ -324,6 +690,7 @@ export default function SiteLookup() {
       }
 
       setResults(matches);
+      if (matches.length === 1) setSelected(matches[0]);
       saveRecent(q);
     } catch {
       setError('Search failed. Please check your connection and try again.');
@@ -331,6 +698,19 @@ export default function SiteLookup() {
     } finally {
       setSearching(false);
     }
+  }
+
+  function clearSearch() {
+    setQuery('');
+    setResults(null);
+    setSelected(null);
+    setError(null);
+    inputRef.current?.focus();
+  }
+
+  function resetFilters() {
+    setPreProj('');
+    setPreSec('');
   }
 
   function shareRecord(result: MatchResult) {
@@ -356,6 +736,10 @@ export default function SiteLookup() {
     a.remove();
     URL.revokeObjectURL(url);
     showToast('Record exported', true);
+  }
+
+  function openProject(result: MatchResult) {
+    navigate(`/network-scopes/${result.proj}/${result.sec}`);
   }
 
   // Derived state
@@ -400,9 +784,40 @@ export default function SiteLookup() {
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } }}
               aria-label="Search sites"
             />
+            {query && (
+              <button className={styles.clearInputBtn} onClick={clearSearch} aria-label="Clear search">
+                <XIcon />
+              </button>
+            )}
           </div>
+
+          <select
+            className={styles.filterSelect}
+            value={preProj}
+            onChange={e => { setPreProj(e.target.value); setPreSec(''); }}
+            aria-label="Filter by project"
+          >
+            <option value="">All Projects</option>
+            {projectOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+
+          <select
+            className={styles.filterSelect}
+            value={preSec}
+            onChange={e => setPreSec(e.target.value)}
+            aria-label="Filter by section"
+            disabled={sectionOptions.length === 0}
+          >
+            <option value="">All Sections</option>
+            {sectionOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+
+          {filtersActive && (
+            <button className={styles.clearFiltersBtn} onClick={resetFilters}>Clear Filters</button>
+          )}
+
           <button className={styles.searchBtn} onClick={() => runSearch()} disabled={searching}>
-            {searching ? 'Searching…' : 'Search'}
+            {searching ? <><SpinnerIcon /> Searching…</> : 'Search'}
           </button>
         </div>
 
@@ -425,22 +840,26 @@ export default function SiteLookup() {
       {/* Results area */}
       <div className={styles.resultsArea}>
         {searching ? (
-          <div className={styles.results}>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
+          <SkeletonSummary />
         ) : error ? (
           <div className={styles.stateBox}>
             <div className={styles.stateIcon}><ErrorIcon /></div>
             <div className={`${styles.stateTitle} ${styles.stateTitleErr}`}>Search failed</div>
             <div className={styles.stateSub}>{error}</div>
+            <button className={styles.retryBtn} onClick={() => runSearch(lastQuery)}>Retry</button>
           </div>
         ) : results === null ? (
           <div className={styles.stateBox}>
-            <div className={styles.stateIcon}><SearchBigIcon /></div>
-            <div className={styles.stateTitle}>Search for a site</div>
-            <div className={styles.stateSub}>Enter a site ID, governorate, or project name to find matching records.</div>
+            <div className={styles.stateIconLg}><SearchBigIcon /></div>
+            <div className={styles.stateTitleLg}>Find any network site</div>
+            <div className={styles.stateSub}>Search by site ID, governorate, or project name to view its full record, activity history, and status.</div>
+            {projectOptions.length > 0 && (
+              <div className={styles.exampleChips}>
+                {projectOptions.slice(0, 4).map(p => (
+                  <button key={p.value} className={styles.exampleChip} onClick={() => runSearch(p.label)}>{p.label}</button>
+                ))}
+              </div>
+            )}
           </div>
         ) : results.length === 0 ? (
           <div className={styles.stateBox}>
@@ -449,10 +868,16 @@ export default function SiteLookup() {
             <div className={styles.stateSub}>
               No site records matched <strong>"{lastQuery}"</strong>. Try a different search term.
             </div>
+            <div className={styles.noResultsActions}>
+              <button className={styles.retryBtn} onClick={clearSearch}>Clear Search</button>
+              {filtersActive && (
+                <button className={styles.retryBtn} onClick={() => { resetFilters(); runSearch(lastQuery); }}>Reset Filters</button>
+              )}
+            </div>
           </div>
         ) : (
           <>
-            <div className={styles.resultsHeader}>
+            <div className={styles.resultsHeader} aria-live="polite">
               <span className={styles.resultsSummary}>
                 {filteredResults.length} record{filteredResults.length === 1 ? '' : 's'}
                 {projFilter ? ` in ${PROJ_NAMES[projFilter] || projFilter}` : ''} for "{lastQuery}"
@@ -483,17 +908,24 @@ export default function SiteLookup() {
               )}
             </div>
 
-            <div className={styles.results}>
-              {filteredResults.map((result, idx) => (
-                <SiteCard
-                  key={idx}
-                  result={result}
+            {selected ? (
+              <>
+                {filteredResults.length > 1 && (
+                  <button className={styles.backBtn} onClick={() => setSelected(null)}>
+                    <ArrowLeftIcon /> Back to results
+                  </button>
+                )}
+                <SiteSummary
+                  result={selected}
                   lastQuery={lastQuery}
-                  onShare={() => shareRecord(result)}
-                  onExport={() => exportRecord(result)}
+                  onShare={() => shareRecord(selected)}
+                  onExport={() => exportRecord(selected)}
+                  onOpenProject={() => openProject(selected)}
                 />
-              ))}
-            </div>
+              </>
+            ) : (
+              <ResultsTable results={filteredResults} onView={setSelected} />
+            )}
           </>
         )}
       </div>
@@ -520,7 +952,7 @@ function SearchIcon() {
 
 function SearchBigIcon() {
   return (
-    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="11" cy="11" r="8"/>
       <line x1="21" y1="21" x2="16.65" y2="16.65"/>
     </svg>
@@ -568,22 +1000,6 @@ function ClockIcon() {
   );
 }
 
-function ChevronDownIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="6 9 12 15 18 9"/>
-    </svg>
-  );
-}
-
-function ChevronUpIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="18 15 12 9 6 15"/>
-    </svg>
-  );
-}
-
 function EmptyIcon() {
   return (
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -599,6 +1015,72 @@ function ErrorIcon() {
       <circle cx="12" cy="12" r="10"/>
       <line x1="12" y1="8" x2="12" y2="12"/>
       <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="18" y1="6" x2="6" y2="18"/>
+      <line x1="6" y1="6" x2="18" y2="18"/>
+    </svg>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg className={styles.spinner} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+      <circle cx="12" cy="12" r="9" opacity=".25"/>
+      <path d="M21 12a9 9 0 0 0-9-9"/>
+    </svg>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+      <polyline points="15 3 21 3 21 9"/>
+      <line x1="10" y1="14" x2="21" y2="3"/>
+    </svg>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+      <circle cx="12" cy="10" r="3"/>
+    </svg>
+  );
+}
+
+function CheckCircleIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10"/>
+      <polyline points="8 12 11 15 16 9"/>
+    </svg>
+  );
+}
+
+function TeamIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="19" y1="12" x2="5" y2="12"/>
+      <polyline points="12 19 5 12 12 5"/>
     </svg>
   );
 }
