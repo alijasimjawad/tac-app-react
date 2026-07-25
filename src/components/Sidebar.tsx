@@ -13,6 +13,7 @@ import { FinanceIcon } from '../pages/FinTeam';
 import { PROJ_NAMES, SEC_LABELS } from '../pages/NetworkScopes';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import type { SectionMeta } from '../lib/sectionsCache';
+import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN } from '../lib/permissionsCatalog';
 
 
 const DEFAULT_SECTIONS: Record<string, string[]> = {
@@ -513,17 +514,7 @@ interface NavGroupProps {
 function FinanceNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const { hasPerm } = useAuth();
 
-  const FIN_LINKS = [
-    ...(hasPerm('view_fin_team')      ? [{ to: '/finance/team',              label: 'Team Members' }]      : []),
-    ...(hasPerm('view_fin_revenue')   ? [{ to: '/finance/revenue',           label: 'Revenue' }]           : []),
-    ...(hasPerm('view_fin_genexp')    ? [{ to: '/finance/general-expenses',  label: 'General Expenses' }]  : []),
-    ...(hasPerm('view_fin_projexp')   ? [{ to: '/finance/project-expenses',  label: 'Project Expenses' }]  : []),
-    ...(hasPerm('view_fin_dashboard') ? [{ to: '/finance/dashboard',         label: 'Finance Dashboard' }] : []),
-    ...(hasPerm('view_fin_report')    ? [{ to: '/finance/monthly-report',    label: 'Monthly Report' }]    : []),
-    ...(hasPerm('view_fin_clients')   ? [{ to: '/finance/clients',           label: 'Clients' }]            : []),
-    ...(hasPerm('view_fin_invoices')  ? [{ to: '/finance/invoices',          label: 'Invoices' }]           : []),
-    ...(hasPerm('view_exp_claims')    ? [{ to: '/finance/expense-claims',    label: 'Expense Claims' }]      : []),
-  ];
+  const FIN_LINKS = VIEW_FINANCE.filter(({ key }) => hasPerm(key));
 
   if (FIN_LINKS.length === 0) return null;
 
@@ -575,8 +566,8 @@ function HrNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const isAdmin = currentUser?.role === 'admin';
 
   const HR_LINKS = [
-    ...(hasPerm('view_hr_profiles') ? [{ to: '/hr-profiles',      label: 'Employee Profiles' }] : []),
-    ...(isAdmin                     ? [{ to: '/attendance-admin', label: 'Attendance' }]         : []),
+    ...VIEW_HR.filter(({ key }) => hasPerm(key)),
+    ...(isAdmin ? [{ key: 'attendance_admin', to: '/attendance-admin', label: 'Attendance' }] : []),
   ];
 
   if (HR_LINKS.length === 0) return null;
@@ -629,10 +620,10 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const isAdmin = currentUser?.role === 'admin';
 
   const ADMIN_LINKS = [
-    ...(isAdmin                      ? [{ to: '/live-trips',      label: 'Live Trips' }]       : []),
-    ...(hasPerm('view_activity_log') ? [{ to: '/activity-log',    label: 'Activity Log' }]     : []),
-    ...(isAdmin                      ? [{ to: '/user-management', label: 'User Management' }]  : []),
-    ...(isAdmin                      ? [{ to: '/backup-restore',  label: 'Backup & Restore' }] : []),
+    ...(isAdmin ? [{ key: 'live_trips', to: '/live-trips', label: 'Live Trips' }] : []),
+    ...VIEW_ADMIN.filter(({ key }) => hasPerm(key)),
+    ...(isAdmin ? [{ key: 'user_management', to: '/user-management', label: 'User Management' }] : []),
+    ...(isAdmin ? [{ key: 'backup_restore', to: '/backup-restore', label: 'Backup & Restore' }] : []),
   ];
 
   if (ADMIN_LINKS.length === 0) return null;
@@ -734,14 +725,18 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const roleLower = currentUser?.role?.toLowerCase();
   const isFieldRole = roleLower === 'engineer' || roleLower === 'technician';
 
+  const dashboardDef = VIEW_CORE.find(d => d.key === 'view_dashboard')!;
+  const siteLookupDef = VIEW_DAILY_WORK.find(d => d.key === 'view_site_lookup')!;
+  const routePlannerDef = VIEW_DAILY_WORK.find(d => d.key === 'view_route_planner')!;
+
   const NAV_TOP = [
-    ...(isFieldRole ? [] : [{ to: '/dashboard', label: 'Dashboard', icon: GridIcon }]),
+    ...(isFieldRole ? [] : [{ to: dashboardDef.to, label: dashboardDef.label, icon: GridIcon }]),
   ];
 
   const NAV_MID = [
     ...(isFieldRole ? [] : [{ to: '/daily-activities', label: 'Daily Activities', icon: ActivityIcon }]),
-    ...(hasPerm('view_site_lookup')   ? [{ to: '/site-lookup',   label: 'Site Lookup',   icon: SiteLookupIcon }] : []),
-    ...(hasPerm('view_route_planner') ? [{ to: '/route-planner', label: 'Route Planner', icon: RouteIcon }]      : []),
+    ...(hasPerm(siteLookupDef.key)   ? [{ to: siteLookupDef.to,   label: siteLookupDef.label,   icon: SiteLookupIcon }] : []),
+    ...(hasPerm(routePlannerDef.key) ? [{ to: routePlannerDef.to, label: routePlannerDef.label, icon: RouteIcon }]      : []),
     { to: '/sites-db',    label: 'Sites DB',      icon: DatabaseIcon },
     { to: '/my-profile',  label: 'My Profile',    icon: ProfileIcon },
     { to: '/attendance',  label: 'My Attendance', icon: ClockIcon },

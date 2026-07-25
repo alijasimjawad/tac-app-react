@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { PROJ_NAMES } from './NetworkScopes';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
+import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_OTHER, ACTION_DEFS } from '../lib/permissionsCatalog';
 import css from './UserManagement.module.css';
 
 async function extractFnError(error: unknown, data: unknown): Promise<string> {
@@ -42,45 +43,12 @@ interface UserRow {
 
 interface TeamMember { id: string; full_name: string; }
 
-// ── Permission definitions (exact copy from old app) ──────────────────────────
+// ── Permission definitions (sourced from the shared catalog — see
+// src/lib/permissionsCatalog.ts, also used by Sidebar.tsx for nav gating) ──
 
-const UM_FIXED_VIEW_TOP = [
-  { key: 'view_dashboard', label: 'Dashboard' },
-];
-const UM_FIXED_VIEW_DAILY = [
-  { key: 'view_daily_activities', label: 'Daily Activities' },
-  { key: 'view_site_lookup',      label: 'Site Lookup' },
-  { key: 'view_route_planner',    label: 'Route Planner' },
-];
-const UM_FIXED_VIEW_BOTTOM = [
-  { key: 'view_fin_dashboard', label: 'Finance Dashboard' },
-  { key: 'view_fin_team',      label: 'Team Members' },
-  { key: 'view_fin_revenue',   label: 'Revenue' },
-  { key: 'view_fin_genexp',    label: 'General Expenses' },
-  { key: 'view_fin_projexp',   label: 'Project Expenses' },
-  { key: 'view_fin_report',    label: 'Monthly Report' },
-  { key: 'view_exp_claims',    label: 'Expense Claims (Admin)' },
-  { key: 'view_fin_clients',   label: 'Clients' },
-  { key: 'view_fin_invoices',  label: 'Invoices' },
-  { key: 'view_hr_profiles',   label: 'Employee Profiles' },
-  { key: 'view_my_expenses',   label: 'My Expenses' },
-  { key: 'view_activity_log',  label: 'Activity Log' },
-];
-const UM_ACT_DEFS = [
-  { key: 'add_rows',           label: 'Add Rows' },
-  { key: 'edit_rows',          label: 'Edit Rows' },
-  { key: 'delete_rows',        label: 'Delete Rows' },
-  { key: 'add_columns',        label: 'Add Columns' },
-  { key: 'export_excel',       label: 'Export to Excel' },
-  { key: 'add_section',        label: 'Add Section' },
-  { key: 'rename_section',     label: 'Rename Section' },
-  { key: 'delete_section',     label: 'Delete Section' },
-  { key: 'submit_exp_claim',   label: 'Submit Expense Claim' },
-  { key: 'approve_exp_claims', label: 'Approve / Reject Expense Claims' },
-  { key: 'add_team_member',    label: 'Add Team Member' },
-  { key: 'edit_team_member',   label: 'Edit Team Member' },
-  { key: 'delete_team_member', label: 'Delete Team Member' },
-];
+// Finance/HR/My Expenses/Activity Log view perms grouped under one
+// "Finance & Admin" heading in the UI, matching the sidebar's grouping.
+const VIEW_FINANCE_ADMIN = [...VIEW_FINANCE, ...VIEW_HR, ...VIEW_OTHER, ...VIEW_ADMIN];
 
 function projPermKey(name: string): string {
   return 'view_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -192,10 +160,10 @@ export default function UserManagement() {
       key: projPermKey(name), label: projPermLabel(name),
     }));
     return [
-      ...UM_FIXED_VIEW_TOP,
-      ...UM_FIXED_VIEW_DAILY,
+      ...VIEW_CORE,
+      ...VIEW_DAILY_WORK,
       ...projectDefs,
-      ...UM_FIXED_VIEW_BOTTOM,
+      ...VIEW_FINANCE_ADMIN,
     ];
   }, [dbProjects]);
 
@@ -262,7 +230,7 @@ export default function UserManagement() {
     // Initialize perms from saved permissions
     const saved = u.permissions || {};
     const initPerms: PermMap = {};
-    [...UM_FIXED_VIEW_TOP, ...UM_FIXED_VIEW_DAILY, ...UM_FIXED_VIEW_BOTTOM, ...UM_ACT_DEFS].forEach(({ key }) => {
+    [...VIEW_CORE, ...VIEW_DAILY_WORK, ...VIEW_FINANCE_ADMIN, ...ACTION_DEFS].forEach(({ key }) => {
       initPerms[key] = saved[key] === true;
     });
     setPerms(initPerms);
@@ -290,7 +258,7 @@ export default function UserManagement() {
   }
 
   function togAll(group: 'view' | 'actions', val: boolean) {
-    const defs = group === 'view' ? viewDefs : UM_ACT_DEFS;
+    const defs = group === 'view' ? viewDefs : ACTION_DEFS;
     setPerms(p => {
       const next = { ...p };
       defs.forEach(({ key }) => { next[key] = val; });
@@ -307,7 +275,7 @@ export default function UserManagement() {
     if (conflict) { setEditErr('Username already taken by another user.'); return; }
 
     const permissions: PermMap = {};
-    [...viewDefs, ...UM_ACT_DEFS].forEach(({ key }) => { permissions[key] = perms[key] === true; });
+    [...viewDefs, ...ACTION_DEFS].forEach(({ key }) => { permissions[key] = perms[key] === true; });
 
     setEditSaving(true);
 
@@ -576,14 +544,14 @@ export default function UserManagement() {
                       <button className={css.togAllBtn} onClick={() => togAll('view', false)}>None</button>
                     </div>
                   </div>
-                  {UM_FIXED_VIEW_TOP.map(({ key, label }) => (
+                  {VIEW_CORE.map(({ key, label }) => (
                     <div key={key} className={css.togWrap}>
                       <span className={css.togLabel}>{label}</span>
                       <Toggle id={`ump-${key}`} checked={perms[key] === true} onChange={v => togglePerm(key, v)} />
                     </div>
                   ))}
                   <div className={css.permGroupLbl}>Daily Work</div>
-                  {UM_FIXED_VIEW_DAILY.map(({ key, label }) => (
+                  {VIEW_DAILY_WORK.map(({ key, label }) => (
                     <div key={key} className={css.togWrap}>
                       <span className={css.togLabel}>{label}</span>
                       <Toggle id={`ump-${key}`} checked={perms[key] === true} onChange={v => togglePerm(key, v)} />
@@ -601,7 +569,7 @@ export default function UserManagement() {
                     </>
                   )}
                   <div className={css.permGroupLbl}>Finance &amp; Admin</div>
-                  {UM_FIXED_VIEW_BOTTOM.map(({ key, label }) => (
+                  {VIEW_FINANCE_ADMIN.map(({ key, label }) => (
                     <div key={key} className={css.togWrap}>
                       <span className={css.togLabel}>{label}</span>
                       <Toggle id={`ump-${key}`} checked={perms[key] === true} onChange={v => togglePerm(key, v)} />
@@ -619,7 +587,7 @@ export default function UserManagement() {
                       <button className={css.togAllBtn} onClick={() => togAll('actions', false)}>None</button>
                     </div>
                   </div>
-                  {UM_ACT_DEFS.map(({ key, label }) => (
+                  {ACTION_DEFS.map(({ key, label }) => (
                     <div key={key} className={css.togWrap}>
                       <span className={css.togLabel}>{label}</span>
                       <Toggle id={`ump-${key}`} checked={perms[key] === true} onChange={v => togglePerm(key, v)} />
