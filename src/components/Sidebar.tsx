@@ -9,6 +9,7 @@ import styles from './Sidebar.module.css';
 import tacLogoLight from '../assets/tac-logo-light.png';
 import { SiteLookupIcon } from '../pages/SiteLookup';
 import { ProfileIcon } from '../pages/MyProfile';
+import { MySitesIcon } from '../pages/MySites';
 import { FinanceIcon } from '../pages/FinTeam';
 import { PROJ_NAMES, SEC_LABELS } from '../pages/NetworkScopes';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
@@ -669,6 +670,66 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   );
 }
 
+// ── Field-role nav ────────────────────────────────────────────────────────────
+
+function FieldRoleNav() {
+  const { hasPerm } = useAuth();
+  const dailyActivityDef = VIEW_DAILY_WORK.find(d => d.key === 'view_daily_activities')!;
+  const myAttendanceDef  = VIEW_DAILY_WORK.find(d => d.key === 'view_my_attendance')!;
+  const myTripsDef       = VIEW_DAILY_WORK.find(d => d.key === 'view_my_trips')!;
+
+  return (
+    <nav className={styles.nav} aria-label="Field navigation">
+      <NavLink to="/my-work" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+        <MyWorkIcon />
+        <span className={styles.navLabel}>My Work</span>
+      </NavLink>
+
+      <div className={styles.fieldNavLabel}>WORK</div>
+
+      {hasPerm(dailyActivityDef.key) && (
+        <NavLink to="/daily-activities" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <ActivityIcon />
+          <span className={styles.navLabel}>{dailyActivityDef.label}</span>
+        </NavLink>
+      )}
+      {hasPerm(myAttendanceDef.key) && (
+        <NavLink to="/attendance" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <ClockIcon />
+          <span className={styles.navLabel}>{myAttendanceDef.label}</span>
+        </NavLink>
+      )}
+      {hasPerm(myTripsDef.key) && (
+        <NavLink to="/my-trips" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <CarIcon />
+          <span className={styles.navLabel}>{myTripsDef.label}</span>
+        </NavLink>
+      )}
+
+      <div className={styles.fieldNavLabel}>SITES</div>
+
+      <NavLink to="/my-sites" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+        <MySitesIcon />
+        <span className={styles.navLabel}>My Sites</span>
+      </NavLink>
+
+      <div className={styles.fieldNavLabel}>FINANCE</div>
+
+      <NavLink to="/my-expenses" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+        <ReceiptIcon />
+        <span className={styles.navLabel}>My Expenses</span>
+      </NavLink>
+
+      <div className={styles.fieldNavLabel}>ACCOUNT</div>
+
+      <NavLink to="/my-profile" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+        <ProfileIcon />
+        <span className={styles.navLabel}>My Profile</span>
+      </NavLink>
+    </nav>
+  );
+}
+
 // ── Main Sidebar ──────────────────────────────────────────────────────────────
 
 interface SidebarProps {
@@ -797,28 +858,34 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className={styles.nav} aria-label="Main">
-          {navLinks(NAV_TOP)}
-        </nav>
+        {isFieldRole ? (
+          <FieldRoleNav />
+        ) : (
+          <>
+            <nav className={styles.nav} aria-label="Main">
+              {navLinks(NAV_TOP)}
+            </nav>
 
-        <NetworkScopesTree />
+            <NetworkScopesTree />
 
-        <nav className={styles.nav} aria-label="Tools">
-          {navLinks(NAV_MID)}
-        </nav>
+            <nav className={styles.nav} aria-label="Tools">
+              {navLinks(NAV_MID)}
+            </nav>
 
-        <FinanceNavGroup
-          isExpanded={expandedGroup === 'finance'}
-          onToggle={() => toggleGroup('finance')}
-        />
-        <HrNavGroup
-          isExpanded={expandedGroup === 'hr'}
-          onToggle={() => toggleGroup('hr')}
-        />
-        <AdminNavGroup
-          isExpanded={expandedGroup === 'admin'}
-          onToggle={() => toggleGroup('admin')}
-        />
+            <FinanceNavGroup
+              isExpanded={expandedGroup === 'finance'}
+              onToggle={() => toggleGroup('finance')}
+            />
+            <HrNavGroup
+              isExpanded={expandedGroup === 'hr'}
+              onToggle={() => toggleGroup('hr')}
+            />
+            <AdminNavGroup
+              isExpanded={expandedGroup === 'admin'}
+              onToggle={() => toggleGroup('admin')}
+            />
+          </>
+        )}
 
         {/* Mobile-only: the topbar's "Sign out" button is hidden on small
             screens to reduce crowding (hamburger/title/bell/avatar already
@@ -839,6 +906,17 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         </div>
       </aside>
     </>
+  );
+}
+
+function MyWorkIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="7" height="7" rx="1"/>
+      <rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="14" y="14" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/>
+    </svg>
   );
 }
 

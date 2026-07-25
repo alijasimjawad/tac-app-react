@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './components/AppLayout';
 import Login from './pages/Login';
@@ -28,6 +28,16 @@ import FinExpClaims from './pages/FinExpClaims';
 import ActivityLog from './pages/ActivityLog';
 import UserManagement from './pages/UserManagement';
 import BackupRestore from './pages/BackupRestore';
+import MyWork from './pages/MyWork';
+import MySites from './pages/MySites';
+
+function RoleRedirect() {
+  const { currentUser, loading } = useAuth();
+  if (loading) return null;
+  const role = currentUser?.role?.toLowerCase();
+  if (role === 'engineer' || role === 'technician') return <Navigate to="/my-work" replace />;
+  return <Navigate to="/attendance" replace />;
+}
 
 export default function App() {
   return (
@@ -68,9 +78,11 @@ export default function App() {
             <Route path="/user-management"           element={<UserManagement />} />
             <Route path="/backup-restore"            element={<BackupRestore />} />
             <Route path="/dashboard"                 element={<Dashboard />} />
-            <Route path="/"           element={<Navigate to="/attendance" replace />} />
+            <Route path="/my-work"                   element={<MyWork />} />
+            <Route path="/my-sites"                  element={<MySites />} />
+            <Route path="/"           element={<RoleRedirect />} />
           </Route>
-          <Route path="*" element={<Navigate to="/attendance" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

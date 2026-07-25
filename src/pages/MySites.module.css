@@ -1,0 +1,294 @@
+/* ── Page shell ───────────────────────────────────────────────────────────────── */
+
+.page {
+  padding: 28px 32px 52px;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Page head ────────────────────────────────────────────────────────────────── */
+
+.pageHead { display: flex; flex-direction: column; gap: 4px; }
+
+.pageTitle {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: #0F172A;
+  letter-spacing: -0.01em;
+}
+
+.pageSub {
+  margin: 0;
+  font-size: 13.5px;
+  color: #64748B;
+}
+
+/* ── Search card ─────────────────────────────────────────────────────────────── */
+
+.searchCard {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+}
+
+.searchRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.searchBox {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: #F8FAFC;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 10px;
+  transition: border-color .16s ease;
+}
+.searchBox:focus-within { border-color: #3B82F6; background: #fff; }
+
+.searchIcon { color: #94A3B8; display: flex; flex-shrink: 0; }
+
+.searchInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13.5px;
+  color: #0F172A;
+  outline: none;
+  font-family: inherit;
+}
+.searchInput::placeholder { color: #94A3B8; }
+
+.projSelect {
+  padding: 9px 12px;
+  background: #F8FAFC;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .16s ease;
+}
+.projSelect:focus { border-color: #3B82F6; background: #fff; }
+
+/* ── Results meta ────────────────────────────────────────────────────────────── */
+
+.resultsMeta {
+  font-size: 12.5px;
+  color: #94A3B8;
+  font-weight: 500;
+  padding: 0 2px;
+}
+
+/* ── Site grid ───────────────────────────────────────────────────────────────── */
+
+.siteGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+/* ── Site card ───────────────────────────────────────────────────────────────── */
+
+.siteCard {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  padding: 18px 20px 20px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, .04);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+.siteCard:hover {
+  box-shadow: 0 6px 24px rgba(15, 23, 42, .09);
+  transform: translateY(-1px);
+}
+
+/* ── Card top row ────────────────────────────────────────────────────────────── */
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.siteIconWrap {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #F0FDF4;
+  color: #16A34A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cardTopInfo { flex: 1; min-width: 0; }
+
+.siteId {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #0F172A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.siteProjSec {
+  font-size: 12px;
+  color: #64748B;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Status badge ────────────────────────────────────────────────────────────── */
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.badgeGreen { background: #DCFCE7; color: #166534; }
+.badgeAmber { background: #FEF3C7; color: #92400E; }
+.badgeRed   { background: #FEE2E2; color: #991B1B; }
+.badgeSlate { background: #F1F5F9; color: #64748B; }
+
+/* ── Card fields ─────────────────────────────────────────────────────────────── */
+
+.cardFields {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid #F1F5F9;
+  padding-top: 12px;
+}
+
+.field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.fieldK {
+  color: #94A3B8;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.fieldV {
+  color: #334155;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Skeleton cards ──────────────────────────────────────────────────────────── */
+
+.skCard {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+@keyframes msSkPulse {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skPulse {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #F1F5F9 25%, #F8FAFC 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+  animation: msSkPulse 1.5s ease-in-out infinite;
+}
+
+.skTitle { height: 16px; width: 60%; }
+.skLine  { height: 12px; width: 80%; }
+
+/* ── State boxes (empty / error) ─────────────────────────────────────────────── */
+
+.stateBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 64px 24px;
+  color: #94A3B8;
+  text-align: center;
+}
+
+.stateTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.stateSub {
+  margin: 0;
+  font-size: 13px;
+  color: #94A3B8;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.retryBtn {
+  padding: 9px 22px;
+  background: #EFF6FF;
+  border: 1.5px solid #BFDBFE;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1D4ED8;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 4px;
+  transition: background .16s ease;
+}
+.retryBtn:hover { background: #DBEAFE; }
+
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .page { padding: 16px 16px 48px; gap: 14px; }
+  .pageTitle { font-size: 20px; }
+  .siteGrid { grid-template-columns: 1fr; }
+  .searchRow { flex-direction: column; align-items: stretch; }
+  .projSelect { width: 100%; }
+}
