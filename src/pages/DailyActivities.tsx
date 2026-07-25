@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
@@ -724,30 +725,26 @@ export default function DailyActivities() {
     }
   }
 
-  // ── CSV export of the currently filtered/sorted results ──
+  // ── Excel export of the currently filtered/sorted results ──
   function exportCsv() {
-    const headers = ['Date', 'Project', 'Site ID', 'Governorate', 'Team', 'Activity', 'Status', 'Issued By'];
-    const rows = sortedActivities.map(a => [
-      a.date ? fmtDate(a.date) : '',
-      a.project || '',
-      a.site_id || '',
-      a.governate || '',
-      Array.isArray(a.team_member_names) ? a.team_member_names.join('; ') : '',
-      a.activity_type || '',
-      a.status || '',
-      a.created_by || '',
-    ]);
-    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [headers, ...rows].map(r => r.map(esc).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `daily-activities-${today()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const data = sortedActivities.map(a => ({
+      'Date': a.date ? fmtDate(a.date) : '',
+      'Project': a.project || '',
+      'Site ID': a.site_id || '',
+      'Governorate': a.governate || '',
+      'Team': Array.isArray(a.team_member_names) ? a.team_member_names.join('; ') : '',
+      'Activity': a.activity_type || '',
+      'Status': a.status || '',
+      'Issued By': a.created_by || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 12 }, { wch: 16 }, { wch: 20 }, { wch: 16 },
+      { wch: 28 }, { wch: 16 }, { wch: 14 }, { wch: 18 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Activities');
+    XLSX.writeFile(wb, `Daily_Activities_${today()}.xlsx`);
   }
 
   // ── Active filter chips ──
@@ -1219,7 +1216,7 @@ export default function DailyActivities() {
               Filters
               {hasAdvancedFilters && <span className={styles.filtersDot} />}
             </button>
-            <button type="button" className={styles.exportBtn} title="Export filtered results as CSV" onClick={exportCsv}>
+            <button type="button" className={styles.exportBtn} title="Export filtered results as Excel" onClick={exportCsv}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
