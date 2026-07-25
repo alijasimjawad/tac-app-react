@@ -4,6 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import styles from './MyProfile.module.css';
 
+// Photo crop/zoom modal — viewport size (px) and output image size (px)
+const CROP_VIEW = 260;
+const CROP_OUT = 480;
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface EditForm {
@@ -78,6 +82,16 @@ export default function MyProfile() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Photo crop/zoom modal state ────────────────────────────────────────────
+  const [cropOpen, setCropOpen] = useState(false);
+  const [cropImgUrl, setCropImgUrl] = useState<string | null>(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropPos, setCropPos] = useState({ x: 0, y: 0 });
+  const [coverScale, setCoverScale] = useState(1);
+  const cropImgElRef = useRef<HTMLImageElement>(null);
+  const pendingFileRef = useRef<File | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
   function formFromUser(): EditForm {
     return {
       phone: currentUser?.phone ?? '',
@@ -99,18 +113,93 @@ export default function MyProfile() {
 
   if (!currentUser) return null;
 
-  // ── Photo upload (direct — no crop) ──────────────────────────────────────
+  // ── Photo upload (opens crop/zoom modal first) ────────────────────────────
 
-  async function onPhotoFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  function onPhotoFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !currentUser) return;
+    if (!file) return;
     if (file.size > 10 * 1024 * 1024) { showToast('Photo must be under 10 MB', false); return; }
-    const ext = file.name.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
+    if (cropImgUrl) URL.revokeObjectURL(cropImgUrl);
+    pendingFileRef.current = file;
+    setCropImgUrl(URL.createObjectURL(file));
+    setCropZoom(1);
+    setCropPos({ x: 0, y: 0 });
+    setCoverScale(1);
+    setCropOpen(true);
+  }
+
+  function closeCropModal() {
+    if (photoUploading) return;
+    if (cropImgUrl) URL.revokeObjectURL(cropImgUrl);
+    setCropOpen(false);
+    setCropImgUrl(null);
+    pendingFileRef.current = null;
+    dragRef.current = null;
+  }
+
+  function onCropImgLoad() {
+    const img = cropImgElRef.current;
+    if (!img || !img.naturalWidth || !img.naturalHeight) return;
+    setCoverScale(Math.max(CROP_VIEW / img.naturalWidth, CROP_VIEW / img.naturalHeight));
+  }
+
+  function clampCropPos(p: { x: number; y: number }, zoom: number) {
+    const img = cropImgElRef.current;
+    if (!img || !img.naturalWidth) return p;
+    const totalScale = coverScale * zoom;
+    const dW = img.naturalWidth * totalScale;
+    const dH = img.naturalHeight * totalScale;
+    const maxX = Math.max(0, (dW - CROP_VIEW) / 2);
+    const maxY = Math.max(0, (dH - CROP_VIEW) / 2);
+    return { x: Math.min(maxX, Math.max(-maxX, p.x)), y: Math.min(maxY, Math.max(-maxY, p.y)) };
+  }
+
+  function onCropZoomChange(z: number) {
+    setCropZoom(z);
+    setCropPos(p => clampCropPos(p, z));
+  }
+
+  function onCropPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: cropPos.x, origY: cropPos.y };
+  }
+  function onCropPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    setCropPos(clampCropPos({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy }, cropZoom));
+  }
+  function onCropPointerUp() { dragRef.current = null; }
+
+  async function handleCropSave() {
+    const img = cropImgElRef.current;
+    const file = pendingFileRef.current;
+    if (!img || !file || !img.naturalWidth) return;
+    const totalScale = coverScale * cropZoom;
+    const dW = img.naturalWidth * totalScale;
+    const dH = img.naturalHeight * totalScale;
+    const imgLeft = CROP_VIEW / 2 - dW / 2 + cropPos.x;
+    const imgTop = CROP_VIEW / 2 - dH / 2 + cropPos.y;
+    const sx = -imgLeft / totalScale;
+    const sy = -imgTop / totalScale;
+    const sSize = CROP_VIEW / totalScale;
+    const canvas = document.createElement('canvas');
+    canvas.width = CROP_OUT;
+    canvas.height = CROP_OUT;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, CROP_OUT, CROP_OUT);
+    canvas.toBlob(blob => { if (blob) uploadPhotoBlob(blob, file.name); }, 'image/jpeg', 0.92);
+  }
+
+  async function uploadPhotoBlob(blob: Blob, origName: string) {
+    if (!currentUser) return;
+    const ext = origName.split('.').pop()?.toLowerCase() === 'png' ? 'png' : 'jpg';
     const path = `owner-photos/${currentUser.id}_${Date.now()}.${ext}`;
     setPhotoUploading(true);
     try {
-      const { error: upErr } = await supabase.storage.from('employee-docs').upload(path, file, { upsert: true, contentType: file.type });
+      const { error: upErr } = await supabase.storage.from('employee-docs').upload(path, blob, { upsert: true, contentType: blob.type });
       if (upErr) throw upErr;
       const photoUrl = supabase.storage.from('employee-docs').getPublicUrl(path).data.publicUrl;
       const { error: dbErr } = await supabase.from('users').update({ profile_photo_url: photoUrl }).eq('id', currentUser.id);
@@ -123,10 +212,12 @@ export default function MyProfile() {
         sectionName: 'Profile',
         details: `Updated photo: ${currentUser.full_name}`,
       });
+      setPhotoUploading(false);
+      closeCropModal();
     } catch (e: unknown) {
       showToast('Upload failed: ' + (e instanceof Error ? e.message : String(e)), false);
+      setPhotoUploading(false);
     }
-    setPhotoUploading(false);
   }
 
   // ── Edit save ─────────────────────────────────────────────────────────────
@@ -273,6 +364,65 @@ export default function MyProfile() {
           </div>
         </div>
       )}
+
+      {/* Photo crop/zoom modal */}
+      {cropOpen && cropImgUrl && (
+        <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) closeCropModal(); }}>
+          <div className={styles.cropModal}>
+            <div className={styles.modalHeader}>
+              <div className={styles.modalTitle}>Adjust Photo</div>
+              <button className={styles.modalClose} onClick={closeCropModal} disabled={photoUploading}>×</button>
+            </div>
+            <div className={styles.cropBody}>
+              <div
+                className={styles.cropViewport}
+                onPointerDown={onCropPointerDown}
+                onPointerMove={onCropPointerMove}
+                onPointerUp={onCropPointerUp}
+                onPointerLeave={onCropPointerUp}
+              >
+                <img
+                  ref={cropImgElRef}
+                  src={cropImgUrl}
+                  alt=""
+                  draggable={false}
+                  onLoad={onCropImgLoad}
+                  className={styles.cropImg}
+                  style={
+                    cropImgElRef.current?.naturalWidth
+                      ? {
+                          width: cropImgElRef.current.naturalWidth * coverScale * cropZoom,
+                          height: cropImgElRef.current.naturalHeight * coverScale * cropZoom,
+                          transform: `translate(calc(-50% + ${cropPos.x}px), calc(-50% + ${cropPos.y}px))`,
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+              <div className={styles.cropZoomRow}>
+                <ZoomOutIcon />
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.01}
+                  value={cropZoom}
+                  onChange={e => onCropZoomChange(Number(e.target.value))}
+                  className={styles.cropZoomSlider}
+                />
+                <ZoomInIcon />
+              </div>
+              <div className={styles.cropHint}>Drag the photo to reposition, use the slider to zoom</div>
+            </div>
+            <div className={styles.modalFooter}>
+              <button className={styles.modalCancelBtn} onClick={closeCropModal} disabled={photoUploading}>Cancel</button>
+              <button className={styles.modalSaveBtn} onClick={handleCropSave} disabled={photoUploading}>
+                {photoUploading ? 'Saving…' : 'Save Photo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -284,6 +434,20 @@ function CameraIcon() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
       <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
+function ZoomInIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  );
+}
+function ZoomOutIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /><line x1="8" y1="11" x2="14" y2="11" />
     </svg>
   );
 }
