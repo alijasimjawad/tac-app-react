@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import { invalidateSections } from '../lib/sectionsCache';
+import { invalidateCache as invalidateSitesCache } from '../lib/sitesCache';
 import styles from './AppLayout.module.css';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -64,6 +66,12 @@ export default function AppLayout() {
 
   const triggerRefresh = useCallback(() => {
     setRefreshing(true);
+    // These caches (sections, sites) live outside React as module-level
+    // singletons, so remounting via `key` alone doesn't force them to
+    // refetch — invalidate them here so the remount below actually pulls
+    // fresh data from Supabase instead of serving stale in-memory arrays.
+    invalidateSections();
+    invalidateSitesCache();
     setRefreshKey(k => k + 1);
     // Keep the indicator visible just long enough to read as "refreshed",
     // then collapse it — the newly-mounted page shows its own loading
