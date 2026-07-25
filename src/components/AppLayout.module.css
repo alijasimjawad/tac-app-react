@@ -18,4 +18,43 @@
   padding-left: calc(32px + env(safe-area-inset-left, 0px));
   padding-right: calc(32px + env(safe-area-inset-right, 0px));
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  position: relative;
+}
+
+/* ── Pull-to-refresh indicator ── */
+.pullIndicator {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pullSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2.5px solid var(--slate-200);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+}
+
+.pullSpinnerActive {
+  animation: pullSpin 0.7s linear infinite;
+}
+
+@keyframes pullSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pullSpinnerActive { animation: none; }
 }

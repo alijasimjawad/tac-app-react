@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
@@ -9,22 +9,144 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard':  'Dashboard',
 };
 
+// ── Pull-to-refresh / resume-refresh tuning ─────────────────────────────────
+const PULL_THRESHOLD = 70;   // px of pull needed before releasing triggers a refresh
+const MAX_PULL = 110;        // rubber-band cap so it can't be dragged forever
+const PULL_RESISTANCE = 0.5; // finger moves 2px -> indicator moves 1px
+// Only auto-refresh when the installed app is brought back to the foreground
+// if it was actually backgrounded for a while — avoids remounting the page
+// (and losing scroll position/open dropdowns) on a quick alt-tab or glance
+// at a notification.
+const RESUME_REFRESH_AFTER_MS = 20_000;
+
 export default function AppLayout() {
   const { pathname } = useLocation();
   const title = PAGE_TITLES[pathname] ?? 'TAC Network';
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Bumping this remounts the routed page below, which re-runs its own
+  // mount-time data fetch — a fast, in-app "refresh" of just the current
+  // page's data, without reloading the whole app shell/bundle.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const hiddenAtRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const pullingRef = useRef(false);
+
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  const triggerRefresh = useCallback(() => {
+    setRefreshing(true);
+    setRefreshKey(k => k + 1);
+    // Keep the indicator visible just long enough to read as "refreshed",
+    // then collapse it — the newly-mounted page shows its own loading
+    // state underneath if it has one.
+    window.setTimeout(() => {
+      setRefreshing(false);
+      setPullDistance(0);
+    }, 500);
+  }, []);
+
+  // Resume-from-background refresh: e.g. phone was locked, or the user
+  // switched to another app and came back after a while.
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+      const hiddenAt = hiddenAtRef.current;
+      hiddenAtRef.current = null;
+      if (hiddenAt && Date.now() - hiddenAt >= RESUME_REFRESH_AFTER_MS) {
+        triggerRefresh();
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [triggerRefresh]);
+
+  // Pull-to-refresh: touch-only gesture on the scrollable content area.
+  // Attached as a native (non-passive) listener so we can preventDefault()
+  // while dragging — otherwise the browser's own overscroll/back gesture
+  // would fight with ours.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    function onTouchStart(e: TouchEvent) {
+      if (el!.scrollTop <= 0 && !refreshing) {
+        touchStartYRef.current = e.touches[0].clientY;
+        pullingRef.current = true;
+      } else {
+        touchStartYRef.current = null;
+        pullingRef.current = false;
+      }
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (!pullingRef.current || touchStartYRef.current == null) return;
+      const delta = e.touches[0].clientY - touchStartYRef.current;
+      if (delta <= 0 || el!.scrollTop > 0) {
+        pullingRef.current = false;
+        setPullDistance(0);
+        return;
+      }
+      e.preventDefault();
+      setPullDistance(Math.min(delta * PULL_RESISTANCE, MAX_PULL));
+    }
+
+    function onTouchEnd() {
+      if (!pullingRef.current) return;
+      pullingRef.current = false;
+      touchStartYRef.current = null;
+      setPullDistance(current => {
+        if (current >= PULL_THRESHOLD) {
+          triggerRefresh();
+          return current;
+        }
+        return 0;
+      });
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [refreshing, triggerRefresh]);
+
+  const indicatorVisible = pullDistance > 0 || refreshing;
+  const indicatorProgress = Math.min(pullDistance / PULL_THRESHOLD, 1);
+  const indicatorTranslateY = Math.min(pullDistance, 40) - 40; // slides in from -40px to 0
 
   return (
     <div className={styles.shell}>
       <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <div className={styles.main}>
         <Topbar title={title} onMenuOpen={() => setMobileOpen(true)} />
-        <div className={styles.content}>
-          <Outlet />
+        <div className={styles.content} ref={contentRef}>
+          {indicatorVisible && (
+            <div
+              className={styles.pullIndicator}
+              style={{ transform: `translate(-50%, ${indicatorTranslateY}px)`, opacity: indicatorProgress }}
+            >
+              <span
+                className={`${styles.pullSpinner} ${refreshing ? styles.pullSpinnerActive : ''}`}
+                style={!refreshing ? { transform: `rotate(${indicatorProgress * 360}deg)` } : undefined}
+              />
+            </div>
+          )}
+          <Outlet key={refreshKey} />
         </div>
       </div>
     </div>
