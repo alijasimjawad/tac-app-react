@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
@@ -199,22 +200,76 @@ export default function DailyActivities() {
   const memberSearchInputRef = useRef<HTMLInputElement>(null);
   const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
 
-  // History table: search / filters / sort / pagination
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterProject, setFilterProject] = useState('All');
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  // Inline form validation + unsaved-changes tracking
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formTouched, setFormTouched] = useState(false);
+  const suppressDirty = useRef(true);
+
+  // History table: search / filters / sort / pagination — initial values read from the URL
+  // so filters survive a refresh or can be shared as a link.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(() => searchParams.get('q') || '');
+  const [filterProject, setFilterProject] = useState(() => searchParams.get('project') || 'All');
+  const [filterStatus, setFilterStatus] = useState(() => searchParams.get('status') || 'All');
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('from') || '');
+  const [dateTo, setDateTo] = useState(() => searchParams.get('to') || '');
+  const [sortColumn, setSortColumn] = useState<'date' | 'project' | 'status'>(() => {
+    const s = searchParams.get('sort');
+    return s === 'project' || s === 'status' ? s : 'date';
+  });
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => (searchParams.get('dir') === 'asc' ? 'asc' : 'desc'));
+  const [currentPage, setCurrentPage] = useState(() => Number(searchParams.get('page')) || 1);
+  const [rowsPerPage, setRowsPerPage] = useState(() => Number(searchParams.get('rows')) || 10);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [filterActivityType, setFilterActivityType] = useState('All');
-  const [filterIssuedBy, setFilterIssuedBy] = useState('');
+  const [filterActivityType, setFilterActivityType] = useState(() => searchParams.get('type') || 'All');
+  const [filterIssuedBy, setFilterIssuedBy] = useState(() => searchParams.get('issuedBy') || '');
+
+  // Debounce the search box so filtering doesn't re-run on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterProject, filterStatus, dateFrom, dateTo, rowsPerPage, filterActivityType, filterIssuedBy]);
+  }, [debouncedSearchQuery, filterProject, filterStatus, dateFrom, dateTo, rowsPerPage, filterActivityType, filterIssuedBy]);
+
+  // Keep the URL query string in sync with the current filter/sort/page state.
+  useEffect(() => {
+    const params: Record<string, string> = {};
+    if (searchQuery) params.q = searchQuery;
+    if (filterProject !== 'All') params.project = filterProject;
+    if (filterStatus !== 'All') params.status = filterStatus;
+    if (dateFrom) params.from = dateFrom;
+    if (dateTo) params.to = dateTo;
+    if (sortColumn !== 'date') params.sort = sortColumn;
+    if (sortDir !== 'desc') params.dir = sortDir;
+    if (currentPage !== 1) params.page = String(currentPage);
+    if (rowsPerPage !== 10) params.rows = String(rowsPerPage);
+    if (filterActivityType !== 'All') params.type = filterActivityType;
+    if (filterIssuedBy) params.issuedBy = filterIssuedBy;
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, filterProject, filterStatus, dateFrom, dateTo, sortColumn, sortDir, currentPage, rowsPerPage, filterActivityType, filterIssuedBy]);
+
+  // Warn before leaving the page if the New Activity form has unsaved edits.
+  useEffect(() => {
+    function handler(e: BeforeUnloadEvent) {
+      if (formTouched) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    }
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [formTouched]);
+
+  // Mark the form dirty whenever a field changes (skipping resets/edits-loads).
+  useEffect(() => {
+    if (suppressDirty.current) { suppressDirty.current = false; return; }
+    setFormTouched(true);
+  }, [date, project, sectionId, siteTags, siteInput, governate, activityType, status, notes, selectedMemberIds]);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -379,10 +434,26 @@ export default function DailyActivities() {
     reasonResolve.current = null;
   }
 
+  // ── Inline field validation ──
+  function validateForm(): Record<string, string> {
+    const errs: Record<string, string> = {};
+    if (!date) errs.date = 'Date is required.';
+    if (!project) errs.project = 'Project is required.';
+    const hasSite = siteTags.length > 0 || siteInput.trim().length > 0;
+    if (!hasSite) errs.site_id = 'At least one Site ID is required.';
+    if (!activityType) errs.activityType = 'Activity type is required.';
+    if (!status) errs.status = 'Status is required.';
+    return errs;
+  }
+
   // ── Save ──
   async function save() {
-    if (!date) { showToast('Please select a date.', false); return; }
-    if (!project) { showToast('Please select a project.', false); return; }
+    const errs = validateForm();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      showToast('Please fix the highlighted fields.', false);
+      return;
+    }
 
     const allTags = siteInput.trim() && !siteTags.includes(siteInput.trim())
       ? [...siteTags, siteInput.trim()]
@@ -428,6 +499,9 @@ export default function DailyActivities() {
   }
 
   function resetForm() {
+    suppressDirty.current = true;
+    setFormTouched(false);
+    setFieldErrors({});
     setDate(today());
     setProject(FIN_PROJECTS[0]);
     setSectionId('');
@@ -444,6 +518,9 @@ export default function DailyActivities() {
 
   // ── Edit ──
   function startEdit(a: DailyActivity) {
+    suppressDirty.current = true;
+    setFormTouched(false);
+    setFieldErrors({});
     setEditingId(a.id);
     setDate(a.date || today());
     setProject(a.project || FIN_PROJECTS[0]);
@@ -567,8 +644,8 @@ export default function DailyActivities() {
     if (filterIssuedBy && a.created_by !== filterIssuedBy) return false;
     if (dateFrom && a.date < dateFrom) return false;
     if (dateTo && a.date > dateTo) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    if (debouncedSearchQuery.trim()) {
+      const q = debouncedSearchQuery.trim().toLowerCase();
       const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names.join(' ') : '';
       const haystack = [a.project, a.site_id, a.governate, a.activity_type, teamNames, a.notes, a.created_by]
         .filter(Boolean).join(' ').toLowerCase();
@@ -578,9 +655,16 @@ export default function DailyActivities() {
   });
 
   const sortedActivities = [...filteredActivities].sort((a, b) => {
-    const cmp = a.date === b.date
-      ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      : (a.date < b.date ? -1 : 1);
+    let cmp = 0;
+    if (sortColumn === 'project') {
+      cmp = (a.project || '').localeCompare(b.project || '');
+    } else if (sortColumn === 'status') {
+      cmp = (a.status || '').localeCompare(b.status || '');
+    } else {
+      cmp = a.date === b.date
+        ? new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        : (a.date < b.date ? -1 : 1);
+    }
     return sortDir === 'asc' ? cmp : -cmp;
   });
 
@@ -600,6 +684,84 @@ export default function DailyActivities() {
     setFilterActivityType('All');
     setFilterIssuedBy('');
   }
+
+  function toggleSort(col: 'date' | 'project' | 'status') {
+    if (sortColumn === col) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortColumn(col);
+      setSortDir('asc');
+    }
+  }
+
+  function sortIndicator(col: 'date' | 'project' | 'status') {
+    if (sortColumn !== col) return null;
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4, transform: sortDir === 'asc' ? 'rotate(180deg)' : 'none' }}>
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    );
+  }
+
+  // ── Date range quick presets ──
+  function applyDatePreset(preset: 'today' | 'week' | 'month') {
+    const now = new Date();
+    if (preset === 'today') {
+      const t = today();
+      setDateFrom(t);
+      setDateTo(t);
+    } else if (preset === 'week') {
+      const day = now.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      setDateFrom(monday.toISOString().split('T')[0]);
+      setDateTo(today());
+    } else {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(first.toISOString().split('T')[0]);
+      setDateTo(today());
+    }
+  }
+
+  // ── CSV export of the currently filtered/sorted results ──
+  function exportCsv() {
+    const headers = ['Date', 'Project', 'Site ID', 'Governorate', 'Team', 'Activity', 'Status', 'Issued By'];
+    const rows = sortedActivities.map(a => [
+      a.date ? fmtDate(a.date) : '',
+      a.project || '',
+      a.site_id || '',
+      a.governate || '',
+      Array.isArray(a.team_member_names) ? a.team_member_names.join('; ') : '',
+      a.activity_type || '',
+      a.status || '',
+      a.created_by || '',
+    ]);
+    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [headers, ...rows].map(r => r.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `daily-activities-${today()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Active filter chips ──
+  const activeFilterChips: { key: string; label: string; onRemove: () => void }[] = [];
+  if (searchQuery) activeFilterChips.push({ key: 'q', label: `Search: "${searchQuery}"`, onRemove: () => setSearchQuery('') });
+  if (filterProject !== 'All') activeFilterChips.push({ key: 'project', label: filterProject, onRemove: () => setFilterProject('All') });
+  if (filterStatus !== 'All') activeFilterChips.push({ key: 'status', label: filterStatus, onRemove: () => setFilterStatus('All') });
+  if (dateFrom || dateTo) activeFilterChips.push({
+    key: 'date',
+    label: `${dateFrom ? fmtDate(dateFrom) : '…'} → ${dateTo ? fmtDate(dateTo) : '…'}`,
+    onRemove: () => { setDateFrom(''); setDateTo(''); },
+  });
+  if (filterActivityType !== 'All') activeFilterChips.push({ key: 'type', label: filterActivityType, onRemove: () => setFilterActivityType('All') });
+  if (filterIssuedBy) activeFilterChips.push({ key: 'issuedBy', label: `By: ${filterIssuedBy}`, onRemove: () => setFilterIssuedBy('') });
 
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
     .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1);
@@ -722,9 +884,14 @@ export default function DailyActivities() {
                 <div className={styles.fieldsGrid}>
                   <div className={styles.field}>
                     <label>Project <span className={styles.req}>*</span></label>
-                    <select value={project} onChange={e => setProject(e.target.value)}>
+                    <select
+                      className={fieldErrors.project ? styles.inputError : ''}
+                      value={project}
+                      onChange={e => { setProject(e.target.value); setFieldErrors(fe => ({ ...fe, project: '' })); }}
+                    >
                       {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
+                    {fieldErrors.project && <span className={styles.fieldErrMsg}>{fieldErrors.project}</span>}
                   </div>
                   <div className={styles.field}>
                     <label>Section <span className={styles.req}>*</span></label>
@@ -746,7 +913,7 @@ export default function DailyActivities() {
                   <div className={styles.field}>
                     <label>Site ID <span className={styles.req}>*</span></label>
                     <div
-                      className={styles.siteTagsWrap}
+                      className={`${styles.siteTagsWrap} ${fieldErrors.site_id ? styles.inputError : ''}`}
                       onClick={() => siteInputRef.current?.focus()}
                     >
                       {siteTags.map((tag, i) => (
@@ -766,6 +933,7 @@ export default function DailyActivities() {
                         onChange={e => {
                           setSiteInput(e.target.value);
                           autoFillGovernate(e.target.value.trim());
+                          setFieldErrors(fe => ({ ...fe, site_id: '' }));
                         }}
                         onKeyDown={siteKeydown}
                         onBlur={commitSiteInput}
@@ -777,6 +945,7 @@ export default function DailyActivities() {
                         <polyline points="6 9 12 15 18 9"/>
                       </svg>
                     </div>
+                    {fieldErrors.site_id && <span className={styles.fieldErrMsg}>{fieldErrors.site_id}</span>}
                   </div>
                   <div className={styles.field}>
                     <label>Governorate</label>
@@ -806,19 +975,35 @@ export default function DailyActivities() {
                 <div className={styles.fieldsGrid}>
                   <div className={styles.field}>
                     <label>Date <span className={styles.req}>*</span></label>
-                    <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+                    <input
+                      className={fieldErrors.date ? styles.inputError : ''}
+                      type="date"
+                      value={date}
+                      onChange={e => { setDate(e.target.value); setFieldErrors(fe => ({ ...fe, date: '' })); }}
+                    />
+                    {fieldErrors.date && <span className={styles.fieldErrMsg}>{fieldErrors.date}</span>}
                   </div>
                   <div className={styles.field}>
                     <label>Activity Type <span className={styles.req}>*</span></label>
-                    <select value={activityType} onChange={e => setActivityType(e.target.value)}>
+                    <select
+                      className={fieldErrors.activityType ? styles.inputError : ''}
+                      value={activityType}
+                      onChange={e => { setActivityType(e.target.value); setFieldErrors(fe => ({ ...fe, activityType: '' })); }}
+                    >
                       {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
+                    {fieldErrors.activityType && <span className={styles.fieldErrMsg}>{fieldErrors.activityType}</span>}
                   </div>
                   <div className={styles.field}>
                     <label>Status <span className={styles.req}>*</span></label>
-                    <select value={status} onChange={e => setStatus(e.target.value)}>
+                    <select
+                      className={fieldErrors.status ? styles.inputError : ''}
+                      value={status}
+                      onChange={e => { setStatus(e.target.value); setFieldErrors(fe => ({ ...fe, status: '' })); }}
+                    >
                       {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
+                    {fieldErrors.status && <span className={styles.fieldErrMsg}>{fieldErrors.status}</span>}
                   </div>
                   <div className={styles.field}>
                     <label>Notes</label>
@@ -987,6 +1172,17 @@ export default function DailyActivities() {
               <option value="All">All Status</option>
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            <select
+              className={styles.filterSelect}
+              value=""
+              title="Quick date range"
+              onChange={e => { if (e.target.value) applyDatePreset(e.target.value as 'today' | 'week' | 'month'); }}
+            >
+              <option value="">Quick range</option>
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+            </select>
             <div className={styles.dateRangeBox}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
@@ -1023,6 +1219,13 @@ export default function DailyActivities() {
               Filters
               {hasAdvancedFilters && <span className={styles.filtersDot} />}
             </button>
+            <button type="button" className={styles.exportBtn} title="Export filtered results as CSV" onClick={exportCsv}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export
+            </button>
             {hasActiveFilters && (
               <button type="button" className={styles.clearFiltersBtn} onClick={clearFilters}>
                 Clear Filters
@@ -1030,6 +1233,17 @@ export default function DailyActivities() {
             )}
           </div>
         </div>
+
+        {activeFilterChips.length > 0 && (
+          <div className={styles.activeFiltersRow}>
+            {activeFilterChips.map(c => (
+              <span key={c.key} className={styles.filterChip}>
+                {c.label}
+                <button type="button" onClick={c.onRemove} title="Remove filter">×</button>
+              </span>
+            ))}
+          </div>
+        )}
 
         {showAdvancedFilters && (
           <div className={styles.advancedFiltersRow}>
@@ -1054,30 +1268,32 @@ export default function DailyActivities() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th
-                  className={styles.sortableTh}
-                  onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-                >
-                  <span>
-                    Date
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4, transform: sortDir === 'asc' ? 'rotate(180deg)' : 'none' }}>
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </span>
+                <th className={styles.sortableTh} onClick={() => toggleSort('date')}>
+                  <span>Date{sortIndicator('date')}</span>
                 </th>
-                <th>Project</th>
+                <th className={styles.sortableTh} onClick={() => toggleSort('project')}>
+                  <span>Project{sortIndicator('project')}</span>
+                </th>
                 <th>Site ID</th>
                 <th>Governorate</th>
                 <th>Team</th>
                 <th>Activity</th>
-                <th>Status</th>
+                <th className={styles.sortableTh} onClick={() => toggleSort('status')}>
+                  <span>Status{sortIndicator('status')}</span>
+                </th>
                 <th>Issued By</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className={styles.empty}>Loading…</td></tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`sk-${i}`} className={styles.skeletonRow}>
+                    {Array.from({ length: 9 }).map((_, j) => (
+                      <td key={j}><div className={styles.skeletonCell} /></td>
+                    ))}
+                  </tr>
+                ))
               ) : pagedActivities.length === 0 ? (
                 <tr><td colSpan={9} className={styles.empty}>{activities.length === 0 ? 'No activities yet.' : 'No activities match your filters.'}</td></tr>
               ) : pagedActivities.map(a => {
@@ -1085,25 +1301,32 @@ export default function DailyActivities() {
                 const updatedTitle = a.is_edited
                   ? `Updated by ${a.updated_by || 'Unknown'}${a.updated_at ? ' on ' + new Date(a.updated_at).toLocaleString() : ''} — ${a.edit_reason || 'No reason provided'}`
                   : '';
+                const siteIds = (a.site_id || '').split(',').map(s => s.trim()).filter(Boolean);
                 return (
                   <tr key={a.id} className={a.is_edited ? styles.rowUpdated : ''}>
-                    <td style={{ whiteSpace: 'nowrap' }}>
+                    <td data-label="Date" style={{ whiteSpace: 'nowrap' }}>
                       <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--slate-700)' }}>{fmtDate(a.date)}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
                         {a.created_at ? new Date(a.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                       </div>
                     </td>
-                    <td style={{ fontSize: 13, fontWeight: 600, color: 'var(--slate-700)' }}>{a.project || ''}</td>
-                    <td><span className={styles.siteBadge} title={a.site_id || ''}>{a.site_id || '—'}</span></td>
-                    <td style={{ fontSize: 13 }}>{a.governate || ''}</td>
-                    <td>{teamAvatars(teamNames)}</td>
-                    <td style={{ fontSize: 13 }}>{a.activity_type || ''}</td>
-                    <td>
+                    <td data-label="Project" style={{ fontSize: 13, fontWeight: 600, color: 'var(--slate-700)' }}>{a.project || ''}</td>
+                    <td data-label="Site ID">
+                      <div className={styles.siteBadges}>
+                        {siteIds.length > 0
+                          ? siteIds.map((s, i) => <span key={i} className={styles.siteBadge} title={s}>{s}</span>)
+                          : <span className={styles.siteBadge}>—</span>}
+                      </div>
+                    </td>
+                    <td data-label="Governorate" style={{ fontSize: 13 }}>{a.governate || '—'}</td>
+                    <td data-label="Team">{teamAvatars(teamNames)}</td>
+                    <td data-label="Activity" style={{ fontSize: 13 }}>{a.activity_type || ''}</td>
+                    <td data-label="Status">
                       {statusPill(a.status)}
                       {a.is_edited && <span className={styles.updatedBadge} title={updatedTitle}>Updated</span>}
                     </td>
-                    <td style={{ fontSize: 12.5, color: 'var(--slate-600)' }}>{a.created_by || '—'}</td>
-                    <td>
+                    <td data-label="Issued By" style={{ fontSize: 12.5, color: 'var(--slate-600)' }}>{a.created_by || '—'}</td>
+                    <td data-label="Actions">
                       <div className={styles.actBtns}>
                         <button className={`${styles.actBtn} ${styles.actBtnPurple}`} title="Edit" onClick={() => startEdit(a)}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2">

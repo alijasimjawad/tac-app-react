@@ -891,6 +891,86 @@
 }
 .clearFiltersBtn:hover { background: var(--blue-50); }
 
+.exportBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  background: #fff;
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: var(--transition-fast);
+}
+.exportBtn:hover { background: var(--slate-50); }
+
+/* ── Active filter chips ── */
+.activeFiltersRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-bottom: 1.5px solid var(--border);
+  background: var(--slate-50);
+}
+
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--blue-50);
+  color: var(--blue-700);
+  border: 1px solid var(--blue-100);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 6px 3px 10px;
+  border-radius: var(--radius-full);
+}
+
+.filterChip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--blue-600);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+.filterChip button:hover { color: var(--blue-700); }
+
+/* ── Inline field validation ── */
+.inputError {
+  border-color: var(--red) !important;
+}
+.fieldErrMsg {
+  font-size: 11px;
+  color: var(--red);
+  margin-top: 2px;
+}
+
+/* ── Loading skeleton rows ── */
+.skeletonCell {
+  height: 14px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--slate-100) 25%, var(--slate-200) 37%, var(--slate-100) 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.4s ease infinite;
+}
+
+@keyframes skeletonShimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 @media (max-width: 700px) {
   .historyHdr { flex-direction: column; align-items: stretch; }
   .historyToolbar { flex-direction: column; align-items: stretch; justify-content: flex-start; }
@@ -950,6 +1030,13 @@
   text-align: center;
   color: var(--text-muted);
   padding: 36px 0;
+}
+
+.siteBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 220px;
 }
 
 .siteBadge {
@@ -1259,4 +1346,44 @@
 @media (max-width: 480px) {
   .fieldsGrid        { grid-template-columns: 1fr; }
   .selectedChipsWrap { grid-template-columns: 1fr; }
+}
+
+/* ── History table: card layout on narrow screens ── */
+@media (max-width: 640px) {
+  .tableWrap { overflow-x: visible; }
+  .table { min-width: 0; }
+  .table thead { display: none; }
+  .table tbody tr {
+    display: block;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    margin: 10px;
+    padding: 4px 12px;
+    background: #fff;
+  }
+  .table tbody tr.rowUpdated { background: #fffbeb; }
+  .table tbody tr:hover td { background: transparent; }
+  .table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--slate-100);
+    text-align: right;
+  }
+  .table td:last-child { border-bottom: none; }
+  .table td::before {
+    content: attr(data-label);
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    text-align: left;
+    flex-shrink: 0;
+  }
+  .table td[data-label="Actions"] { justify-content: flex-end; }
+  .table td[data-label="Actions"]::before { display: none; }
+  .siteBadges { justify-content: flex-end; }
 }
