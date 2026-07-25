@@ -780,9 +780,12 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     });
   }
 
-  // Dashboard (analytics) stays role-based: hidden for engineers/technicians,
-  // unconditionally visible for everyone else — it isn't part of the
-  // per-user permission toggles below.
+  // Dashboard (analytics): unconditionally visible for admin/user roles
+  // (unchanged from before), but for Engineer/Technician it now follows the
+  // real per-user permission toggle in User Management — an admin can grant
+  // a specific field-role user access to it, same as Sites DB/My Trips/etc.
+  // Previously this was hardcoded hidden for field roles no matter what the
+  // toggle said, which is why granting it from User Management had no effect.
   const roleLower = currentUser?.role?.toLowerCase();
   const isFieldRole = roleLower === 'engineer' || roleLower === 'technician';
 
@@ -795,7 +798,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const myTripsDef        = VIEW_DAILY_WORK.find(d => d.key === 'view_my_trips')!;
 
   const NAV_TOP = [
-    ...(isFieldRole ? [] : [{ to: dashboardDef.to, label: dashboardDef.label, icon: GridIcon }]),
+    ...(!isFieldRole || hasPerm(dashboardDef.key) ? [{ to: dashboardDef.to, label: dashboardDef.label, icon: GridIcon }] : []),
   ];
 
   // Daily Activities / Sites DB / My Attendance / My Trips are now real,
