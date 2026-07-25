@@ -12,6 +12,14 @@ export interface UserProfile {
   permissions: Record<string, boolean>;
   auth_user_id: string;
   profile_photo_url: string | null;
+  phone: string | null;
+  national_id: string | null;
+  date_of_birth: string | null;
+  address: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  start_date: string | null;
+  notes: string | null;
 }
 
 interface AuthState {
@@ -50,11 +58,14 @@ async function fetchTeamPhoto(username: string, fullName: string): Promise<strin
 async function fetchProfile(authUserId: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, username, full_name, role, permissions, auth_user_id')
+    .select('id, username, full_name, role, permissions, auth_user_id, phone, national_id, date_of_birth, address, emergency_contact_name, emergency_contact_phone, start_date, notes, profile_photo_url')
     .eq('auth_user_id', authUserId)
     .single();
   if (error || !data) return null;
-  const profile_photo_url = await fetchTeamPhoto(data.username, data.full_name).catch(() => null);
+  // Prefer the linked team_members photo (payroll staff), fall back to the
+  // user's own profile_photo_url (e.g. owners/admins with no team_members row).
+  const teamPhoto = await fetchTeamPhoto(data.username, data.full_name).catch(() => null);
+  const profile_photo_url = teamPhoto ?? data.profile_photo_url ?? null;
   return { ...data, profile_photo_url } as UserProfile;
 }
 

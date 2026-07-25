@@ -8,6 +8,7 @@ import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './Sidebar.module.css';
 import tacLogoLight from '../assets/tac-logo-light.png';
 import { SiteLookupIcon } from '../pages/SiteLookup';
+import { ProfileIcon } from '../pages/MyProfile';
 import { FinanceIcon } from '../pages/FinTeam';
 import { PROJ_NAMES, SEC_LABELS } from '../pages/NetworkScopes';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
@@ -736,6 +737,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     ...(hasPerm('view_site_lookup')   ? [{ to: '/site-lookup',   label: 'Site Lookup',   icon: SiteLookupIcon }] : []),
     ...(hasPerm('view_route_planner') ? [{ to: '/route-planner', label: 'Route Planner', icon: RouteIcon }]      : []),
     { to: '/sites-db',    label: 'Sites DB',      icon: DatabaseIcon },
+    { to: '/my-profile',  label: 'My Profile',    icon: ProfileIcon },
     { to: '/attendance',  label: 'My Attendance', icon: ClockIcon },
     { to: '/my-trips',    label: 'My Trips',      icon: CarIcon },
     { to: '/my-expenses', label: 'My Expenses',   icon: ReceiptIcon },

@@ -8,6 +8,7 @@ import DailyActivities from './pages/DailyActivities';
 import SitesDB from './pages/SitesDB';
 import Dashboard from './pages/Dashboard';
 import MyExpenses from './pages/MyExpenses';
+import MyProfile from './pages/MyProfile';
 import MyTrips from './pages/MyTrips';
 import LiveTrips from './pages/LiveTrips';
 import RoutePlanner from './pages/RoutePlanner';
@@ -42,6 +43,7 @@ export default function App() {
             }
           >
             <Route path="/attendance"        element={<MyAttendance />} />
+            <Route path="/my-profile"       element={<MyProfile />} />
             <Route path="/my-expenses"      element={<MyExpenses />} />
             <Route path="/my-trips"         element={<MyTrips />} />
             <Route path="/live-trips"       element={<LiveTrips />} />
