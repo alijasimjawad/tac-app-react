@@ -208,10 +208,13 @@ export default function DailyActivities() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [filterActivityType, setFilterActivityType] = useState('All');
+  const [filterIssuedBy, setFilterIssuedBy] = useState('');
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterProject, filterStatus, dateFrom, dateTo, rowsPerPage]);
+  }, [searchQuery, filterProject, filterStatus, dateFrom, dateTo, rowsPerPage, filterActivityType, filterIssuedBy]);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -556,6 +559,8 @@ export default function DailyActivities() {
   const filteredActivities = activities.filter(a => {
     if (filterProject !== 'All' && a.project !== filterProject) return false;
     if (filterStatus !== 'All' && a.status !== filterStatus) return false;
+    if (filterActivityType !== 'All' && a.activity_type !== filterActivityType) return false;
+    if (filterIssuedBy.trim() && !(a.created_by || '').toLowerCase().includes(filterIssuedBy.trim().toLowerCase())) return false;
     if (dateFrom && a.date < dateFrom) return false;
     if (dateTo && a.date > dateTo) return false;
     if (searchQuery.trim()) {
@@ -579,7 +584,8 @@ export default function DailyActivities() {
   const safePage = Math.min(currentPage, totalPages);
   const pageStart = (safePage - 1) * rowsPerPage;
   const pagedActivities = sortedActivities.slice(pageStart, pageStart + rowsPerPage);
-  const hasActiveFilters = !!(searchQuery || filterProject !== 'All' || filterStatus !== 'All' || dateFrom || dateTo);
+  const hasActiveFilters = !!(searchQuery || filterProject !== 'All' || filterStatus !== 'All' || dateFrom || dateTo || filterActivityType !== 'All' || filterIssuedBy);
+  const hasAdvancedFilters = filterActivityType !== 'All' || !!filterIssuedBy;
 
   function clearFilters() {
     setSearchQuery('');
@@ -587,6 +593,8 @@ export default function DailyActivities() {
     setFilterStatus('All');
     setDateFrom('');
     setDateTo('');
+    setFilterActivityType('All');
+    setFilterIssuedBy('');
   }
 
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
@@ -981,16 +989,54 @@ export default function DailyActivities() {
               <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
               <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
             </svg>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <div className={styles.dateInputWrap}>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              {!dateFrom && <span className={styles.dateInputPlaceholder}>From</span>}
+            </div>
             <span className={styles.dateRangeSep}>–</span>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <div className={styles.dateInputWrap}>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              {!dateTo && <span className={styles.dateInputPlaceholder}>To</span>}
+            </div>
           </div>
+          <button
+            type="button"
+            className={`${styles.filtersBtn} ${showAdvancedFilters || hasAdvancedFilters ? styles.filtersBtnActive : ''}`}
+            onClick={() => setShowAdvancedFilters(v => !v)}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+            Filters
+            {hasAdvancedFilters && <span className={styles.filtersDot} />}
+          </button>
           {hasActiveFilters && (
             <button type="button" className={styles.clearFiltersBtn} onClick={clearFilters}>
               Clear Filters
             </button>
           )}
         </div>
+
+        {showAdvancedFilters && (
+          <div className={styles.advancedFiltersRow}>
+            <div className={styles.advFilterField}>
+              <label>Activity Type</label>
+              <select value={filterActivityType} onChange={e => setFilterActivityType(e.target.value)}>
+                <option value="All">All Activity Types</option>
+                {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className={styles.advFilterField}>
+              <label>Issued By</label>
+              <input
+                type="text"
+                placeholder="Filter by who issued it…"
+                value={filterIssuedBy}
+                onChange={e => setFilterIssuedBy(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
 
         <div className={styles.tableWrap}>
           <table className={styles.table}>

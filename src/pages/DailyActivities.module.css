@@ -749,6 +749,100 @@
   font-size: 12px;
 }
 
+.dateInputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Covers the native date input's own "today" placeholder (shown by some
+   browsers, e.g. Safari, even when the value is empty) with an explicit
+   From/To label so an empty filter doesn't look like it's already set. */
+.dateInputPlaceholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  background: #fff;
+  color: var(--text-muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.filtersBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  background: #fff;
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  position: relative;
+  transition: var(--transition-fast);
+}
+.filtersBtn:hover { background: var(--slate-50); }
+
+.filtersBtnActive {
+  background: var(--blue-50);
+  border-color: var(--blue-100);
+  color: var(--accent);
+}
+
+.filtersDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.advancedFiltersRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 12px 20px;
+  border-bottom: 1.5px solid var(--border);
+  background: var(--slate-50);
+}
+
+.advFilterField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.advFilterField label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.advFilterField select,
+.advFilterField input {
+  box-sizing: border-box;
+  height: 34px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: #fff;
+  outline: none;
+  transition: border-color .15s;
+}
+.advFilterField select:focus,
+.advFilterField input:focus { border-color: var(--accent); }
+
 .clearFiltersBtn {
   height: 34px;
   padding: 0 12px;
@@ -908,33 +1002,37 @@
   align-items: center;
 }
 
+.teamAvatars {
+  gap: 5px;
+}
+
 .teamAvatar {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px var(--border);
+  flex-shrink: 0;
+}
+
+.teamAvatarMore {
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   font-size: 10px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #fff;
-  flex-shrink: 0;
-}
-.teamAvatar:not(:first-child) { margin-left: -7px; }
-
-.teamAvatarMore {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  font-size: 9.5px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid #fff;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px var(--border);
   background: var(--slate-200);
   color: var(--slate-600);
-  margin-left: -7px;
   flex-shrink: 0;
 }
 
