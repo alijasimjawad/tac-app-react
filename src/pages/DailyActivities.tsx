@@ -582,11 +582,30 @@ export default function DailyActivities() {
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   }
 
+  // ── Field-role scoping: Engineer/Technician only see activities they're
+  // assigned to, matched the same way MyTrips.tsx resolves the current
+  // user's team_members record (by full_name/username), not full company data.
+  const roleLower = (currentUser?.role || '').toLowerCase();
+  const isFieldRole = roleLower === 'engineer' || roleLower === 'technician';
+  const myMemberId = (() => {
+    if (!isFieldRole || !currentUser) return null;
+    const name = (currentUser.full_name || '').trim().toLowerCase();
+    const uname = (currentUser.username || '').trim().toLowerCase();
+    const match = teamMembers.find(m =>
+      (name && m.full_name?.trim().toLowerCase() === name) ||
+      (uname && m.username?.trim().toLowerCase() === uname),
+    );
+    return match?.id ?? null;
+  })();
+  const visibleActivities = isFieldRole
+    ? activities.filter(a => Array.isArray(a.team_member_ids) && !!myMemberId && a.team_member_ids.includes(myMemberId))
+    : activities;
+
   // ── KPI counts ──
-  const total = activities.length;
-  const completed = activities.filter(a => a.status === 'Completed').length;
-  const inProg = activities.filter(a => a.status === 'In Progress').length;
-  const blocked = activities.filter(a => a.status === 'Blocked').length;
+  const total = visibleActivities.length;
+  const completed = visibleActivities.filter(a => a.status === 'Completed').length;
+  const inProg = visibleActivities.filter(a => a.status === 'In Progress').length;
+  const blocked = visibleActivities.filter(a => a.status === 'Blocked').length;
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
 
   const { busyIds, busyInfo } = getBusyMap();
@@ -635,10 +654,10 @@ export default function DailyActivities() {
 
   // ── History table: filter → sort → paginate ──
   const issuedByOptions = Array.from(
-    new Set(activities.map(a => (a.created_by || '').trim()).filter(Boolean))
+    new Set(visibleActivities.map(a => (a.created_by || '').trim()).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b));
 
-  const filteredActivities = activities.filter(a => {
+  const filteredActivities = visibleActivities.filter(a => {
     if (filterProject !== 'All' && a.project !== filterProject) return false;
     if (filterStatus !== 'All' && a.status !== filterStatus) return false;
     if (filterActivityType !== 'All' && a.activity_type !== filterActivityType) return false;
@@ -1302,7 +1321,7 @@ export default function DailyActivities() {
                   </tr>
                 ))
               ) : pagedActivities.length === 0 ? (
-                <tr><td colSpan={9} className={styles.empty}>{activities.length === 0 ? 'No activities yet.' : 'No activities match your filters.'}</td></tr>
+                <tr><td colSpan={9} className={styles.empty}>{visibleActivities.length === 0 ? 'No activities yet.' : 'No activities match your filters.'}</td></tr>
               ) : pagedActivities.map(a => {
                 const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names : [];
                 const updatedTitle = a.is_edited
