@@ -133,7 +133,7 @@ export default function AppLayout() {
     <div className={styles.shell}>
       <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <div className={styles.main}>
-        <Topbar title={title} onMenuOpen={() => setMobileOpen(true)} />
+        <Topbar title={title} onMenuOpen={() => setMobileOpen(true)} onRefresh={triggerRefresh} refreshing={refreshing} />
         <div className={styles.content} ref={contentRef}>
           {indicatorVisible && (
             <div

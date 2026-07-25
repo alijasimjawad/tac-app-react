@@ -5,6 +5,8 @@ import styles from './Topbar.module.css';
 interface TopbarProps {
   title: string;
   onMenuOpen: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }
 
 const HamburgerIcon = () => (
@@ -15,7 +17,14 @@ const HamburgerIcon = () => (
   </svg>
 );
 
-export default function Topbar({ title, onMenuOpen }: TopbarProps) {
+const RefreshIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+    <path d="M21 3v6h-6" />
+  </svg>
+);
+
+export default function Topbar({ title, onMenuOpen, onRefresh, refreshing }: TopbarProps) {
   const { currentUser } = useAuth();
 
   const initials = (currentUser?.full_name || currentUser?.username || 'U')
@@ -32,6 +41,15 @@ export default function Topbar({ title, onMenuOpen }: TopbarProps) {
       </button>
       <span className={styles.title}>{title}</span>
       <div className={styles.right}>
+        <button
+          className={`${styles.refreshBtn} ${refreshing ? styles.refreshBtnSpinning : ''}`}
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label="Refresh page"
+          title="Refresh"
+        >
+          <RefreshIcon />
+        </button>
         <NotificationBell />
         <div className={styles.avatar}>
           {currentUser?.profile_photo_url

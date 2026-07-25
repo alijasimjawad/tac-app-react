@@ -33,6 +33,33 @@
 }
 .menuBtn:hover { background: var(--slate-100); color: var(--slate-700); }
 
+.refreshBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--slate-500);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.refreshBtn:hover:not(:disabled) { background: var(--slate-100); color: var(--slate-700); }
+.refreshBtn:disabled { cursor: default; color: var(--accent); }
+
+.refreshBtnSpinning svg { animation: refreshSpin 0.7s linear infinite; }
+
+@keyframes refreshSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refreshBtnSpinning svg { animation: none; }
+}
+
 .title {
   font-size: 15px;
   font-weight: 700;
