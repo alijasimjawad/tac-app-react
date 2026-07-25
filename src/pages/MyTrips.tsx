@@ -59,9 +59,7 @@ export default function MyTrips() {
     setLoading(false);
   }
 
-  const myTrips = isAdmin
-    ? trips
-    : trips.filter(t => Array.isArray(t.team_member_ids) && t.team_member_ids.some(id => id === memberId));
+  const myTrips = trips.filter(t => Array.isArray(t.team_member_ids) && t.team_member_ids.some(id => id === memberId));
 
   const sections = [
     { label: 'Active',    list: myTrips.filter(t => t.status === 'active') },
