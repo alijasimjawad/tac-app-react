@@ -674,7 +674,11 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
 
 function FieldRoleNav() {
   const { hasPerm } = useAuth();
+  const dashboardDef     = VIEW_CORE.find(d => d.key === 'view_dashboard')!;
   const dailyActivityDef = VIEW_DAILY_WORK.find(d => d.key === 'view_daily_activities')!;
+  const siteLookupDef    = VIEW_DAILY_WORK.find(d => d.key === 'view_site_lookup')!;
+  const routePlannerDef  = VIEW_DAILY_WORK.find(d => d.key === 'view_route_planner')!;
+  const sitesDbDef       = VIEW_DAILY_WORK.find(d => d.key === 'view_sites_db')!;
   const myAttendanceDef  = VIEW_DAILY_WORK.find(d => d.key === 'view_my_attendance')!;
   const myTripsDef       = VIEW_DAILY_WORK.find(d => d.key === 'view_my_trips')!;
 
@@ -684,6 +688,13 @@ function FieldRoleNav() {
         <MyWorkIcon />
         <span className={styles.navLabel}>My Work</span>
       </NavLink>
+
+      {hasPerm(dashboardDef.key) && (
+        <NavLink to={dashboardDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <GridIcon />
+          <span className={styles.navLabel}>{dashboardDef.label}</span>
+        </NavLink>
+      )}
 
       <div className={styles.fieldNavLabel}>WORK</div>
 
@@ -705,9 +716,27 @@ function FieldRoleNav() {
           <span className={styles.navLabel}>{myTripsDef.label}</span>
         </NavLink>
       )}
+      {hasPerm(siteLookupDef.key) && (
+        <NavLink to={siteLookupDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <SiteLookupIcon />
+          <span className={styles.navLabel}>{siteLookupDef.label}</span>
+        </NavLink>
+      )}
+      {hasPerm(routePlannerDef.key) && (
+        <NavLink to={routePlannerDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <RouteIcon />
+          <span className={styles.navLabel}>{routePlannerDef.label}</span>
+        </NavLink>
+      )}
 
       <div className={styles.fieldNavLabel}>SITES</div>
 
+      {hasPerm(sitesDbDef.key) && (
+        <NavLink to={sitesDbDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <DatabaseIcon />
+          <span className={styles.navLabel}>{sitesDbDef.label}</span>
+        </NavLink>
+      )}
       <NavLink to="/my-sites" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
         <MySitesIcon />
         <span className={styles.navLabel}>My Sites</span>
