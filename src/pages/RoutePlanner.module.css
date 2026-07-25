@@ -49,29 +49,6 @@
   line-height: 1.5;
 }
 
-.newPlanBtn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: #fff;
-  border: 1.5px solid #bfdbfe;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: inherit;
-  color: #1e40af;
-  white-space: nowrap;
-  transition: var(--transition-fast);
-}
-
-.newPlanBtn:hover {
-  background: #1e40af;
-  border-color: #1e40af;
-  color: #fff;
-}
-
 /* ── Stepper ── */
 .stepper {
   display: flex;

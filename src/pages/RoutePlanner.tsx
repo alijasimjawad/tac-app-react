@@ -656,9 +656,6 @@ export default function RoutePlanner() {
         <p className={styles.infoBannerText}>
           Route estimates use geographic distance and configured average speed, not live road routing.
         </p>
-        <button type="button" className={styles.newPlanBtn} onClick={handleClear}>
-          <PlusIcon /> New Plan
-        </button>
       </div>
 
       {/* Stepper */}
@@ -1261,14 +1258,6 @@ function InfoIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
       <circle cx="12" cy="12" r="10"/><path d="M12 16v-5"/><path d="M12 8h.01"/>
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
     </svg>
   );
 }
