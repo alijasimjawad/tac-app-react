@@ -42,7 +42,7 @@ function getGps(): Promise<{ lat: number; lng: number } | null> {
 }
 
 export default function MyAttendance() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPerm } = useAuth();
   const [memberId, setMemberId] = useState<string | null>(null);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [monthFilter, setMonthFilter] = useState('');
@@ -172,6 +172,16 @@ export default function MyAttendance() {
       <button className={`${styles.clockBtn} ${styles.clockIn}`} onClick={clockIn} disabled={clocking}>
         Clock In
       </button>
+    );
+  }
+
+  if (!hasPerm('view_my_attendance')) {
+    return (
+      <div className={styles.page}>
+        <p style={{ color: 'var(--text-muted)', marginTop: 40 }}>
+          You do not have permission to view this page.
+        </p>
+      </div>
     );
   }
 

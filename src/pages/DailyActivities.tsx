@@ -160,7 +160,7 @@ interface FormVals {
 }
 
 export default function DailyActivities() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPerm } = useAuth();
 
   // Data
   const [activities, setActivities] = useState<DailyActivity[]>([]);
@@ -762,6 +762,16 @@ export default function DailyActivities() {
 
   const pageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1)
     .filter(p => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1);
+
+  if (!hasPerm('view_daily_activities')) {
+    return (
+      <div className={styles.page}>
+        <p style={{ color: 'var(--text-muted)', marginTop: 40 }}>
+          You do not have permission to view this page.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.page}>

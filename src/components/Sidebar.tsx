@@ -719,28 +719,39 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     });
   }
 
-  // Engineers/technicians get a trimmed-down field nav: Dashboard (analytics)
-  // and Daily Activities are hidden, leaving Sites DB / My Profile / My
-  // Attendance / My Trips / My Expenses as their default section.
+  // Dashboard (analytics) stays role-based: hidden for engineers/technicians,
+  // unconditionally visible for everyone else — it isn't part of the
+  // per-user permission toggles below.
   const roleLower = currentUser?.role?.toLowerCase();
   const isFieldRole = roleLower === 'engineer' || roleLower === 'technician';
 
-  const dashboardDef = VIEW_CORE.find(d => d.key === 'view_dashboard')!;
-  const siteLookupDef = VIEW_DAILY_WORK.find(d => d.key === 'view_site_lookup')!;
-  const routePlannerDef = VIEW_DAILY_WORK.find(d => d.key === 'view_route_planner')!;
+  const dashboardDef      = VIEW_CORE.find(d => d.key === 'view_dashboard')!;
+  const dailyActivityDef  = VIEW_DAILY_WORK.find(d => d.key === 'view_daily_activities')!;
+  const siteLookupDef     = VIEW_DAILY_WORK.find(d => d.key === 'view_site_lookup')!;
+  const routePlannerDef   = VIEW_DAILY_WORK.find(d => d.key === 'view_route_planner')!;
+  const sitesDbDef        = VIEW_DAILY_WORK.find(d => d.key === 'view_sites_db')!;
+  const myAttendanceDef   = VIEW_DAILY_WORK.find(d => d.key === 'view_my_attendance')!;
+  const myTripsDef        = VIEW_DAILY_WORK.find(d => d.key === 'view_my_trips')!;
 
   const NAV_TOP = [
     ...(isFieldRole ? [] : [{ to: dashboardDef.to, label: dashboardDef.label, icon: GridIcon }]),
   ];
 
+  // Daily Activities / Sites DB / My Attendance / My Trips are now real,
+  // per-user permission toggles (see User Management → Permissions → Daily
+  // Work). Engineers/technicians keep default access to Sites DB, My
+  // Attendance, and My Trips via FIELD_ROLE_DEFAULT_KEYS; Daily Activities
+  // stays off by default for everyone until an admin grants it. My Profile
+  // and My Expenses are intentionally left unconditional here (self-service
+  // pages), matching prior behavior.
   const NAV_MID = [
-    ...(isFieldRole ? [] : [{ to: '/daily-activities', label: 'Daily Activities', icon: ActivityIcon }]),
-    ...(hasPerm(siteLookupDef.key)   ? [{ to: siteLookupDef.to,   label: siteLookupDef.label,   icon: SiteLookupIcon }] : []),
-    ...(hasPerm(routePlannerDef.key) ? [{ to: routePlannerDef.to, label: routePlannerDef.label, icon: RouteIcon }]      : []),
-    { to: '/sites-db',    label: 'Sites DB',      icon: DatabaseIcon },
+    ...(hasPerm(dailyActivityDef.key) ? [{ to: dailyActivityDef.to, label: dailyActivityDef.label, icon: ActivityIcon }] : []),
+    ...(hasPerm(siteLookupDef.key)    ? [{ to: siteLookupDef.to,    label: siteLookupDef.label,    icon: SiteLookupIcon }] : []),
+    ...(hasPerm(routePlannerDef.key)  ? [{ to: routePlannerDef.to,  label: routePlannerDef.label,  icon: RouteIcon }]      : []),
+    ...(hasPerm(sitesDbDef.key)       ? [{ to: sitesDbDef.to,       label: sitesDbDef.label,       icon: DatabaseIcon }]   : []),
     { to: '/my-profile',  label: 'My Profile',    icon: ProfileIcon },
-    { to: '/attendance',  label: 'My Attendance', icon: ClockIcon },
-    { to: '/my-trips',    label: 'My Trips',      icon: CarIcon },
+    ...(hasPerm(myAttendanceDef.key)  ? [{ to: myAttendanceDef.to,  label: myAttendanceDef.label,  icon: ClockIcon }]      : []),
+    ...(hasPerm(myTripsDef.key)       ? [{ to: myTripsDef.to,       label: myTripsDef.label,       icon: CarIcon }]        : []),
     { to: '/my-expenses', label: 'My Expenses',   icon: ReceiptIcon },
   ];
 

@@ -22,8 +22,28 @@ export const VIEW_CORE: NavPermDef[] = [
 ];
 
 export const VIEW_DAILY_WORK: NavPermDef[] = [
-  { key: 'view_site_lookup',   label: 'Site Lookup',   to: '/site-lookup' },
-  { key: 'view_route_planner', label: 'Route Planner', to: '/route-planner' },
+  { key: 'view_daily_activities', label: 'Daily Activities', to: '/daily-activities' },
+  { key: 'view_site_lookup',      label: 'Site Lookup',      to: '/site-lookup' },
+  { key: 'view_route_planner',    label: 'Route Planner',    to: '/route-planner' },
+  { key: 'view_sites_db',         label: 'Sites DB',         to: '/sites-db' },
+  { key: 'view_my_attendance',    label: 'My Attendance',    to: '/attendance' },
+  { key: 'view_my_trips',         label: 'My Trips',         to: '/my-trips' },
+];
+
+// Keys in this list default to GRANTED for Engineer/Technician roles when the
+// permission hasn't been explicitly set by an admin yet — this preserves the
+// "default field nav" (Sites DB / My Attendance / My Trips / My Expenses)
+// those roles have always had. Once an admin explicitly toggles one of these
+// on or off for a specific user in User Management, that explicit value always
+// wins over this default (see hasPerm() in AuthContext.tsx).
+//
+// Daily Activities is deliberately NOT in this list — engineers/technicians
+// have it hidden by default per an earlier, explicit request; admins can still
+// grant it to individual users.
+export const FIELD_ROLE_DEFAULT_KEYS: string[] = [
+  'view_sites_db',
+  'view_my_attendance',
+  'view_my_trips',
 ];
 
 export const VIEW_FINANCE: NavPermDef[] = [
@@ -46,9 +66,9 @@ export const VIEW_ADMIN: NavPermDef[] = [
   { key: 'view_activity_log', label: 'Activity Log', to: '/activity-log' },
 ];
 
-// Real, enforced permission (MyExpenses.tsx / MyTrips.tsx / SiteLookup.tsx
-// gate on it) but My Expenses is always in the sidebar rather than being a
-// distinct nav link controlled by this key, so it isn't in a nav group above.
+// Real, enforced permission (MyExpenses.tsx / SiteLookup.tsx gate on it) but
+// My Expenses is always in the sidebar rather than being a distinct nav link
+// controlled by this key, so it isn't in a nav group above.
 export const VIEW_OTHER: PermDef[] = [
   { key: 'view_my_expenses', label: 'My Expenses' },
 ];

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { PROJ_NAMES } from './NetworkScopes';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
-import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_OTHER, ACTION_DEFS } from '../lib/permissionsCatalog';
+import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_OTHER, ACTION_DEFS, FIELD_ROLE_DEFAULT_KEYS } from '../lib/permissionsCatalog';
 import css from './UserManagement.module.css';
 
 async function extractFnError(error: unknown, data: unknown): Promise<string> {
@@ -227,11 +227,21 @@ export default function UserManagement() {
     setEditRole(u.role || 'user');
     setEditErr('');
 
-    // Initialize perms from saved permissions
+    // Initialize perms from saved permissions. For keys in FIELD_ROLE_DEFAULT_KEYS
+    // that this user has never had explicitly set, show the effective default
+    // (granted for Engineer/Technician) rather than a misleading "off" toggle —
+    // this mirrors hasPerm()'s fallback logic in AuthContext.tsx. Saving still
+    // writes an explicit true/false, so the default only applies until the
+    // admin's first save.
     const saved = u.permissions || {};
+    const editRoleLower = (u.role || '').toLowerCase();
+    const isEditFieldRole = editRoleLower === 'engineer' || editRoleLower === 'technician';
     const initPerms: PermMap = {};
     [...VIEW_CORE, ...VIEW_DAILY_WORK, ...VIEW_FINANCE_ADMIN, ...ACTION_DEFS].forEach(({ key }) => {
-      initPerms[key] = saved[key] === true;
+      const stored = saved[key];
+      initPerms[key] = typeof stored === 'boolean'
+        ? stored
+        : isEditFieldRole && FIELD_ROLE_DEFAULT_KEYS.includes(key);
     });
     setPerms(initPerms);
 

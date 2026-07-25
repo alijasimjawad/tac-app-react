@@ -68,7 +68,7 @@ export default function MyTrips() {
     { label: 'Completed', list: myTrips.filter(t => t.status === 'completed') },
   ];
 
-  if (!hasPerm('view_my_expenses')) {
+  if (!hasPerm('view_my_trips')) {
     return (
       <div className={styles.page}>
         <p style={{ color: 'var(--text-muted)', marginTop: 40 }}>

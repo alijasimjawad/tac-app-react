@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { ensureFullLoad as ensureSitesPreload } from '../lib/sitesCache';
+import { FIELD_ROLE_DEFAULT_KEYS } from '../lib/permissionsCatalog';
 
 export interface UserProfile {
   id: string;
@@ -110,7 +111,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (u.role === 'admin') return true;
     const roleLower = u.role?.toLowerCase();
     if (key === 'view_my_expenses' && (roleLower === 'engineer' || roleLower === 'technician')) return true;
-    return u.permissions?.[key] === true;
+    // Explicit true/false set by an admin in User Management always wins.
+    const stored = u.permissions?.[key];
+    if (typeof stored === 'boolean') return stored;
+    // Otherwise fall back to the field-role default (Sites DB / My Attendance /
+    // My Trips) so Engineer/Technician accounts keep their existing default
+    // nav until an admin explicitly changes it — see permissionsCatalog.ts.
+    if (FIELD_ROLE_DEFAULT_KEYS.includes(key) && (roleLower === 'engineer' || roleLower === 'technician')) return true;
+    return false;
   }
 
   return (

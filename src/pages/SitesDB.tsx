@@ -254,7 +254,7 @@ function SiteMapView({ sites, onViewSite }: SiteMapViewProps) {
 // Main component
 // ─────────────────────────────────────────────────
 export default function SitesDB() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPerm } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
 
   // ── Data ──
@@ -892,6 +892,16 @@ export default function SitesDB() {
           <span className={styles.detailLabel}>{label}</span>
           <span className={styles.detailValue}>{value != null && value !== '' ? String(value) : '—'}</span>
         </div>
+      </div>
+    );
+  }
+
+  if (!hasPerm('view_sites_db')) {
+    return (
+      <div className={styles.page}>
+        <p style={{ color: 'var(--text-muted)', marginTop: 40 }}>
+          You do not have permission to view this page.
+        </p>
       </div>
     );
   }
