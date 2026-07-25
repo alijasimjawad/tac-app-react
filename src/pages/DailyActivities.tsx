@@ -807,19 +807,21 @@ export default function DailyActivities() {
           <p className={styles.pageTitleSub}>Plan, assign and track field activities</p>
         </div>
         <div className={styles.hdrActions}>
-          <button
-            className={styles.btnNewActivity}
-            onClick={() => {
-              setEditingId(null);
-              resetForm();
-              formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New Activity
-          </button>
+          {hasPerm('add_rows') && (
+            <button
+              className={styles.btnNewActivity}
+              onClick={() => {
+                setEditingId(null);
+                resetForm();
+                formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              New Activity
+            </button>
+          )}
         </div>
       </div>
 
@@ -878,7 +880,9 @@ export default function DailyActivities() {
         </div>
       </div>
 
-      {/* ── Form Card ── */}
+      {/* ── Form Card (create needs add_rows, editing an existing row needs
+          edit_rows — same gating pattern as Sites DB / NetworkScopes.tsx) ── */}
+      {(hasPerm('add_rows') || hasPerm('edit_rows')) && (
       <div className={styles.formCard} ref={formCardRef}>
         <div className={styles.formHdr}>
           <div className={styles.formHdrIcon}>
@@ -1166,6 +1170,7 @@ export default function DailyActivities() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ── History Table ── */}
       <div className={styles.historyCard}>
@@ -1354,12 +1359,14 @@ export default function DailyActivities() {
                     <td data-label="Issued By" style={{ fontSize: 12.5, color: 'var(--slate-600)' }}>{a.created_by || '—'}</td>
                     <td data-label="Actions">
                       <div className={styles.actBtns}>
-                        <button className={`${styles.actBtn} ${styles.actBtnPurple}`} title="Edit" onClick={() => startEdit(a)}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>
-                          </svg>
-                        </button>
+                        {hasPerm('edit_rows') && (
+                          <button className={`${styles.actBtn} ${styles.actBtnPurple}`} title="Edit" onClick={() => startEdit(a)}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>
+                            </svg>
+                          </button>
+                        )}
                         <button className={`${styles.actBtn} ${styles.actBtnBlue}`} title="View" onClick={() => setViewActivity(a)}>
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -1370,14 +1377,16 @@ export default function DailyActivities() {
                             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
                           </svg>
                         </button>
-                        <button className={`${styles.actBtn} ${styles.actBtnRed}`} title="Delete" onClick={() => deleteActivity(a.id)}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6l-1 14H6L5 6"/>
-                            <path d="M10 11v6"/><path d="M14 11v6"/>
-                            <path d="M9 6V4h6v2"/>
-                          </svg>
-                        </button>
+                        {hasPerm('delete_rows') && (
+                          <button className={`${styles.actBtn} ${styles.actBtnRed}`} title="Delete" onClick={() => deleteActivity(a.id)}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.2">
+                              <polyline points="3 6 5 6 21 6"/>
+                              <path d="M19 6l-1 14H6L5 6"/>
+                              <path d="M10 11v6"/><path d="M14 11v6"/>
+                              <path d="M9 6V4h6v2"/>
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
