@@ -119,11 +119,9 @@
 
 .scLabel {
   flex: 1;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: #64748B;
-  text-transform: uppercase;
-  letter-spacing: .04em;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94A3B8;
 }
 
 .scValue {
@@ -138,6 +136,25 @@
   color: #64748B;
   font-weight: 500;
 }
+
+/* ── Inline pills (status card top row) ─────────────────────────────────────── */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pillGreen  { background: #DCFCE7; color: #166534; }
+.pillAmber  { background: #FEF3C7; color: #92400E; }
+.pillRed    { background: #FEE2E2; color: #991B1B; }
+.pillSlate  { background: #F1F5F9; color: #64748B; }
+.pillPurple { background: #F3F0FF; color: #5B21B6; }
 
 /* Value color variants */
 .valGreen { color: #059669; }
@@ -166,13 +183,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 18px;
+  padding: 14px 16px;
   border: none;
   border-radius: 14px;
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
   transition: opacity var(--transition-fast), transform var(--transition-fast);
   text-align: left;
 }
@@ -184,7 +199,29 @@
 .qaAmber  { background: #FFFBEB; color: #92400E; }
 
 .qaIcon { display: flex; flex-shrink: 0; }
-.qaLabel { flex: 1; }
+
+.qaLabelWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.qaLabel {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.qaLabelSub {
+  font-size: 11.5px;
+  font-weight: 500;
+  opacity: .65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ── Section card (shared wrapper) ──────────────────────────────────────────── */
 
@@ -414,6 +451,93 @@
   font-weight: 500;
 }
 
+/* ── Trip progress bar ───────────────────────────────────────────────────────── */
+
+.progressWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.progressLabelRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #64748B;
+  font-weight: 500;
+}
+
+.progressTrack {
+  height: 6px;
+  background: #F1F5F9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #10B981, #34D399);
+  border-radius: 999px;
+  transition: width .4s ease;
+  min-width: 4px;
+}
+
+/* ── Trip checklist ──────────────────────────────────────────────────────────── */
+
+.tripChecklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.checklistItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: #334155;
+  font-weight: 500;
+}
+
+.checklistCheck {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #DCFCE7;
+  color: #16A34A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Pulsing green dot for live location */
+.pulseDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22C55E;
+  flex-shrink: 0;
+  position: relative;
+  margin: 4px;
+}
+
+.pulseDot::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, .25);
+  animation: pulse 1.8s ease-out infinite;
+}
+
+@keyframes pulse {
+  0%   { transform: scale(.7); opacity: 1; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* ── Member pills ────────────────────────────────────────────────────────────── */
+
 .memberPills {
   display: flex;
   flex-wrap: wrap;
@@ -548,6 +672,78 @@
 .tlSub  { font-size: 12px; color: #64748B; margin-top: 2px; }
 .tlTime { font-size: 12px; color: #94A3B8; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
 
+/* ── Weather card ────────────────────────────────────────────────────────────── */
+
+.weatherCard {
+  padding: 16px 22px;
+  gap: 0;
+}
+
+.weatherRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.weatherIconWrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+  color: #D97706;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.weatherMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weatherTemp {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0F172A;
+  line-height: 1;
+}
+
+.weatherCond {
+  font-size: 12.5px;
+  color: #64748B;
+  font-weight: 500;
+}
+
+.weatherRight {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.weatherCity {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94A3B8;
+}
+
+.weatherStats {
+  display: flex;
+  gap: 12px;
+}
+
+.weatherStat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748B;
+}
+
 /* ── Skeleton ─────────────────────────────────────────────────────────────────── */
 
 .skeletonCard { pointer-events: none; }
@@ -578,6 +774,7 @@
   .qaGrid     { grid-template-columns: repeat(2, 1fr); }
   .mainGrid   { grid-template-columns: 1fr; }
   .secondGrid { grid-template-columns: 1fr; }
+  .weatherRight { align-items: flex-start; }
 }
 
 @media (max-width: 640px) {
@@ -588,5 +785,7 @@
   .statusCard { padding: 13px 14px; }
   .scValue { font-size: 16px; }
   .qaGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .qaCard { padding: 12px 14px; gap: 10px; font-size: 13px; }
+  .qaCard { padding: 12px 14px; gap: 10px; }
+  .weatherRow { flex-wrap: wrap; }
+  .weatherRight { align-items: flex-start; }
 }

@@ -43,6 +43,12 @@ interface FieldTrip {
   departed_at: string | null;
 }
 
+interface TripParticipantRow {
+  member_id: string;
+  status: string;
+  joined_at: string | null;
+}
+
 interface ExpenseClaim {
   id: string;
   member_id: string;
@@ -54,6 +60,14 @@ interface ExpenseClaim {
   status: string;
   total_amount: number | null;
   rejection_reason: string | null;
+}
+
+interface WeatherData {
+  temp: number;
+  humidity: number;
+  windSpeed: number;
+  condition: string;
+  code: number;
 }
 
 interface WorkAlert {
@@ -88,9 +102,9 @@ function daysAgoISO(n: number) {
 
 function getGreeting() {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
+  if (h < 12) return 'Good morning 👋';
   if (h < 17) return 'Good afternoon';
-  return 'Good evening';
+  return 'Good evening 🌙';
 }
 
 function fmtTime(iso: string | null) {
@@ -117,12 +131,45 @@ function fmtSynced(d: Date) {
   return `${Math.floor(diff / 60000)}m ago`;
 }
 
+function fmtRelative(sortKey: string): string {
+  const d = new Date(sortKey);
+  if (isNaN(d.getTime())) return sortKey;
+  const diffMin = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin} min${diffMin !== 1 ? 's' : ''} ago`;
+  const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const tStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (dStr === todayISO()) return `Today, ${tStr}`;
+  if (dStr === daysAgoISO(1)) return `Yesterday, ${tStr}`;
+  return fmtDate(dStr);
+}
+
+function wmoToCondition(code: number): string {
+  if (code === 0) return 'Clear sky';
+  if (code <= 3) return 'Partly cloudy';
+  if (code <= 48) return 'Foggy';
+  if (code <= 57) return 'Light drizzle';
+  if (code <= 67) return 'Rainy';
+  if (code <= 77) return 'Snow';
+  if (code <= 82) return 'Rain showers';
+  if (code <= 99) return 'Thunderstorm';
+  return 'Clear';
+}
+
 function actStatusCls(s: string | null) {
   const v = (s || '').toLowerCase();
   if (v === 'in progress') return styles.badgeAmber;
   if (v === 'completed') return styles.badgeGreen;
   if (v === 'blocked') return styles.badgeRed;
   return styles.badgeSlate;
+}
+
+function actToPillCls(s: string | null): string {
+  const v = (s || '').toLowerCase();
+  if (v === 'in progress') return styles.pillAmber;
+  if (v === 'completed') return styles.pillGreen;
+  if (v === 'blocked') return styles.pillRed;
+  return styles.pillSlate;
 }
 
 // ── Skeleton placeholder ──────────────────────────────────────────────────────
@@ -174,13 +221,35 @@ export default function MyWork() {
   const [todayActs,      setTodayActs]      = useState<DailyActivity[]>([]);
   const [recentActs,     setRecentActs]     = useState<DailyActivity[]>([]);
   const [activeTrip,     setActiveTrip]     = useState<FieldTrip | null>(null);
+  const [tripParticipants, setTripParticipants] = useState<TripParticipantRow[]>([]);
   const [pendingExp,     setPendingExp]     = useState({ count: 0, total: 0 });
   const [recentExps,     setRecentExps]     = useState<ExpenseClaim[]>([]);
   const [lastSynced,     setLastSynced]     = useState<Date | null>(null);
+  const [weather,        setWeather]        = useState<WeatherData | null>(null);
 
   const memberIdRef = useRef<string | null>(null);
 
-  // ── Member resolution ────────────────────────────────────────────────────────
+  // ── Weather (silent, independent) ────────────────────────────────────────────
+  useEffect(() => {
+    fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=33.3152&longitude=44.3661' +
+      '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&forecast_days=1',
+    )
+      .then(r => r.json())
+      .then((d: { current?: { temperature_2m: number; relative_humidity_2m: number; wind_speed_10m: number; weather_code: number } }) => {
+        if (!d?.current) return;
+        setWeather({
+          temp:      d.current.temperature_2m,
+          humidity:  d.current.relative_humidity_2m,
+          windSpeed: d.current.wind_speed_10m,
+          condition: wmoToCondition(d.current.weather_code),
+          code:      d.current.weather_code,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  // ── Member resolution ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser) return;
     (async () => {
@@ -245,7 +314,7 @@ export default function MyWork() {
       setTodayAtt(    attRows.find(r => r.date === today)     ?? null);
       setYesterdayAtt(attRows.find(r => r.date === yesterday) ?? null);
 
-      // Activities — filter client-side (matching MyTrips pattern)
+      // Activities
       const allActs = (actRes.data ?? []) as DailyActivity[];
       const myActs  = mid
         ? allActs.filter(a => Array.isArray(a.team_member_ids) && a.team_member_ids.includes(mid))
@@ -258,7 +327,19 @@ export default function MyWork() {
       const myTrips  = mid
         ? allTrips.filter(t => Array.isArray(t.team_member_ids) && t.team_member_ids.includes(mid))
         : [];
-      setActiveTrip(myTrips.find(t => t.status === 'active' || t.status === 'departed') ?? null);
+      const myActiveTrip = myTrips.find(t => t.status === 'active' || t.status === 'departed') ?? null;
+      setActiveTrip(myActiveTrip);
+
+      // Trip participants for progress bar
+      if (myActiveTrip) {
+        const { data: ppData } = await supabase
+          .from('trip_participants')
+          .select('member_id,status,joined_at')
+          .eq('trip_id', myActiveTrip.id);
+        setTripParticipants((ppData as TripParticipantRow[]) ?? []);
+      } else {
+        setTripParticipants([]);
+      }
 
       // Expenses
       const exps    = (expRes.data ?? []) as ExpenseClaim[];
@@ -321,24 +402,47 @@ export default function MyWork() {
   // Recent timeline
   const events: TimelineEvent[] = [];
   if (todayAtt?.clock_in) {
-    events.push({ id: 'att-in',  iconType: 'clockIn',  text: 'Clocked in',  sub: fmtFullDate(), time: fmtTime(todayAtt.clock_in),  sortKey: todayAtt.clock_in });
+    events.push({ id: 'att-in',  iconType: 'clockIn',  text: 'Clocked in',  sub: fmtFullDate(), time: todayAtt.clock_in,  sortKey: todayAtt.clock_in });
   }
   if (todayAtt?.clock_out) {
-    events.push({ id: 'att-out', iconType: 'clockOut', text: 'Clocked out', sub: `${todayAtt.hours_worked ?? '—'} hrs worked`, time: fmtTime(todayAtt.clock_out), sortKey: todayAtt.clock_out });
+    events.push({ id: 'att-out', iconType: 'clockOut', text: 'Clocked out', sub: `${todayAtt.hours_worked ?? '—'} hrs worked`, time: todayAtt.clock_out, sortKey: todayAtt.clock_out });
   }
   recentActs.slice(0, 3).forEach(a => {
-    events.push({ id: 'act-' + a.id, iconType: 'activity', text: `${a.activity_type || 'Activity'} · ${a.status || '—'}`, sub: [a.site_id, a.project].filter(Boolean).join(' · '), time: fmtDate(a.date), sortKey: a.created_at || a.date });
+    events.push({ id: 'act-' + a.id, iconType: 'activity', text: `${a.activity_type || 'Activity'} · ${a.status || '—'}`, sub: [a.site_id, a.project].filter(Boolean).join(' · '), time: a.created_at || a.date, sortKey: a.created_at || a.date });
   });
   recentExps.slice(0, 2).forEach(e => {
     const lbl = e.status === 'approved' ? 'approved' : e.status === 'rejected' ? 'rejected' : 'submitted';
-    events.push({ id: 'exp-' + e.id, iconType: 'expense', text: `Expense ${lbl}`, sub: `${e.project_name || '—'} · ${e.total_amount ? fmtIQD(e.total_amount) : '—'}`, time: fmtDate(e.activity_date), sortKey: e.submitted_at || e.activity_date });
+    events.push({ id: 'exp-' + e.id, iconType: 'expense', text: `Expense ${lbl}`, sub: `${e.project_name || '—'} · ${e.total_amount ? fmtIQD(e.total_amount) : '—'}`, time: e.submitted_at || e.activity_date, sortKey: e.submitted_at || e.activity_date });
   });
   events.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
   const shownEvents = events.slice(0, 6);
 
-  // Attendance label
+  // Attendance label + pill
   const attLabel = !todayAtt ? 'Not Clocked In' : todayAtt.clock_out ? 'Clocked Out' : 'Clocked In';
   const attCls   = attLabel === 'Clocked In' ? styles.valGreen : attLabel === 'Clocked Out' ? styles.valSlate : styles.valAmber;
+  const attPill  = attLabel === 'Clocked In'
+    ? { text: 'Active',         cls: styles.pillGreen }
+    : attLabel === 'Clocked Out'
+    ? { text: 'Clocked Out',    cls: styles.pillSlate }
+    : { text: 'Not Clocked In', cls: styles.pillAmber };
+
+  // Activity pill
+  const actPillCls  = actToPillCls(activeAct?.status ?? null);
+  const actPillText = activeAct ? (activeAct.status || '—') : '—';
+
+  // Trip pill
+  const tripPill = !activeTrip
+    ? { text: '—',        cls: styles.pillSlate }
+    : activeTrip.status === 'active'
+    ? { text: 'Live',     cls: styles.pillAmber }
+    : activeTrip.status === 'departed'
+    ? { text: 'Departed', cls: styles.pillSlate }
+    : { text: 'Pending',  cls: styles.pillSlate };
+
+  // Trip participants progress
+  const joinedCount = tripParticipants.filter(p => p.joined_at !== null).length;
+  const totalCount  = (activeTrip?.team_member_ids ?? []).length;
+  const joinedPct   = totalCount > 0 ? Math.round((joinedCount / totalCount) * 100) : 0;
 
   const displayName = (currentUser?.full_name || currentUser?.username || '').split(' ')[0];
 
@@ -379,7 +483,7 @@ export default function MyWork() {
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconBlue}`}><ClockSIcon /></span>
             <span className={styles.scLabel}>Attendance</span>
-            <ChevronRightSmIcon />
+            <span className={`${styles.pill} ${attPill.cls}`}>{attPill.text}</span>
           </div>
           <div className={`${styles.scValue} ${attCls}`}>{attLabel}</div>
           {todayAtt?.clock_in && (
@@ -394,7 +498,7 @@ export default function MyWork() {
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconGreen}`}><ActivitySIcon /></span>
             <span className={styles.scLabel}>Active Activity</span>
-            <ChevronRightSmIcon />
+            <span className={`${styles.pill} ${actPillCls}`}>{actPillText}</span>
           </div>
           {activeAct ? (
             <>
@@ -410,7 +514,7 @@ export default function MyWork() {
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconPurple}`}><TripSIcon /></span>
             <span className={styles.scLabel}>Current Trip</span>
-            <ChevronRightSmIcon />
+            <span className={`${styles.pill} ${tripPill.cls}`}>{tripPill.text}</span>
           </div>
           {activeTrip ? (
             <>
@@ -430,7 +534,7 @@ export default function MyWork() {
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconAmber}`}><ExpenseSIcon /></span>
             <span className={styles.scLabel}>Pending Expenses</span>
-            <ChevronRightSmIcon />
+            <span className={`${styles.pill} ${styles.pillPurple}`}>View Claims</span>
           </div>
           {pendingExp.count > 0 ? (
             <>
@@ -453,25 +557,37 @@ export default function MyWork() {
 
           <button className={`${styles.qaCard} ${styles.qaBlue}`} onClick={() => navigate('/attendance')}>
             <span className={styles.qaIcon}><ClockQIcon /></span>
-            <span className={styles.qaLabel}>{attLabel === 'Clocked In' ? 'Clock Out' : 'Clock In'}</span>
+            <span className={styles.qaLabelWrap}>
+              <span className={styles.qaLabel}>{attLabel === 'Clocked In' ? 'Clock Out' : 'Clock In'}</span>
+              <span className={styles.qaLabelSub}>{attLabel === 'Clocked In' ? 'End your shift' : 'Begin your shift'}</span>
+            </span>
             <ChevronRightSmIcon />
           </button>
 
           <button className={`${styles.qaCard} ${styles.qaGreen}`} onClick={() => navigate('/daily-activities')}>
             <span className={styles.qaIcon}><ActivityQIcon /></span>
-            <span className={styles.qaLabel}>{activeAct ? 'Open Activity' : 'Start Activity'}</span>
+            <span className={styles.qaLabelWrap}>
+              <span className={styles.qaLabel}>{activeAct ? 'Open Activity' : 'Start Activity'}</span>
+              <span className={styles.qaLabelSub}>{activeAct ? 'Continue current activity' : 'Begin new activity'}</span>
+            </span>
             <ChevronRightSmIcon />
           </button>
 
           <button className={`${styles.qaCard} ${styles.qaPurple}`} onClick={() => navigate('/my-trips')}>
             <span className={styles.qaIcon}><TripQIcon /></span>
-            <span className={styles.qaLabel}>{activeTrip ? 'Open Trip' : 'Start a Trip'}</span>
+            <span className={styles.qaLabelWrap}>
+              <span className={styles.qaLabel}>{activeTrip ? 'Open Trip' : 'Start a Trip'}</span>
+              <span className={styles.qaLabelSub}>Start or join a trip</span>
+            </span>
             <ChevronRightSmIcon />
           </button>
 
           <button className={`${styles.qaCard} ${styles.qaAmber}`} onClick={() => navigate('/my-expenses')}>
             <span className={styles.qaIcon}><ExpenseQIcon /></span>
-            <span className={styles.qaLabel}>New Expense</span>
+            <span className={styles.qaLabelWrap}>
+              <span className={styles.qaLabel}>New Expense</span>
+              <span className={styles.qaLabelSub}>Create a claim</span>
+            </span>
             <ChevronRightSmIcon />
           </button>
 
@@ -554,15 +670,47 @@ export default function MyWork() {
                   {activeTrip.site_id && <div className={styles.tripSite}>Site {activeTrip.site_id}</div>}
                 </div>
               </div>
+
               {activeTrip.started_at && (
                 <div className={styles.tripTimeLine}>
                   <ClockSmIcon /> Started at {fmtTime(activeTrip.started_at)}
                 </div>
               )}
+
               <div className={styles.tripMemberRow}>
                 <UsersSmIcon />
                 <span>{(activeTrip.team_member_names ?? []).length} member{(activeTrip.team_member_names ?? []).length !== 1 ? 's' : ''} on team</span>
               </div>
+
+              {/* Member join progress bar */}
+              {totalCount > 0 && (
+                <div className={styles.progressWrap}>
+                  <div className={styles.progressLabelRow}>
+                    <span>{joinedCount} of {totalCount} joined</span>
+                    <span>{joinedPct}%</span>
+                  </div>
+                  <div className={styles.progressTrack}>
+                    <div className={styles.progressFill} style={{ width: `${joinedPct}%` }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Status checklist */}
+              <div className={styles.tripChecklist}>
+                {activeTrip.site_id && (
+                  <div className={styles.checklistItem}>
+                    <span className={styles.checklistCheck}><CheckSmIcon /></span>
+                    <span>Meeting point confirmed</span>
+                  </div>
+                )}
+                {activeTrip.status === 'active' && (
+                  <div className={styles.checklistItem}>
+                    <span className={styles.pulseDot} aria-hidden="true" />
+                    <span>Live location active</span>
+                  </div>
+                )}
+              </div>
+
               {(activeTrip.team_member_names ?? []).length > 0 && (
                 <div className={styles.memberPills}>
                   {(activeTrip.team_member_names ?? []).slice(0, 5).map((n, i) => (
@@ -573,6 +721,7 @@ export default function MyWork() {
                   )}
                 </div>
               )}
+
               <button className={styles.openTripBtn} onClick={() => navigate('/my-trips')}>
                 Open Trip <ChevronRightSmIcon />
               </button>
@@ -673,12 +822,34 @@ export default function MyWork() {
                   <div className={styles.tlText}>{e.text}</div>
                   <div className={styles.tlSub}>{e.sub}</div>
                 </div>
-                <div className={styles.tlTime}>{e.time}</div>
+                <div className={styles.tlTime}>{fmtRelative(e.sortKey)}</div>
               </div>
             ))}
           </div>
         )}
       </section>
+
+      {/* ── Weather card ──────────────────────────────────────────────────────── */}
+      {weather && (
+        <section className={`${styles.sectionCard} ${styles.weatherCard}`} aria-label="Current weather — Baghdad">
+          <div className={styles.weatherRow}>
+            <div className={styles.weatherIconWrap}>
+              <WeatherIcon code={weather.code} />
+            </div>
+            <div className={styles.weatherMain}>
+              <div className={styles.weatherTemp}>{Math.round(weather.temp)}°C</div>
+              <div className={styles.weatherCond}>{weather.condition}</div>
+            </div>
+            <div className={styles.weatherRight}>
+              <div className={styles.weatherCity}>Baghdad, Iraq</div>
+              <div className={styles.weatherStats}>
+                <span className={styles.weatherStat}><DropIcon /> {weather.humidity}%</span>
+                <span className={styles.weatherStat}><WindIcon /> {Math.round(weather.windSpeed)} km/h</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
     </div>
   );
@@ -861,6 +1032,14 @@ function ClockSmIcon() {
   );
 }
 
+function CheckSmIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  );
+}
+
 function AlertRedIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -884,4 +1063,54 @@ function TimelineIconComp({ type }: { type: TimelineEvent['iconType'] }) {
   if (type === 'activity') return <ActivitySIcon />;
   if (type === 'expense') return <ExpenseSIcon />;
   return <TripSIcon />;
+}
+
+function DropIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>
+    </svg>
+  );
+}
+
+function WindIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>
+    </svg>
+  );
+}
+
+function WeatherIcon({ code }: { code: number }) {
+  // Clear sky
+  if (code === 0) return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  );
+  // Rain / drizzle / showers
+  if (code >= 51 && code <= 82) return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <line x1="16" y1="13" x2="16" y2="21"/><line x1="8" y1="13" x2="8" y2="21"/>
+      <line x1="12" y1="15" x2="12" y2="23"/>
+      <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/>
+    </svg>
+  );
+  // Thunderstorm
+  if (code >= 95) return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/>
+      <polyline points="13 11 9 17 15 17 11 23"/>
+    </svg>
+  );
+  // Partly cloudy / overcast / fog / snow / default
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+    </svg>
+  );
 }
