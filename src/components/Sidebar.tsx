@@ -252,7 +252,7 @@ function NetworkScopesTree() {
   const visibleProjects = PROJECTS.filter(p => hasPerm(`view_${p}`));
   if (visibleProjects.length === 0) return null;
 
-  const canManageSec = hasPerm('rename_section') || hasPerm('delete_section');
+  const canManageSec = hasPerm('sdb_rename_section') || hasPerm('sdb_delete_section');
 
   return (
     <div className={styles.nsSection}>
@@ -323,7 +323,7 @@ function NetworkScopesTree() {
                                 </button>
                                 {menuOpen && (
                                   <div ref={menuRef} className={styles.secMenuDropdown} onClick={e => e.stopPropagation()}>
-                                    {hasPerm('rename_section') && (
+                                    {hasPerm('sdb_rename_section') && (
                                       <button
                                         className={styles.secMenuItem}
                                         onClick={() => {
@@ -335,7 +335,7 @@ function NetworkScopesTree() {
                                         Rename
                                       </button>
                                     )}
-                                    {hasPerm('delete_section') && (
+                                    {hasPerm('sdb_delete_section') && (
                                       <button
                                         className={`${styles.secMenuItem} ${styles.secMenuItemDanger}`}
                                         onClick={() => {
@@ -354,7 +354,7 @@ function NetworkScopesTree() {
                           </div>
                         );
                       })}
-                      {hasPerm('add_section') && (
+                      {hasPerm('sdb_add_section') && (
                         <button
                           className={styles.addSecBtn}
                           onClick={() => { setSecError(null); setAddSecState({ proj, name: '' }); }}

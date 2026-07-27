@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { PROJ_NAMES } from './NetworkScopes';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
-import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_OTHER, ACTION_DEFS, FIELD_ROLE_DEFAULT_KEYS } from '../lib/permissionsCatalog';
+import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_OTHER, ACTION_DEFS, ACTION_SCOPES, LEGACY_ACTION_KEY, FIELD_ROLE_DEFAULT_KEYS, type PermDef } from '../lib/permissionsCatalog';
 import css from './UserManagement.module.css';
 
 async function extractFnError(error: unknown, data: unknown): Promise<string> {
@@ -243,8 +243,18 @@ export default function UserManagement() {
     const initPerms: PermMap = {};
     [...VIEW_CORE, ...VIEW_DAILY_WORK, ...VIEW_FINANCE_ADMIN, ...ACTION_DEFS].forEach(({ key }) => {
       const stored = saved[key];
-      initPerms[key] = typeof stored === 'boolean'
-        ? stored
+      if (typeof stored === 'boolean') {
+        initPerms[key] = stored;
+        return;
+      }
+      // Scoped action keys (da_add_rows, sdb_add_rows, …) show the legacy
+      // global action value (add_rows, …) if that's the only thing set for
+      // this user — matches hasPerm()'s fallback so the modal reflects what
+      // the user can actually do right now, not a misleading "off" toggle.
+      const legacyKey = LEGACY_ACTION_KEY[key];
+      const legacyStored = legacyKey ? saved[legacyKey] : undefined;
+      initPerms[key] = typeof legacyStored === 'boolean'
+        ? legacyStored
         : isEditFieldRole && FIELD_ROLE_DEFAULT_KEYS.includes(key);
     });
     setPerms(initPerms);
@@ -273,8 +283,7 @@ export default function UserManagement() {
     setTouchedPerms(t => new Set(t).add(key));
   }
 
-  function togAll(group: 'view' | 'actions', val: boolean) {
-    const defs = group === 'view' ? viewDefs : ACTION_DEFS;
+  function togAll(defs: PermDef[], val: boolean) {
     setPerms(p => {
       const next = { ...p };
       defs.forEach(({ key }) => { next[key] = val; });
@@ -570,9 +579,9 @@ export default function UserManagement() {
                   <div className={css.permColHdr}>
                     <span className={css.permColTitle}>View</span>
                     <div className={css.togAllBtns}>
-                      <button className={css.togAllBtn} onClick={() => togAll('view', true)}>All</button>
+                      <button className={css.togAllBtn} onClick={() => togAll(viewDefs, true)}>All</button>
                       <span style={{ color: '#cbd5e1' }}>·</span>
-                      <button className={css.togAllBtn} onClick={() => togAll('view', false)}>None</button>
+                      <button className={css.togAllBtn} onClick={() => togAll(viewDefs, false)}>None</button>
                     </div>
                   </div>
                   {VIEW_CORE.map(({ key, label }) => (
@@ -608,20 +617,33 @@ export default function UserManagement() {
                   ))}
                 </div>
 
-                {/* ACTIONS column */}
+                {/* ACTIONS column — scoped per page so e.g. Daily Activities
+                    CRUD can be granted without also granting it on Sites DB */}
                 <div className={css.permCol}>
                   <div className={css.permColHdr}>
                     <span className={css.permColTitle}>Actions</span>
                     <div className={css.togAllBtns}>
-                      <button className={css.togAllBtn} onClick={() => togAll('actions', true)}>All</button>
+                      <button className={css.togAllBtn} onClick={() => togAll(ACTION_DEFS, true)}>All</button>
                       <span style={{ color: '#cbd5e1' }}>·</span>
-                      <button className={css.togAllBtn} onClick={() => togAll('actions', false)}>None</button>
+                      <button className={css.togAllBtn} onClick={() => togAll(ACTION_DEFS, false)}>None</button>
                     </div>
                   </div>
-                  {ACTION_DEFS.map(({ key, label }) => (
-                    <div key={key} className={css.togWrap}>
-                      <span className={css.togLabel}>{label}</span>
-                      <Toggle id={`ump-${key}`} checked={perms[key] === true} onChange={v => togglePerm(key, v)} />
+                  {ACTION_SCOPES.map(scope => (
+                    <div key={scope.id}>
+                      <div className={css.permColHdr} style={{ margin: '10px 0 4px' }}>
+                        <span className={css.permGroupLbl} style={{ padding: 0 }}>{scope.label}</span>
+                        <div className={css.togAllBtns}>
+                          <button className={css.togAllBtn} onClick={() => togAll(scope.actions, true)}>All</button>
+                          <span style={{ color: '#cbd5e1' }}>·</span>
+                          <button className={css.togAllBtn} onClick={() => togAll(scope.actions, false)}>None</button>
+                        </div>
+                      </div>
+                      {scope.actions.map(({ key, label }) => (
+                        <div key={key} className={css.togWrap}>
+                          <span className={css.togLabel}>{label}</span>
+                          <Toggle id={`ump-${key}`} checked={perms[key] === true} onChange={v => togglePerm(key, v)} />
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>

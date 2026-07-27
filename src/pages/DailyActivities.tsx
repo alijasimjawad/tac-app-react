@@ -834,7 +834,7 @@ export default function DailyActivities() {
           <p className={styles.pageTitleSub}>Plan, assign and track field activities</p>
         </div>
         <div className={styles.hdrActions}>
-          {hasPerm('add_rows') && (
+          {hasPerm('da_add_rows') && (
             <button
               className={styles.btnNewActivity}
               onClick={() => {
@@ -909,7 +909,7 @@ export default function DailyActivities() {
 
       {/* ── Form Card (create needs add_rows, editing an existing row needs
           edit_rows — same gating pattern as Sites DB / NetworkScopes.tsx) ── */}
-      {(hasPerm('add_rows') || hasPerm('edit_rows')) && (
+      {(hasPerm('da_add_rows') || hasPerm('da_edit_rows')) && (
       <div className={styles.formCard} ref={formCardRef}>
         <div className={styles.formHdr}>
           <div className={styles.formHdrIcon}>
@@ -1392,7 +1392,7 @@ export default function DailyActivities() {
                     <td data-label="Issued By" style={{ fontSize: 12.5, color: 'var(--slate-600)' }}>{a.created_by || '—'}</td>
                     <td data-label="Actions">
                       <div className={styles.actBtns}>
-                        {hasPerm('edit_rows') && (
+                        {hasPerm('da_edit_rows') && (
                           <button className={`${styles.actBtn} ${styles.actBtnPurple}`} title="Edit" onClick={() => startEdit(a)}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -1410,7 +1410,7 @@ export default function DailyActivities() {
                             <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
                           </svg>
                         </button>
-                        {hasPerm('delete_rows') && (
+                        {hasPerm('da_delete_rows') && (
                           <button className={`${styles.actBtn} ${styles.actBtnRed}`} title="Delete" onClick={() => deleteActivity(a.id)}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.2">
                               <polyline points="3 6 5 6 21 6"/>

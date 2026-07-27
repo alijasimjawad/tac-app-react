@@ -460,7 +460,7 @@ export default function NetworkScopes() {
   // ── Export handler (ExcelJS styled workbook) ──────────────────────────────
 
   async function exportSection() {
-    if (!hasPerm('export_excel')) return;
+    if (!hasPerm('sdb_export_excel')) return;
     if (filteredRows.length === 0) { showToast('No rows match current filters', false); return; }
 
     const sanitize = (s: string) =>
@@ -983,9 +983,9 @@ export default function NetworkScopes() {
           <div className={styles.emptyTitle}>No data yet</div>
           <div className={styles.emptyDesc}>
             This section is empty.
-            {hasPerm('add_rows') && ' Import an Excel file or use Add Site to get started.'}
+            {hasPerm('sdb_add_rows') && ' Import an Excel file or use Add Site to get started.'}
           </div>
-          {hasPerm('add_rows') && (
+          {hasPerm('sdb_add_rows') && (
             <label className={styles.addSiteBtn} style={{ cursor: 'pointer', marginTop: 8 }}>
               <UploadIcon /> Import Excel
               <input
@@ -1064,12 +1064,12 @@ export default function NetworkScopes() {
                 </small>
               </div>
               <div className={styles.toolbarRight}>
-                {hasPerm('add_rows') && (
+                {hasPerm('sdb_add_rows') && (
                   <button className={styles.addSiteBtn} onClick={openAddModal}>
                     <PlusIcon /> Add Site
                   </button>
                 )}
-                {hasPerm('add_rows') && (
+                {hasPerm('sdb_add_rows') && (
                   <label className={styles.importBtn} title="Import Excel file">
                     <UploadIcon /> Import
                     <input
@@ -1081,17 +1081,17 @@ export default function NetworkScopes() {
                     />
                   </label>
                 )}
-                {hasPerm('export_excel') && (
+                {hasPerm('sdb_export_excel') && (
                   <button className={styles.exportBtn} onClick={exportSection} title="Export to Excel">
                     <DownloadIcon /> Export
                   </button>
                 )}
-                {hasPerm('add_columns') && (
+                {hasPerm('sdb_add_columns') && (
                   <button className={styles.addColBtn} onClick={() => { setAddColName(''); setAddColModal(true); }}>
                     <PlusIcon /> Add Column
                   </button>
                 )}
-                {hasPerm('edit_rows') && rows.length > 0 && (
+                {hasPerm('sdb_edit_rows') && rows.length > 0 && (
                   <button className={styles.bulkBtn} onClick={() => {
                     setBulkTab('same');
                     setBulkColIdx(0);
@@ -1146,7 +1146,7 @@ export default function NetworkScopes() {
                           >
                             <FilterIcon />
                           </button>
-                          {hasPerm('add_columns') && (
+                          {hasPerm('sdb_add_columns') && (
                             <button
                               className={styles.colMenuBtn}
                               onClick={e => openColMenu(ci, e)}
@@ -1336,7 +1336,7 @@ export default function NetworkScopes() {
                   const isSubcon = h === 'Subcon';
                   const isAtp    = /^atp.{0,8}status$/i.test(h);
                   const isDate   = DATE_KEYWORDS.some(kw => h.toLowerCase().includes(kw));
-                  const canEdit  = modal.rowId === null ? hasPerm('add_rows') : hasPerm('edit_rows');
+                  const canEdit  = modal.rowId === null ? hasPerm('sdb_add_rows') : hasPerm('sdb_edit_rows');
                   const atpVal   = isAtp ? (ATP_OPTIONS.includes(v) ? v : 'Pending') : '';
 
                   return (
@@ -1380,7 +1380,7 @@ export default function NetworkScopes() {
             </div>
 
             <div className={styles.detailActions}>
-              {(modal.rowId === null ? hasPerm('add_rows') : hasPerm('edit_rows')) && (
+              {(modal.rowId === null ? hasPerm('sdb_add_rows') : hasPerm('sdb_edit_rows')) && (
                 <button className={styles.btnGreen} disabled={modalSaving} onClick={saveModal}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                     <polyline points="20 6 9 17 4 12"/>
@@ -1392,7 +1392,7 @@ export default function NetworkScopes() {
                 onClick={() => { setModal(null); setDeleteConfirm(false); }}>
                 Cancel
               </button>
-              {modal.rowId !== null && hasPerm('delete_rows') && (
+              {modal.rowId !== null && hasPerm('sdb_delete_rows') && (
                 <>
                   <div style={{ flex: 1 }} />
                   <button className={styles.btnDanger} disabled={modalSaving} onClick={() => setDeleteConfirm(true)}>

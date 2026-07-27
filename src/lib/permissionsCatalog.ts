@@ -80,14 +80,55 @@ export const VIEW_OTHER: PermDef[] = [
   { key: 'view_my_expenses', label: 'My Expenses' },
 ];
 
-// Action permissions (table/section actions, not tied to a route).
-export const ACTION_DEFS: PermDef[] = [
-  { key: 'add_rows',       label: 'Add Rows' },
-  { key: 'edit_rows',      label: 'Edit Rows' },
-  { key: 'delete_rows',    label: 'Delete Rows' },
-  { key: 'add_columns',    label: 'Add Columns' },
-  { key: 'export_excel',   label: 'Export to Excel' },
-  { key: 'add_section',    label: 'Add Section' },
-  { key: 'rename_section', label: 'Rename Section' },
-  { key: 'delete_section', label: 'Delete Section' },
+// Action permissions (table/section actions, not tied to a route) — scoped
+// per page so an admin can grant e.g. full CRUD on Daily Activities to an
+// Engineer without also granting it on Sites DB. Each scope's actions get
+// their own key prefix (da_ = Daily Activities, sdb_ = Sites DB).
+export interface ActionScope {
+  id: string;
+  label: string;
+  actions: PermDef[];
+}
+
+export const ACTION_SCOPES: ActionScope[] = [
+  {
+    id: 'daily_activities',
+    label: 'Daily Activities',
+    actions: [
+      { key: 'da_add_rows',    label: 'Add Rows' },
+      { key: 'da_edit_rows',   label: 'Edit Rows' },
+      { key: 'da_delete_rows', label: 'Delete Rows' },
+    ],
+  },
+  {
+    id: 'sites_db',
+    label: 'Sites DB',
+    actions: [
+      { key: 'sdb_add_rows',       label: 'Add Rows' },
+      { key: 'sdb_edit_rows',      label: 'Edit Rows' },
+      { key: 'sdb_delete_rows',    label: 'Delete Rows' },
+      { key: 'sdb_add_columns',    label: 'Add Columns' },
+      { key: 'sdb_export_excel',   label: 'Export to Excel' },
+      { key: 'sdb_add_section',    label: 'Add Section' },
+      { key: 'sdb_rename_section', label: 'Rename Section' },
+      { key: 'sdb_delete_section', label: 'Delete Section' },
+    ],
+  },
 ];
+
+// Flattened list of every scoped action key — used where a page just needs
+// to iterate/init all of them regardless of scope (e.g. UserManagement.tsx).
+export const ACTION_DEFS: PermDef[] = ACTION_SCOPES.flatMap(s => s.actions);
+
+// Maps each new scoped action key back to the single global key actions used
+// before they were split per page. hasPerm() (AuthContext.tsx) and
+// UserManagement.tsx's edit-modal init both fall back to this so any user
+// already granted e.g. `add_rows` keeps working identically on both Daily
+// Activities and Sites DB until an admin explicitly sets one of the new
+// scoped keys for that user (which always wins from then on).
+export const LEGACY_ACTION_KEY: Record<string, string> = {
+  da_add_rows: 'add_rows', da_edit_rows: 'edit_rows', da_delete_rows: 'delete_rows',
+  sdb_add_rows: 'add_rows', sdb_edit_rows: 'edit_rows', sdb_delete_rows: 'delete_rows',
+  sdb_add_columns: 'add_columns', sdb_export_excel: 'export_excel',
+  sdb_add_section: 'add_section', sdb_rename_section: 'rename_section', sdb_delete_section: 'delete_section',
+};

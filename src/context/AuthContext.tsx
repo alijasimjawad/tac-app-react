@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { ensureFullLoad as ensureSitesPreload } from '../lib/sitesCache';
-import { FIELD_ROLE_DEFAULT_KEYS } from '../lib/permissionsCatalog';
+import { FIELD_ROLE_DEFAULT_KEYS, LEGACY_ACTION_KEY } from '../lib/permissionsCatalog';
 
 export interface UserProfile {
   id: string;
@@ -114,6 +114,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Explicit true/false set by an admin in User Management always wins.
     const stored = u.permissions?.[key];
     if (typeof stored === 'boolean') return stored;
+    // Scoped action keys (da_add_rows, sdb_add_rows, etc.) fall back to the
+    // single global action key they replaced (add_rows, etc.) so any user
+    // already granted that action keeps working identically on every page
+    // until an admin explicitly sets one of the new scoped keys for them.
+    const legacyKey = LEGACY_ACTION_KEY[key];
+    if (legacyKey) {
+      const legacyStored = u.permissions?.[legacyKey];
+      if (typeof legacyStored === 'boolean') return legacyStored;
+    }
     // Otherwise fall back to the field-role default (Sites DB / My Attendance /
     // My Trips) so Engineer/Technician accounts keep their existing default
     // nav until an admin explicitly changes it — see permissionsCatalog.ts.
