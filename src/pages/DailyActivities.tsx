@@ -40,6 +40,7 @@ interface TeamMember {
   full_name: string;
   username: string;
   is_active: boolean | null;
+  role: string | null;
 }
 
 interface SectionRow {
@@ -291,8 +292,17 @@ export default function DailyActivities() {
   }
 
   async function loadTeamMembers() {
-    const { data } = await supabase.from('team_members').select('id,full_name,username,is_active');
+    const { data } = await supabase.from('team_members').select('id,full_name,username,is_active,role');
     setTeamMembers((data || []).filter((m: TeamMember) => m.is_active !== false));
+  }
+
+  // Small sign shown on a member's avatar to flag Engineer vs Technician.
+  function roleSign(role: string | null | undefined): { label: string; title: string; className: string } | null {
+    if (!role) return null;
+    const r = role.toLowerCase();
+    if (r.includes('engineer')) return { label: 'E', title: role, className: styles.roleDotEngineer };
+    if (r.includes('tech')) return { label: 'T', title: role, className: styles.roleDotTech };
+    return null;
   }
 
   // ── Sections load on project change ──
@@ -1087,6 +1097,7 @@ export default function DailyActivities() {
                       <div className={styles.memberSearchEmpty}>No members found</div>
                     ) : filteredNonSelected.map(m => {
                       const isBusy = busyIds.has(m.id);
+                      const rb = roleSign(m.role);
                       return (
                         <div
                           key={m.id}
@@ -1096,7 +1107,10 @@ export default function DailyActivities() {
                             setMemberSearch('');
                           }}
                         >
-                          <span className={styles.chipAv}>{initials(m.full_name)}</span>
+                          <span className={styles.chipAv}>
+                            {initials(m.full_name)}
+                            {rb && <span className={`${styles.roleDot} ${rb.className}`} title={rb.title}>{rb.label}</span>}
+                          </span>
                           <span className={styles.memberSearchName}>{m.full_name}</span>
                           {isBusy && <span className={styles.chipBusyTag}>Assigned</span>}
                         </div>
@@ -1126,9 +1140,13 @@ export default function DailyActivities() {
                   ) : [...selectedMemberIds].map(id => {
                     const member = teamMembers.find(m => m.id === id);
                     if (!member) return null;
+                    const rb = roleSign(member.role);
                     return (
                       <span key={id} className={styles.selectedChip}>
-                        <span className={styles.chipAv}>{initials(member.full_name)}</span>
+                        <span className={styles.chipAv}>
+                          {initials(member.full_name)}
+                          {rb && <span className={`${styles.roleDot} ${rb.className}`} title={rb.title}>{rb.label}</span>}
+                        </span>
                         <span className={styles.chipName}>{member.full_name}</span>
                         <button
                           type="button"
