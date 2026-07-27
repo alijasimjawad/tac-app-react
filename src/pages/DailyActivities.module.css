@@ -502,7 +502,6 @@
 
 /* ── Avatar chip (shared) ── */
 .chipAv {
-  position: relative;
   width: 24px;
   height: 24px;
   border-radius: var(--radius-full);
@@ -516,25 +515,20 @@
   flex-shrink: 0;
 }
 
-/* Small Engineer/Technician sign on a member's avatar */
-.roleDot {
-  position: absolute;
-  bottom: -3px;
-  right: -3px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1.5px solid #fff;
-  color: #fff;
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-  display: flex;
+/* Small sign next to a member's name reflecting their Job Title (from Fin Team) */
+.roleTag {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  line-height: 1.4;
+  vertical-align: middle;
+  white-space: nowrap;
 }
-.roleDotEngineer { background: #2563eb; }
-.roleDotTech { background: #16a34a; }
 
 .chipName {
   font-size: 13px;

@@ -73,6 +73,17 @@ const AVATAR_COLORS = [
   { bg: '#e0e7ff', fg: '#3730a3' },
 ];
 
+const ROLE_TAG_COLORS = [
+  { bg: '#dbeafe', text: '#1e40af' },
+  { bg: '#dcfce7', text: '#166534' },
+  { bg: '#ffedd5', text: '#9a3412' },
+  { bg: '#ede9fe', text: '#5b21b6' },
+  { bg: '#fee2e2', text: '#991b1b' },
+  { bg: '#ccfbf1', text: '#134e4a' },
+  { bg: '#fef9c3', text: '#854d0e' },
+  { bg: '#e0e7ff', text: '#3730a3' },
+];
+
 function avatarColor(name: string) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
@@ -296,13 +307,19 @@ export default function DailyActivities() {
     setTeamMembers((data || []).filter((m: TeamMember) => m.is_active !== false));
   }
 
-  // Small sign shown on a member's avatar to flag Engineer vs Technician.
-  function roleSign(role: string | null | undefined): { label: string; title: string; className: string } | null {
-    if (!role) return null;
-    const r = role.toLowerCase();
-    if (r.includes('engineer')) return { label: 'E', title: role, className: styles.roleDotEngineer };
-    if (r.includes('tech')) return { label: 'T', title: role, className: styles.roleDotTech };
-    return null;
+  // Small sign shown next to a member's name reflecting their actual Job Title
+  // (whatever text is set in Fin Team → Job Title), not just Engineer/Technician.
+  function roleTag(role: string | null | undefined): { label: string; title: string; bg: string; text: string } | null {
+    const clean = (role || '').trim();
+    if (!clean) return null;
+    const words = clean.split(/\s+/).filter(Boolean);
+    const label = words.length > 1
+      ? words.slice(0, 3).map(w => w[0]).join('').toUpperCase()
+      : clean.slice(0, 3).toUpperCase();
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
+    const c = ROLE_TAG_COLORS[hash % ROLE_TAG_COLORS.length];
+    return { label, title: clean, bg: c.bg, text: c.text };
   }
 
   // ── Sections load on project change ──
@@ -1097,7 +1114,7 @@ export default function DailyActivities() {
                       <div className={styles.memberSearchEmpty}>No members found</div>
                     ) : filteredNonSelected.map(m => {
                       const isBusy = busyIds.has(m.id);
-                      const rb = roleSign(m.role);
+                      const rt = roleTag(m.role);
                       return (
                         <div
                           key={m.id}
@@ -1107,11 +1124,9 @@ export default function DailyActivities() {
                             setMemberSearch('');
                           }}
                         >
-                          <span className={styles.chipAv}>
-                            {initials(m.full_name)}
-                            {rb && <span className={`${styles.roleDot} ${rb.className}`} title={rb.title}>{rb.label}</span>}
-                          </span>
+                          <span className={styles.chipAv}>{initials(m.full_name)}</span>
                           <span className={styles.memberSearchName}>{m.full_name}</span>
+                          {rt && <span className={styles.roleTag} style={{ background: rt.bg, color: rt.text }} title={rt.title}>{rt.label}</span>}
                           {isBusy && <span className={styles.chipBusyTag}>Assigned</span>}
                         </div>
                       );
@@ -1140,14 +1155,14 @@ export default function DailyActivities() {
                   ) : [...selectedMemberIds].map(id => {
                     const member = teamMembers.find(m => m.id === id);
                     if (!member) return null;
-                    const rb = roleSign(member.role);
+                    const rt = roleTag(member.role);
                     return (
                       <span key={id} className={styles.selectedChip}>
-                        <span className={styles.chipAv}>
-                          {initials(member.full_name)}
-                          {rb && <span className={`${styles.roleDot} ${rb.className}`} title={rb.title}>{rb.label}</span>}
+                        <span className={styles.chipAv}>{initials(member.full_name)}</span>
+                        <span className={styles.chipName}>
+                          {member.full_name}
+                          {rt && <span className={styles.roleTag} style={{ background: rt.bg, color: rt.text }} title={rt.title}>{rt.label}</span>}
                         </span>
-                        <span className={styles.chipName}>{member.full_name}</span>
                         <button
                           type="button"
                           className={styles.chipRemoveBtn}
