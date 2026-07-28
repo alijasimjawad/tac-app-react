@@ -114,6 +114,146 @@ export const ACTION_SCOPES: ActionScope[] = [
       { key: 'sdb_delete_section', label: 'Delete Section' },
     ],
   },
+  {
+    id: 'fin_exp_claims',
+    label: 'Expense Claims (Admin)',
+    actions: [
+      { key: 'fin_exp_claims_approve', label: 'Approve Claims' },
+      { key: 'fin_exp_claims_reject',  label: 'Reject Claims' },
+      { key: 'fin_exp_claims_edit',    label: 'Edit Claims' },
+      { key: 'fin_exp_claims_delete',  label: 'Delete Claims' },
+      { key: 'fin_exp_claims_export',  label: 'Export to Excel' },
+    ],
+  },
+  {
+    id: 'fin_revenue',
+    label: 'Revenue',
+    actions: [
+      { key: 'fin_revenue_add',          label: 'Add Revenue' },
+      { key: 'fin_revenue_edit',         label: 'Edit Revenue' },
+      { key: 'fin_revenue_delete',       label: 'Delete Revenue' },
+      { key: 'fin_revenue_sync',         label: 'Sync Revenue' },
+      { key: 'fin_revenue_fix_sections', label: 'Fix Sections' },
+      { key: 'fin_revenue_export',       label: 'Export' },
+    ],
+  },
+  {
+    id: 'fin_team',
+    label: 'Team Members',
+    actions: [
+      { key: 'fin_team_add',           label: 'Add Member' },
+      { key: 'fin_team_edit',          label: 'Edit Member' },
+      { key: 'fin_team_toggle_active', label: 'Activate/Deactivate' },
+      { key: 'fin_team_delete',        label: 'Delete Member' },
+      { key: 'fin_team_bulk_update',   label: 'Bulk Update' },
+      { key: 'fin_team_bulk_add',      label: 'Bulk Add' },
+      { key: 'fin_team_export',        label: 'Export' },
+    ],
+  },
+  {
+    id: 'fin_projexp',
+    label: 'Project Expenses',
+    actions: [
+      { key: 'fin_projexp_add',    label: 'Add Expense' },
+      { key: 'fin_projexp_edit',   label: 'Edit Expense' },
+      { key: 'fin_projexp_delete', label: 'Delete Expense' },
+      { key: 'fin_projexp_export', label: 'Export' },
+    ],
+  },
+  {
+    id: 'fin_invoices',
+    label: 'Invoices',
+    actions: [
+      { key: 'fin_invoices_add',            label: 'Add Invoice' },
+      { key: 'fin_invoices_edit',           label: 'Edit Invoice' },
+      { key: 'fin_invoices_delete',         label: 'Delete Invoice' },
+      { key: 'fin_invoices_record_payment', label: 'Record Payment' },
+      { key: 'fin_invoices_download_pdf',   label: 'Download PDF' },
+      { key: 'fin_invoices_add_item',       label: 'Add Line Item' },
+    ],
+  },
+  {
+    id: 'fin_clients',
+    label: 'Clients',
+    actions: [
+      { key: 'fin_clients_add',    label: 'Add Client' },
+      { key: 'fin_clients_edit',   label: 'Edit Client' },
+      { key: 'fin_clients_delete', label: 'Delete Client' },
+    ],
+  },
+  {
+    id: 'fin_report',
+    label: 'Monthly Report',
+    actions: [
+      { key: 'fin_report_adjust_salary', label: 'Adjust Salary' },
+      { key: 'fin_report_adjust_all',    label: 'Adjust All' },
+      { key: 'fin_report_export',        label: 'Export' },
+    ],
+  },
+  {
+    id: 'fin_genexp',
+    label: 'General Expenses',
+    actions: [
+      { key: 'fin_genexp_add',    label: 'Add Expense' },
+      { key: 'fin_genexp_edit',   label: 'Edit Expense' },
+      { key: 'fin_genexp_delete', label: 'Delete Expense' },
+      { key: 'fin_genexp_export', label: 'Export' },
+    ],
+  },
+  {
+    id: 'hr_profiles',
+    label: 'Employee Profiles',
+    actions: [
+      { key: 'hr_profiles_edit',         label: 'Edit Profile' },
+      { key: 'hr_profiles_upload_photo', label: 'Upload Photo' },
+      { key: 'hr_profiles_upload_doc',   label: 'Upload Document' },
+      { key: 'hr_profiles_delete_doc',   label: 'Delete Document' },
+    ],
+  },
+  {
+    id: 'mywork_expenses',
+    label: 'My Expenses',
+    actions: [
+      { key: 'mywork_expenses_add',    label: 'Add Expense' },
+      { key: 'mywork_expenses_edit',   label: 'Edit Expense' },
+      { key: 'mywork_expenses_delete', label: 'Delete Expense' },
+    ],
+  },
+  {
+    id: 'sitesdb_master',
+    label: 'Sites DB (Master List)',
+    actions: [
+      { key: 'sitesdb_add',           label: 'Add Site' },
+      { key: 'sitesdb_edit',          label: 'Edit Site' },
+      { key: 'sitesdb_delete',        label: 'Delete Site' },
+      { key: 'sitesdb_export',        label: 'Export' },
+      { key: 'sitesdb_import',        label: 'Import' },
+      { key: 'sitesdb_enrich_export', label: 'Enrich & Download' },
+    ],
+  },
+  {
+    id: 'activity_log',
+    label: 'Activity Log',
+    actions: [
+      { key: 'activity_log_export', label: 'Export' },
+      { key: 'activity_log_clear',  label: 'Clear Log' },
+    ],
+  },
+  {
+    id: 'attendance_admin',
+    label: 'Attendance (Admin)',
+    actions: [
+      { key: 'attendance_admin_add',  label: 'Add Entry' },
+      { key: 'attendance_admin_edit', label: 'Edit Entry' },
+    ],
+  },
+  {
+    id: 'live_trips',
+    label: 'Live Trips',
+    actions: [
+      { key: 'live_trips_force_complete', label: 'Force Complete Trip' },
+    ],
+  },
 ];
 
 // Flattened list of every scoped action key — used where a page just needs
@@ -131,4 +271,80 @@ export const LEGACY_ACTION_KEY: Record<string, string> = {
   sdb_add_rows: 'add_rows', sdb_edit_rows: 'edit_rows', sdb_delete_rows: 'delete_rows',
   sdb_add_columns: 'add_columns', sdb_export_excel: 'export_excel',
   sdb_add_section: 'add_section', sdb_rename_section: 'rename_section', sdb_delete_section: 'delete_section',
+};
+
+// Finance/HR/Sites-DB-master/Activity-Log action keys below are NEW — before
+// this rework, their buttons had NO permission check at all, so anyone who
+// could see the page (i.e. had the page's `view_*` permission) could already
+// add/edit/delete/export freely. To avoid silently taking away access people
+// already rely on, hasPerm() (AuthContext.tsx) falls back to "can this user
+// view the parent page?" for any key listed here that an admin hasn't
+// explicitly set yet. An admin can still lock a specific user down to
+// view-only by explicitly switching one of these off in User Management —
+// that explicit value always wins from then on.
+//
+// A few exceptions are deliberately NOT listed here because they were already
+// admin-only in practice (a hardcoded role check, not an open button):
+// `sitesdb_delete`, `sitesdb_add`, `sitesdb_edit`, `sitesdb_import`,
+// `sitesdb_enrich_export`, `activity_log_clear`, and `fin_exp_claims_edit`.
+// Those simply fall through to "false for non-admins", matching their prior
+// real behavior exactly.
+export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
+  fin_exp_claims_approve: 'view_exp_claims',
+  fin_exp_claims_reject: 'view_exp_claims',
+  fin_exp_claims_delete: 'view_exp_claims',
+  fin_exp_claims_export: 'view_exp_claims',
+
+  fin_revenue_add: 'view_fin_revenue',
+  fin_revenue_edit: 'view_fin_revenue',
+  fin_revenue_delete: 'view_fin_revenue',
+  fin_revenue_sync: 'view_fin_revenue',
+  fin_revenue_fix_sections: 'view_fin_revenue',
+  fin_revenue_export: 'view_fin_revenue',
+
+  fin_team_add: 'view_fin_team',
+  fin_team_edit: 'view_fin_team',
+  fin_team_toggle_active: 'view_fin_team',
+  fin_team_delete: 'view_fin_team',
+  fin_team_bulk_update: 'view_fin_team',
+  fin_team_bulk_add: 'view_fin_team',
+  fin_team_export: 'view_fin_team',
+
+  fin_projexp_add: 'view_fin_projexp',
+  fin_projexp_edit: 'view_fin_projexp',
+  fin_projexp_delete: 'view_fin_projexp',
+  fin_projexp_export: 'view_fin_projexp',
+
+  fin_invoices_add: 'view_fin_invoices',
+  fin_invoices_edit: 'view_fin_invoices',
+  fin_invoices_delete: 'view_fin_invoices',
+  fin_invoices_record_payment: 'view_fin_invoices',
+  fin_invoices_download_pdf: 'view_fin_invoices',
+  fin_invoices_add_item: 'view_fin_invoices',
+
+  fin_clients_add: 'view_fin_clients',
+  fin_clients_edit: 'view_fin_clients',
+  fin_clients_delete: 'view_fin_clients',
+
+  fin_report_adjust_salary: 'view_fin_report',
+  fin_report_adjust_all: 'view_fin_report',
+  fin_report_export: 'view_fin_report',
+
+  fin_genexp_add: 'view_fin_genexp',
+  fin_genexp_edit: 'view_fin_genexp',
+  fin_genexp_delete: 'view_fin_genexp',
+  fin_genexp_export: 'view_fin_genexp',
+
+  hr_profiles_edit: 'view_hr_profiles',
+  hr_profiles_upload_photo: 'view_hr_profiles',
+  hr_profiles_upload_doc: 'view_hr_profiles',
+  hr_profiles_delete_doc: 'view_hr_profiles',
+
+  mywork_expenses_add: 'view_my_expenses',
+  mywork_expenses_edit: 'view_my_expenses',
+  mywork_expenses_delete: 'view_my_expenses',
+
+  sitesdb_export: 'view_sites_db',
+
+  activity_log_export: 'view_activity_log',
 };

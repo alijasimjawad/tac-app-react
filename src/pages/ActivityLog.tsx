@@ -92,7 +92,7 @@ function applyFilters(rows: LogRow[], f: Filters): LogRow[] {
 }
 
 export default function ActivityLog() {
-  const { hasPerm, currentUser } = useAuth();
+  const { hasPerm } = useAuth();
   const [rows,    setRows]    = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
@@ -134,7 +134,7 @@ export default function ActivityLog() {
   }
 
   async function clearLog() {
-    if (currentUser?.role !== 'admin') return;
+    if (!hasPerm('activity_log_clear')) return;
     if (!window.confirm('Are you sure you want to clear the entire activity log? This action cannot be undone.')) return;
     const { error: e } = await supabase.from('activity_log').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     if (e) { showToast('Clear failed: ' + e.message, false); return; }
@@ -272,11 +272,13 @@ export default function ActivityLog() {
           <input className={css.filterDate} type="date" title="Date To" value={filters.dateTo} onChange={e => setFilter('dateTo', e.target.value)} />
         </div>
         <div className={css.toolbarSpacer} />
-        <button className={css.btnGhost} onClick={exportLog}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export
-        </button>
-        {currentUser?.role === 'admin' && (
+        {hasPerm('activity_log_export') && (
+          <button className={css.btnGhost} onClick={exportLog}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+        )}
+        {hasPerm('activity_log_clear') && (
           <button className={css.btnClear} onClick={clearLog}>Clear Log</button>
         )}
       </div>

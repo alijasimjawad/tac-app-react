@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { ensureFullLoad as ensureSitesPreload } from '../lib/sitesCache';
-import { FIELD_ROLE_DEFAULT_KEYS, LEGACY_ACTION_KEY } from '../lib/permissionsCatalog';
+import { FIELD_ROLE_DEFAULT_KEYS, LEGACY_ACTION_KEY, LEGACY_OPEN_ACTIONS } from '../lib/permissionsCatalog';
 
 export interface UserProfile {
   id: string;
@@ -123,6 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const legacyStored = u.permissions?.[legacyKey];
       if (typeof legacyStored === 'boolean') return legacyStored;
     }
+    // Finance/HR/Sites-DB-master/Activity-Log action keys had no permission
+    // check at all before they were added — anyone who could view the page
+    // could already do everything. Default to "can view the parent page?" so
+    // nobody's current access silently disappears; an admin can still lock a
+    // specific user down by explicitly toggling the key off in User Management.
+    const openFallbackViewKey = LEGACY_OPEN_ACTIONS[key];
+    if (openFallbackViewKey) return hasPerm(openFallbackViewKey);
     // Otherwise fall back to the field-role default (Sites DB / My Attendance /
     // My Trips) so Engineer/Technician accounts keep their existing default
     // nav until an admin explicitly changes it — see permissionsCatalog.ts.

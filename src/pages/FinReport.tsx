@@ -444,12 +444,14 @@ export default function FinReport() {
           </svg>
           Refresh
         </button>
-        <button className={css.btnGreen} onClick={handleExport}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export Excel
-        </button>
+        {hasPerm('fin_report_export') && (
+          <button className={css.btnGreen} onClick={handleExport}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export Excel
+          </button>
+        )}
       </div>
 
       <h2 className={css.heading}>{mLabel} — Monthly Report</h2>
@@ -637,7 +639,7 @@ export default function FinReport() {
               <span className={css.salHdrTitle}>Team Member Salaries</span>
               {adjCount > 0 && <span className={css.adjCountBadge}>{adjCount} adjusted</span>}
             </div>
-            {teamWithSalary.length > 0 && (
+            {teamWithSalary.length > 0 && hasPerm('fin_report_adjust_all') && (
               <button className={css.btnAdjAll} onClick={() => { setShowAdjAll(true); setAdjAllState({ type: 'override', pct: '100', reason: '' }); }}>
                 Adjust All
               </button>
@@ -681,17 +683,19 @@ export default function FinReport() {
                                   </>
                                 : iqd(t.effectiveSalary)
                               }
-                              <button
-                                className={css.pencilBtn}
-                                style={{ color: pencilColor(t) }}
-                                title="Adjust salary"
-                                onClick={() => openPanel(t)}
-                              >
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                </svg>
-                              </button>
+                              {hasPerm('fin_report_adjust_salary') && (
+                                <button
+                                  className={css.pencilBtn}
+                                  style={{ color: pencilColor(t) }}
+                                  title="Adjust salary"
+                                  onClick={() => openPanel(t)}
+                                >
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                  </svg>
+                                </button>
+                              )}
                             </td>
                           </tr>
                           {openPanelId === t.id && (

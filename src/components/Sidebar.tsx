@@ -563,12 +563,10 @@ function FinanceNavGroup({ isExpanded, onToggle }: NavGroupProps) {
 // ── HR nav group ──────────────────────────────────────────────────────────────
 
 function HrNavGroup({ isExpanded, onToggle }: NavGroupProps) {
-  const { currentUser, hasPerm } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const { hasPerm } = useAuth();
 
   const HR_LINKS = [
     ...VIEW_HR.filter(({ key }) => hasPerm(key)),
-    ...(isAdmin ? [{ key: 'attendance_admin', to: '/attendance-admin', label: 'Attendance' }] : []),
   ];
 
   if (HR_LINKS.length === 0) return null;
@@ -621,7 +619,6 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const isAdmin = currentUser?.role === 'admin';
 
   const ADMIN_LINKS = [
-    ...(isAdmin ? [{ key: 'live_trips', to: '/live-trips', label: 'Live Trips' }] : []),
     ...VIEW_ADMIN.filter(({ key }) => hasPerm(key)),
     ...(isAdmin ? [{ key: 'user_management', to: '/user-management', label: 'User Management' }] : []),
     ...(isAdmin ? [{ key: 'backup_restore', to: '/backup-restore', label: 'Backup & Restore' }] : []),
@@ -752,13 +749,13 @@ function FieldRoleNav({ expandedGroup, toggleGroup }: { expandedGroup: MajorGrou
       </NavLink>
 
       {/* Finance/HR/Admin sub-page permissions (e.g. Revenue, Employee
-          Profiles, Activity Log) are granted per-user like any other
-          permission and must reflect here too — these groups already
-          self-hide (return null) when the user has none of their perms,
-          and their own admin-only hardcoded entries (Live Trips, User
-          Management, Backup & Restore, Attendance) stay admin-only via
-          their internal isAdmin check, so mounting them for field roles
-          only ever exposes what was actually granted. */}
+          Profiles, Activity Log, Live Trips, Attendance) are granted
+          per-user like any other permission and must reflect here too —
+          these groups already self-hide (return null) when the user has
+          none of their perms. Only User Management and Backup & Restore
+          stay hardcoded admin-only (too high-risk to grant piecemeal), so
+          mounting these groups for field roles only ever exposes what was
+          actually granted. */}
       <FinanceNavGroup isExpanded={expandedGroup === 'finance'} onToggle={() => toggleGroup('finance')} />
       <HrNavGroup isExpanded={expandedGroup === 'hr'} onToggle={() => toggleGroup('hr')} />
       <AdminNavGroup isExpanded={expandedGroup === 'admin'} onToggle={() => toggleGroup('admin')} />

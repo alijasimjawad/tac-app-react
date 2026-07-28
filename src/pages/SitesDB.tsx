@@ -255,7 +255,6 @@ function SiteMapView({ sites, onViewSite }: SiteMapViewProps) {
 // ─────────────────────────────────────────────────
 export default function SitesDB() {
   const { currentUser, hasPerm } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
 
   // ── Data ──
   const [dataCache, setDataCache] = useState<Record<string, Site[]>>({});
@@ -491,7 +490,7 @@ export default function SitesDB() {
 
   // ── Edit/Add modal ──
   function openAddModal() {
-    if (!isAdmin) return;
+    if (!hasPerm('sitesdb_add')) return;
     setEditId(null);
     setEditForm(emptyForm(operator));
     setEditErr('');
@@ -499,7 +498,7 @@ export default function SitesDB() {
   }
 
   function openEditModal(site: Site) {
-    if (!isAdmin) return;
+    if (!hasPerm('sitesdb_edit')) return;
     setEditId(site.id);
     setEditForm(siteToForm(site));
     setEditErr('');
@@ -587,7 +586,7 @@ export default function SitesDB() {
   }
 
   // ── Delete ──
-  function openDeleteModal() { if (!isAdmin || !detailRow) return; setDeleteOpen(true); }
+  function openDeleteModal() { if (!hasPerm('sitesdb_delete') || !detailRow) return; setDeleteOpen(true); }
 
   async function confirmDelete() {
     if (!detailRow) return;
@@ -647,7 +646,7 @@ export default function SitesDB() {
   const allOperatorsLoaded = OPERATORS.every(op => op in dataCache);
 
   function openImportModal() {
-    if (!isAdmin) return;
+    if (!hasPerm('sitesdb_import') && !hasPerm('sitesdb_enrich_export')) return;
     importRawRowsRef.current = [];
     enrichRowsRef.current = [];
     enrichHeadersRef.current = [];
@@ -998,18 +997,20 @@ export default function SitesDB() {
           <button className={styles.btnGhost} onClick={() => setHealthOpen(true)}>
             Data Health
           </button>
-          <button className={styles.btnGhost} onClick={exportSites}>
-            Export
-          </button>
-          {isAdmin && (
-            <>
-              <button className={styles.btnGhost} onClick={openImportModal}>
-                Import / Enrich
-              </button>
-              <button className={styles.btnPrimary} onClick={openAddModal}>
-                + Add Site
-              </button>
-            </>
+          {hasPerm('sitesdb_export') && (
+            <button className={styles.btnGhost} onClick={exportSites}>
+              Export
+            </button>
+          )}
+          {(hasPerm('sitesdb_import') || hasPerm('sitesdb_enrich_export')) && (
+            <button className={styles.btnGhost} onClick={openImportModal}>
+              Import / Enrich
+            </button>
+          )}
+          {hasPerm('sitesdb_add') && (
+            <button className={styles.btnPrimary} onClick={openAddModal}>
+              + Add Site
+            </button>
           )}
         </div>
       </div>
@@ -1160,17 +1161,15 @@ export default function SitesDB() {
               </div>
             </div>
             <div className={styles.modalFooter}>
-              {isAdmin ? (
-                <>
-                  <button className={styles.btnDanger} onClick={openDeleteModal}>Delete</button>
-                  <div className={styles.modalFooterRight}>
-                    <button className={styles.btnGhost} onClick={() => setDetailRow(null)}>Close</button>
-                    <button className={styles.btnPrimary} onClick={() => openEditModal(detailRow)}>Edit</button>
-                  </div>
-                </>
-              ) : (
-                <button className={styles.btnGhost} onClick={() => setDetailRow(null)} style={{ marginLeft: 'auto' }}>Close</button>
+              {hasPerm('sitesdb_delete') && (
+                <button className={styles.btnDanger} onClick={openDeleteModal}>Delete</button>
               )}
+              <div className={styles.modalFooterRight} style={!hasPerm('sitesdb_delete') ? { marginLeft: 'auto' } : undefined}>
+                <button className={styles.btnGhost} onClick={() => setDetailRow(null)}>Close</button>
+                {hasPerm('sitesdb_edit') && (
+                  <button className={styles.btnPrimary} onClick={() => openEditModal(detailRow)}>Edit</button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1400,6 +1399,7 @@ export default function SitesDB() {
             <div className={styles.modalBody}>
 
               {/* ── Card 1: Import Sites ── */}
+              {hasPerm('sitesdb_import') && (
               <div className={styles.sdbToolCard}>
                 <div className={styles.sdbToolHead}>
                   <div className={`${styles.sdbToolIcon} ${styles.sdbIconBlue}`}>
@@ -1536,8 +1536,10 @@ export default function SitesDB() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* ── Card 2: Enrich Sheet ── */}
+              {hasPerm('sitesdb_enrich_export') && (
               <div className={styles.sdbToolCard}>
                 <div className={styles.sdbToolHead}>
                   <div className={`${styles.sdbToolIcon} ${styles.sdbIconGreen}`}>
@@ -1610,6 +1612,7 @@ export default function SitesDB() {
 
                 {enrichStatus && <div className={styles.sdbToolStatus}>{enrichStatus}</div>}
               </div>
+              )}
 
             </div>
 

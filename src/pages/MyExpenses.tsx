@@ -315,7 +315,7 @@ export default function MyExpenses() {
           <h1 className={styles.title}>My Expenses</h1>
           <div className={styles.subtitle}>Submit and track your expense claims</div>
         </div>
-        {memberResolved && memberId && (
+        {memberResolved && memberId && hasPerm('mywork_expenses_add') && (
           <button className={styles.newBtn} onClick={openNew}>
             <PlusIcon /> New Claim
           </button>
@@ -371,8 +371,12 @@ export default function MyExpenses() {
                             </div>
                           )}
                           <div className={styles.rejActions}>
-                            <button className={styles.editBtn} onClick={() => openEdit(c)}>Edit &amp; Resubmit</button>
-                            <button className={styles.deleteBtn} onClick={() => setDeleteId(c.id)}>Delete</button>
+                            {hasPerm('mywork_expenses_edit') && (
+                              <button className={styles.editBtn} onClick={() => openEdit(c)}>Edit &amp; Resubmit</button>
+                            )}
+                            {hasPerm('mywork_expenses_delete') && (
+                              <button className={styles.deleteBtn} onClick={() => setDeleteId(c.id)}>Delete</button>
+                            )}
                           </div>
                         </div>
                       )}

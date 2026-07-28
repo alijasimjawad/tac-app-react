@@ -536,7 +536,9 @@ export default function FinInvoices() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             Refresh
           </button>
-          <button className={css.btnAccent} onClick={() => openInvModal(null)}>+ New Invoice</button>
+          {hasPerm('fin_invoices_add') && (
+            <button className={css.btnAccent} onClick={() => openInvModal(null)}>+ New Invoice</button>
+          )}
         </div>
       </div>
 
@@ -640,23 +642,31 @@ export default function FinInvoices() {
                           <button className={css.actBtn} title="View Detail" onClick={() => openDetail(inv.id)}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                           </button>
-                          <button className={css.actBtn} title="Edit" onClick={() => openInvModal(inv.id)}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          </button>
-                          <button className={css.actBtn} title="Record Payment" onClick={() => openPayModal(inv.id)} style={{ color: '#16a34a' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                          </button>
-                          <button className={css.actBtn} title="Download PDF" onClick={() => {
-                            const client2 = clients.find(c => c.id === inv.client_id);
-                            const invItems = items.filter(x => x.invoice_id === inv.id);
-                            const invPayments = payments.filter(x => x.invoice_id === inv.id);
-                            printInvoice(inv, client2, invItems, invPayments);
-                          }} style={{ color: '#7c3aed' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                          </button>
-                          <button className={`${css.actBtn} ${css.actBtnDel}`} title="Delete" onClick={() => deleteInvoice(inv.id)}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                          </button>
+                          {hasPerm('fin_invoices_edit') && (
+                            <button className={css.actBtn} title="Edit" onClick={() => openInvModal(inv.id)}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                          )}
+                          {hasPerm('fin_invoices_record_payment') && (
+                            <button className={css.actBtn} title="Record Payment" onClick={() => openPayModal(inv.id)} style={{ color: '#16a34a' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                            </button>
+                          )}
+                          {hasPerm('fin_invoices_download_pdf') && (
+                            <button className={css.actBtn} title="Download PDF" onClick={() => {
+                              const client2 = clients.find(c => c.id === inv.client_id);
+                              const invItems = items.filter(x => x.invoice_id === inv.id);
+                              const invPayments = payments.filter(x => x.invoice_id === inv.id);
+                              printInvoice(inv, client2, invItems, invPayments);
+                            }} style={{ color: '#7c3aed' }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                            </button>
+                          )}
+                          {hasPerm('fin_invoices_delete') && (
+                            <button className={`${css.actBtn} ${css.actBtnDel}`} title="Delete" onClick={() => deleteInvoice(inv.id)}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -830,7 +840,9 @@ export default function FinInvoices() {
             <div style={{ marginTop: 18 }}>
               <div className={css.customHdr}>
                 <div className={css.customLabel}>EXTRA / CUSTOM ITEMS</div>
-                <button className={css.btnAddItem} onClick={() => { setShowCustForm(true); setCustForm({ site: '', desc: '', amt: '' }); }}>+ Add Item</button>
+                {hasPerm('fin_invoices_add_item') && (
+                  <button className={css.btnAddItem} onClick={() => { setShowCustForm(true); setCustForm({ site: '', desc: '', amt: '' }); }}>+ Add Item</button>
+                )}
               </div>
               {customItems.map(item => (
                 <div key={item._customId} className={css.customItem}>
@@ -978,12 +990,16 @@ export default function FinInvoices() {
 
             <div className={css.modalActions}>
               <button className={css.btnCancel} onClick={() => setDetailId(null)}>Close</button>
-              <button className={css.btnPurple} onClick={() => {
-                const invItems = items.filter(x => x.invoice_id === detailInv.id);
-                const invPays  = payments.filter(x => x.invoice_id === detailInv.id);
-                printInvoice(detailInv, detailClient, invItems, invPays);
-              }}>📄 PDF</button>
-              <button className={css.btnSave} onClick={() => { setDetailId(null); openPayModal(detailInv.id); }}>Record Payment</button>
+              {hasPerm('fin_invoices_download_pdf') && (
+                <button className={css.btnPurple} onClick={() => {
+                  const invItems = items.filter(x => x.invoice_id === detailInv.id);
+                  const invPays  = payments.filter(x => x.invoice_id === detailInv.id);
+                  printInvoice(detailInv, detailClient, invItems, invPays);
+                }}>📄 PDF</button>
+              )}
+              {hasPerm('fin_invoices_record_payment') && (
+                <button className={css.btnSave} onClick={() => { setDetailId(null); openPayModal(detailInv.id); }}>Record Payment</button>
+              )}
             </div>
           </div>
         </div>,

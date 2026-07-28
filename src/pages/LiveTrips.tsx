@@ -12,7 +12,7 @@ interface TripWithPP extends FieldTrip {
 }
 
 export default function LiveTrips() {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPerm } = useAuth();
   const [activeTrips, setActiveTrips] = useState<TripWithPP[]>([]);
   const [completedTrips, setCompletedTrips] = useState<TripWithPP[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +20,6 @@ export default function LiveTrips() {
   const [completing, setCompleting] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-
-  const isAdmin = currentUser?.role === 'admin';
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -71,7 +69,7 @@ export default function LiveTrips() {
     });
   }
 
-  if (!isAdmin) {
+  if (!hasPerm('view_live_trips')) {
     return (
       <div className={styles.page}>
         <div className={styles.denied}>You don't have permission to view this page.</div>
@@ -105,7 +103,7 @@ export default function LiveTrips() {
               trip={t}
               isCompleting={completing === t.id}
               onView={() => setDetailTripId(t.id)}
-              onForceComplete={() => forceComplete(t.id)}
+              onForceComplete={hasPerm('live_trips_force_complete') ? () => forceComplete(t.id) : undefined}
             />
           ))}
         </div>
@@ -215,7 +213,7 @@ function LiveTripCard({
   trip: TripWithPP;
   isCompleting: boolean;
   onView: () => void;
-  onForceComplete: () => void;
+  onForceComplete?: () => void;
 }) {
   const pp = trip.trip_participants || [];
   const joined = pp.filter(p => p.status === 'joined').length;
@@ -291,9 +289,11 @@ function LiveTripCard({
 
       <div className={styles.liveCardActions}>
         <button className={styles.viewBtn} onClick={onView}>View Detail</button>
-        <button className={styles.completeBtn} disabled={isCompleting} onClick={onForceComplete}>
-          {isCompleting ? '…' : 'Force Complete'}
-        </button>
+        {onForceComplete && (
+          <button className={styles.completeBtn} disabled={isCompleting} onClick={onForceComplete}>
+            {isCompleting ? '…' : 'Force Complete'}
+          </button>
+        )}
       </div>
     </div>
   );

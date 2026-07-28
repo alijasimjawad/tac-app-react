@@ -336,8 +336,12 @@ export default function FinProjExp() {
         </select>
         <div className={styles.spacer} />
         <button className={styles.btnGhost} onClick={() => loadData()}>↺ Refresh</button>
-        <button className={styles.btnGhost} onClick={handleExport}>Export</button>
-        <button className={styles.btnAccent} onClick={() => openModal(null)}>+ Add Expense</button>
+        {hasPerm('fin_projexp_export') && (
+          <button className={styles.btnGhost} onClick={handleExport}>Export</button>
+        )}
+        {hasPerm('fin_projexp_add') && (
+          <button className={styles.btnAccent} onClick={() => openModal(null)}>+ Add Expense</button>
+        )}
       </div>
 
       {loading && <div className={styles.loadingBar}>Loading…</div>}
@@ -373,8 +377,12 @@ export default function FinProjExp() {
                     <td className={styles.noteCell}>{r.notes || ''}</td>
                     <td>
                       <div className={styles.actions}>
-                        <button className={styles.actBtn} onClick={() => openModal(r.id)} title="Edit"><PenIcon /></button>
-                        <button className={`${styles.actBtn} ${styles.actBtnDel}`} onClick={() => openDelModal(r.id)} title="Delete"><TrashIcon /></button>
+                        {hasPerm('fin_projexp_edit') && (
+                          <button className={styles.actBtn} onClick={() => openModal(r.id)} title="Edit"><PenIcon /></button>
+                        )}
+                        {hasPerm('fin_projexp_delete') && (
+                          <button className={`${styles.actBtn} ${styles.actBtnDel}`} onClick={() => openDelModal(r.id)} title="Delete"><TrashIcon /></button>
+                        )}
                       </div>
                     </td>
                   </tr>

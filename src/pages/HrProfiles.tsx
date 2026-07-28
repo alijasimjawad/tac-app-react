@@ -198,6 +198,7 @@ function ProfileDetail({
   onBack: () => void;
   onMemberUpdated: (m: TeamMember) => void;
 }) {
+  const { hasPerm } = useAuth();
   const [member, setMember] = useState(initialMember);
   const [activeTab, setActiveTab] = useState<TabName>(initialTab);
   const [docs, setDocs] = useState<EmployeeDocument[] | null>(null);
@@ -489,14 +490,16 @@ function ProfileDetail({
           {member.profile_photo_url
             ? <img className={styles.bannerPhoto} src={member.profile_photo_url} alt="" />
             : <div className={styles.bannerAvatar} style={{ background: grad }}>{hrInitials(member.full_name)}</div>}
-          <button
-            className={styles.photoBtn}
-            onClick={() => photoInputRef.current?.click()}
-            title={photoUploading ? 'Uploading…' : 'Change photo'}
-            disabled={photoUploading}
-          >
-            <CameraIcon />
-          </button>
+          {hasPerm('hr_profiles_upload_photo') && (
+            <button
+              className={styles.photoBtn}
+              onClick={() => photoInputRef.current?.click()}
+              title={photoUploading ? 'Uploading…' : 'Change photo'}
+              disabled={photoUploading}
+            >
+              <CameraIcon />
+            </button>
+          )}
           <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={onPhotoFileSelected} />
         </div>
         <div className={styles.bannerInfo}>
@@ -513,9 +516,11 @@ function ProfileDetail({
             )}
           </div>
         </div>
-        <button className={styles.editBtn} onClick={() => { setEditForm(memberToForm(member)); setEditErr(''); setEditOpen(true); }}>
-          Edit Profile
-        </button>
+        {hasPerm('hr_profiles_edit') && (
+          <button className={styles.editBtn} onClick={() => { setEditForm(memberToForm(member)); setEditErr(''); setEditOpen(true); }}>
+            Edit Profile
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -728,15 +733,18 @@ function DocsTab({
   onUpload: () => void;
   onDelete: (doc: EmployeeDocument) => void;
 }) {
+  const { hasPerm } = useAuth();
   if (loading) return <div className={styles.tabEmpty}>Loading…</div>;
   const list = docs ?? [];
   return (
     <>
       <div className={styles.docsToolbar}>
         <span className={styles.docsCount}>{list.length} document{list.length !== 1 ? 's' : ''}</span>
-        <button className={styles.uploadBtn} onClick={onUpload} disabled={uploading}>
-          <UploadIcon /> Upload File
-        </button>
+        {hasPerm('hr_profiles_upload_doc') && (
+          <button className={styles.uploadBtn} onClick={onUpload} disabled={uploading}>
+            <UploadIcon /> Upload File
+          </button>
+        )}
       </div>
       <div className={styles.docList}>
         {list.length === 0 ? (
@@ -755,9 +763,11 @@ function DocsTab({
               </div>
               <div className={styles.docActions}>
                 <a className={styles.docDl} href={url} target="_blank" rel="noreferrer" download={d.file_name}>Download</a>
-                <button className={styles.docDel} onClick={() => onDelete(d)} title="Delete">
-                  <TrashIcon />
-                </button>
+                {hasPerm('hr_profiles_delete_doc') && (
+                  <button className={styles.docDel} onClick={() => onDelete(d)} title="Delete">
+                    <TrashIcon />
+                  </button>
+                )}
               </div>
             </div>
           );

@@ -734,24 +734,32 @@ export default function FinTeam() {
         <button className={`${styles.btn} ${styles.btnGhost}`} onClick={loadData} disabled={loading}>
           <RefreshIcon /> Refresh
         </button>
-        <button className={`${styles.btn} ${styles.btnGhost}`} onClick={handleExport}>
-          <DownloadIcon /> Export
-        </button>
-        <button className={`${styles.btn} ${styles.btnOrange}`} onClick={() => {
-          setBulkTab('same'); setBulkColSame(''); setBulkValSame(''); setBulkNames('');
-          setBulkDiffCols(['']); setBulkDiffPaste(''); setBulkOpen(true);
-        }}>
-          <EditIcon /> Bulk Update
-        </button>
-        <button className={`${styles.btn} ${styles.btnGreen}`} onClick={() => {
-          setBulkAddPaste(''); setBulkAddRows([]); setBulkAddCount(''); setBulkAddErr('');
-          setBulkAddOpen(true);
-        }}>
-          <UploadIcon /> Bulk Add
-        </button>
-        <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => openEditModal(null)}>
-          + Add Member
-        </button>
+        {hasPerm('fin_team_export') && (
+          <button className={`${styles.btn} ${styles.btnGhost}`} onClick={handleExport}>
+            <DownloadIcon /> Export
+          </button>
+        )}
+        {hasPerm('fin_team_bulk_update') && (
+          <button className={`${styles.btn} ${styles.btnOrange}`} onClick={() => {
+            setBulkTab('same'); setBulkColSame(''); setBulkValSame(''); setBulkNames('');
+            setBulkDiffCols(['']); setBulkDiffPaste(''); setBulkOpen(true);
+          }}>
+            <EditIcon /> Bulk Update
+          </button>
+        )}
+        {hasPerm('fin_team_bulk_add') && (
+          <button className={`${styles.btn} ${styles.btnGreen}`} onClick={() => {
+            setBulkAddPaste(''); setBulkAddRows([]); setBulkAddCount(''); setBulkAddErr('');
+            setBulkAddOpen(true);
+          }}>
+            <UploadIcon /> Bulk Add
+          </button>
+        )}
+        {hasPerm('fin_team_add') && (
+          <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => openEditModal(null)}>
+            + Add Member
+          </button>
+        )}
       </div>
 
       {/* ── Table ───────────────────────────────────────────────────────────── */}
@@ -816,19 +824,25 @@ export default function FinTeam() {
                     <td style={{ color: 'var(--text-secondary)' }}>{fmtDMY(leftRaw)}</td>
                     <td>
                       <div className={styles.actGroup}>
-                        <button className={styles.actBtn} title="Edit" onClick={() => openEditModal(m.id)}>
-                          <EditIcon />
-                        </button>
-                        <button
-                          className={`${styles.actBtn} ${m.is_active ? styles.actBtnDeactivate : styles.actBtnActivate}`}
-                          title={m.is_active ? 'Deactivate' : 'Activate'}
-                          onClick={() => openToggleModal(m.id, !m.is_active)}
-                        >
-                          <PowerIcon />
-                        </button>
-                        <button className={`${styles.actBtn} ${styles.actBtnDelete}`} title="Delete" onClick={() => openDelModal(m.id)}>
-                          <TrashIcon />
-                        </button>
+                        {hasPerm('fin_team_edit') && (
+                          <button className={styles.actBtn} title="Edit" onClick={() => openEditModal(m.id)}>
+                            <EditIcon />
+                          </button>
+                        )}
+                        {hasPerm('fin_team_toggle_active') && (
+                          <button
+                            className={`${styles.actBtn} ${m.is_active ? styles.actBtnDeactivate : styles.actBtnActivate}`}
+                            title={m.is_active ? 'Deactivate' : 'Activate'}
+                            onClick={() => openToggleModal(m.id, !m.is_active)}
+                          >
+                            <PowerIcon />
+                          </button>
+                        )}
+                        {hasPerm('fin_team_delete') && (
+                          <button className={`${styles.actBtn} ${styles.actBtnDelete}`} title="Delete" onClick={() => openDelModal(m.id)}>
+                            <TrashIcon />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -368,14 +368,22 @@ export default function FinRevenue() {
         </select>
         <div className={styles.spacer} />
         <button className={styles.btnGhost} onClick={() => loadData()}>↺ Refresh</button>
-        <button className={styles.btnGhost} onClick={handleSync} disabled={syncing}>
-          {syncing ? 'Syncing…' : '↑ Sync Revenue'}
-        </button>
-        <button className={styles.btnGhost} onClick={handleFixSections} disabled={fixing}>
-          {fixing ? 'Fixing…' : '✎ Fix Sections'}
-        </button>
-        <button className={styles.btnGhost} onClick={handleExport}>Export</button>
-        <button className={styles.btnAccent} onClick={() => openModal(null)}>+ Add Revenue</button>
+        {hasPerm('fin_revenue_sync') && (
+          <button className={styles.btnGhost} onClick={handleSync} disabled={syncing}>
+            {syncing ? 'Syncing…' : '↑ Sync Revenue'}
+          </button>
+        )}
+        {hasPerm('fin_revenue_fix_sections') && (
+          <button className={styles.btnGhost} onClick={handleFixSections} disabled={fixing}>
+            {fixing ? 'Fixing…' : '✎ Fix Sections'}
+          </button>
+        )}
+        {hasPerm('fin_revenue_export') && (
+          <button className={styles.btnGhost} onClick={handleExport}>Export</button>
+        )}
+        {hasPerm('fin_revenue_add') && (
+          <button className={styles.btnAccent} onClick={() => openModal(null)}>+ Add Revenue</button>
+        )}
       </div>
 
       {loading && <div className={styles.loadingBar}>Loading…</div>}
@@ -409,6 +417,7 @@ export default function FinRevenue() {
                           key={`${r.id}_${r.amount}`}
                           defaultValue={r.amount ?? 0}
                           className={styles.amtInput}
+                          disabled={!hasPerm('fin_revenue_edit')}
                           onBlur={e => { const v = parseFloat(e.target.value); updateAmount(r.id, isNaN(v) ? 0 : v); }}
                           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                         />
@@ -422,8 +431,12 @@ export default function FinRevenue() {
                       <td style={{ color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>{r.added_by || ''}</td>
                       <td>
                         <div className={styles.actions}>
-                          <button className={styles.actBtn} onClick={() => openModal(r.id)} title="Edit"><PenIcon /></button>
-                          <button className={`${styles.actBtn} ${styles.actBtnDel}`} onClick={() => openDelModal(r.id)} title="Delete"><TrashIcon /></button>
+                          {hasPerm('fin_revenue_edit') && (
+                            <button className={styles.actBtn} onClick={() => openModal(r.id)} title="Edit"><PenIcon /></button>
+                          )}
+                          {hasPerm('fin_revenue_delete') && (
+                            <button className={`${styles.actBtn} ${styles.actBtnDel}`} onClick={() => openDelModal(r.id)} title="Delete"><TrashIcon /></button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -149,8 +149,7 @@ function LocCell({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AttendanceAdmin() {
-  const { currentUser } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const { currentUser, hasPerm } = useAuth();
 
   const [attendance, setAttendance] = useState<AttRow[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -275,7 +274,7 @@ export default function AttendanceAdmin() {
 
   // ── Permission gate ───────────────────────────────────────────────────────
 
-  if (!isAdmin) {
+  if (!hasPerm('view_attendance_admin')) {
     return (
       <div className={styles.page}>
         <div className={styles.denied}>You don't have permission to view this page.</div>
@@ -360,7 +359,9 @@ export default function AttendanceAdmin() {
               <HistoryIcon /> History
             </button>
           </div>
-          <button className={styles.addBtn} onClick={() => openModal(null)}>+ Manual Entry</button>
+          {hasPerm('attendance_admin_add') && (
+            <button className={styles.addBtn} onClick={() => openModal(null)}>+ Manual Entry</button>
+          )}
         </div>
       </div>
 
@@ -469,8 +470,8 @@ export default function AttendanceAdmin() {
                   </td>
                   <td>
                     {row
-                      ? <button className={styles.rowBtn} onClick={() => openModal(row.id)}>Edit</button>
-                      : <button className={`${styles.rowBtn} ${styles.rowBtnAdd}`} onClick={() => openModal(null, member.id, rosterDate)}>Add</button>}
+                      ? (hasPerm('attendance_admin_edit') && <button className={styles.rowBtn} onClick={() => openModal(row.id)}>Edit</button>)
+                      : (hasPerm('attendance_admin_add') && <button className={`${styles.rowBtn} ${styles.rowBtnAdd}`} onClick={() => openModal(null, member.id, rosterDate)}>Add</button>)}
                   </td>
                 </tr>
               ))}
@@ -512,7 +513,9 @@ export default function AttendanceAdmin() {
                       </div>
                     </td>
                     <td>
-                      <button className={styles.rowBtn} onClick={() => openModal(r.id)}>Edit</button>
+                      {hasPerm('attendance_admin_edit') && (
+                        <button className={styles.rowBtn} onClick={() => openModal(r.id)}>Edit</button>
+                      )}
                     </td>
                   </tr>
                 );

@@ -403,10 +403,12 @@ export default function FinExpClaims() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             My Claims
           </button>
-          <button className={css.btnGhost} onClick={exportClaims}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Export Excel
-          </button>
+          {hasPerm('fin_exp_claims_export') && (
+            <button className={css.btnGhost} onClick={exportClaims}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export Excel
+            </button>
+          )}
           <button className={css.btnGhost} onClick={() => load(true)}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             Refresh
@@ -524,23 +526,29 @@ export default function FinExpClaims() {
                           <button className={css.actBtn} onClick={() => { setDetailId(r.id); setDetailRejOpen(false); setDetailRejVal(''); setDetailRejErr(false); setEditMode(false); }}>
                             View
                           </button>
-                          <button className={`${css.actBtn} ${css.actBtnDel}`} title="Delete" onClick={() => deleteClaim(r.id)}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                          </button>
+                          {hasPerm('fin_exp_claims_delete') && (
+                            <button className={`${css.actBtn} ${css.actBtnDel}`} title="Delete" onClick={() => deleteClaim(r.id)}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                            </button>
+                          )}
                           {isPending && (<>
-                            <button
-                              className={`${css.actBtn} ${css.actBtnApprove}`}
-                              disabled={approvingId === r.id}
-                              onClick={() => approveClaim(r.id)}
-                            >
-                              {approvingId === r.id ? '…' : 'Approve'}
-                            </button>
-                            <button
-                              className={`${css.actBtn} ${css.actBtnReject}`}
-                              onClick={() => setRejectOpen(v => ({ ...v, [r.id]: !v[r.id] }))}
-                            >
-                              Reject
-                            </button>
+                            {hasPerm('fin_exp_claims_approve') && (
+                              <button
+                                className={`${css.actBtn} ${css.actBtnApprove}`}
+                                disabled={approvingId === r.id}
+                                onClick={() => approveClaim(r.id)}
+                              >
+                                {approvingId === r.id ? '…' : 'Approve'}
+                              </button>
+                            )}
+                            {hasPerm('fin_exp_claims_reject') && (
+                              <button
+                                className={`${css.actBtn} ${css.actBtnReject}`}
+                                onClick={() => setRejectOpen(v => ({ ...v, [r.id]: !v[r.id] }))}
+                              >
+                                Reject
+                              </button>
+                            )}
                           </>)}
                         </div>
                         {isPending && rejOpen && (
@@ -651,15 +659,19 @@ export default function FinExpClaims() {
             {!editMode && detailClaim.status === 'pending' && (
               <div className={css.detailActions}>
                 <div className={css.detailActionBtns}>
-                  <button
-                    className={css.btnApprove}
-                    disabled={approvingId === detailId}
-                    onClick={() => approveClaim(detailId)}
-                  >
-                    {approvingId === detailId ? 'Approving…' : 'Approve'}
-                  </button>
-                  <button className={css.btnReject} onClick={() => { setDetailRejOpen(v => !v); setDetailRejErr(false); }}>Reject</button>
-                  {currentUser?.role === 'admin' && (
+                  {hasPerm('fin_exp_claims_approve') && (
+                    <button
+                      className={css.btnApprove}
+                      disabled={approvingId === detailId}
+                      onClick={() => approveClaim(detailId)}
+                    >
+                      {approvingId === detailId ? 'Approving…' : 'Approve'}
+                    </button>
+                  )}
+                  {hasPerm('fin_exp_claims_reject') && (
+                    <button className={css.btnReject} onClick={() => { setDetailRejOpen(v => !v); setDetailRejErr(false); }}>Reject</button>
+                  )}
+                  {hasPerm('fin_exp_claims_edit') && (
                     <button className={css.btnEdit} onClick={() => startEdit(detailClaim)}>&#9998; Edit</button>
                   )}
                 </div>
