@@ -80,7 +80,6 @@ export default function LiveTrips() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Live Trips</h1>
         <button className={styles.refreshBtn} onClick={loadData} disabled={loading}>
           <RefreshIcon /> {loading ? 'Refreshing…' : 'Refresh'}
         </button>

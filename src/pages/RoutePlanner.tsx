@@ -649,13 +649,6 @@ export default function RoutePlanner() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.pageHead}>
-        <h1 className={styles.pageTitle}>Route Planner</h1>
-        <p className={styles.pageSub}>
-          Paste a site list, split across teams, and get a day-by-day itinerary. Estimates use straight-line distance.
-        </p>
-      </div>
-
       {/* Info banner */}
       <div className={styles.infoBanner}>
         <InfoIcon />

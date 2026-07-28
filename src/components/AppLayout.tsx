@@ -7,8 +7,23 @@ import { invalidateCache as invalidateSitesCache } from '../lib/sitesCache';
 import styles from './AppLayout.module.css';
 
 const PAGE_TITLES: Record<string, string> = {
-  '/attendance': 'My Attendance',
-  '/dashboard':  'Dashboard',
+  '/attendance':        'My Attendance',
+  '/dashboard':         'Dashboard',
+  '/my-work':           'My Work',
+  '/my-profile':        'My Profile',
+  '/my-expenses':       'My Expenses',
+  '/my-trips':          'Field Trips',
+  '/live-trips':        'Live Trips',
+  '/route-planner':     'Route Planner',
+  '/daily-activities':  'Daily Activities',
+  '/sites-db':          'Sites Database',
+  '/hr-profiles':       'HR Profiles',
+  '/attendance-admin':  'Attendance',
+  '/network-scopes':    'Network Scopes',
+  '/site-lookup':       'Site Lookup',
+  '/activity-log':      'Activity Log',
+  '/user-management':   'User Management',
+  '/backup-restore':    'Backup & Restore',
 };
 
 // ── Pull-to-refresh / resume-refresh tuning ─────────────────────────────────

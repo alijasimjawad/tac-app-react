@@ -311,10 +311,6 @@ export default function MyExpenses() {
     <div className={styles.page}>
       {/* header */}
       <div className={styles.header}>
-        <div>
-          <h1 className={styles.title}>My Expenses</h1>
-          <div className={styles.subtitle}>Submit and track your expense claims</div>
-        </div>
         {memberResolved && memberId && hasPerm('mywork_expenses_add') && (
           <button className={styles.newBtn} onClick={openNew}>
             <PlusIcon /> New Claim

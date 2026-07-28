@@ -81,7 +81,6 @@ export default function MyTrips() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Field Trips</h1>
         {!loading && <span className={styles.count}>{myTrips.length} total</span>}
       </div>
 

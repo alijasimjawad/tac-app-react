@@ -279,26 +279,6 @@ export default function MyAttendance() {
         </div>
       )}
 
-      {/* ── Page Header ── */}
-      <div className={styles.pageHeader}>
-        <div className={styles.pageHeaderLeft}>
-          <h1 className={styles.pageTitle}>My Attendance</h1>
-          <p className={styles.pageSub}>Track your working hours, attendance history, and field check-ins.</p>
-        </div>
-        {!isDone && (
-          <button
-            className={`${styles.headerClockBtn} ${!todayRow?.clock_in ? styles.headerClockIn : styles.headerClockOut}`}
-            onClick={handleClockAction}
-            disabled={clocking}
-            aria-label={getClockBtnLabel()}
-          >
-            {gpsPhase !== 'idle'
-              ? <IcSpinner />
-              : !todayRow?.clock_in ? <IcClockIn /> : <IcClockOut />}
-            {getClockBtnLabel()}
-          </button>
-        )}
-      </div>
 
       {/* ── Today's Attendance Card ── */}
       {loading ? (

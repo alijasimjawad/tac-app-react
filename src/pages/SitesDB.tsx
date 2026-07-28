@@ -758,29 +758,23 @@ export default function SitesDB() {
     <div className={styles.page}>
       {toast && <div className={`${styles.toast} ${toast.ok ? styles.toastOk : styles.toastErr}`}>{toast.msg}</div>}
 
-      {/* ── Page Header ── */}
-      <div className={styles.pageHeader}>
-        <div className={styles.pageHeaderLeft}>
-          <h2 className={styles.pageTitle}>Sites Database</h2>
-          <p className={styles.pageSub}>Manage, search, map, and review telecom site records.</p>
-        </div>
-        <div className={styles.pageActions}>
-          {hasPerm('sitesdb_export') && (
-            <button className={styles.btnGhost} onClick={exportSites}>
-              <ExportIcon /> Export
-            </button>
-          )}
-          {(hasPerm('sitesdb_import') || hasPerm('sitesdb_enrich_export')) && (
-            <button className={styles.btnGhost} onClick={openImportModal}>
-              <ImportIcon /> Import / Enrich
-            </button>
-          )}
-          {hasPerm('sitesdb_add') && (
-            <button className={styles.btnPrimary} onClick={openAddModal}>
-              <PlusIcon /> Add Site
-            </button>
-          )}
-        </div>
+      {/* ── Page Actions ── */}
+      <div className={styles.pageActions}>
+        {hasPerm('sitesdb_export') && (
+          <button className={styles.btnGhost} onClick={exportSites}>
+            <ExportIcon /> Export
+          </button>
+        )}
+        {(hasPerm('sitesdb_import') || hasPerm('sitesdb_enrich_export')) && (
+          <button className={styles.btnGhost} onClick={openImportModal}>
+            <ImportIcon /> Import / Enrich
+          </button>
+        )}
+        {hasPerm('sitesdb_add') && (
+          <button className={styles.btnPrimary} onClick={openAddModal}>
+            <PlusIcon /> Add Site
+          </button>
+        )}
       </div>
 
       {/* ── Summary Cards ── */}

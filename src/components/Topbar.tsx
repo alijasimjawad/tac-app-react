@@ -24,6 +24,12 @@ const RefreshIcon = () => (
   </svg>
 );
 
+const ChevronDownIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
 export default function Topbar({ title, onMenuOpen, onRefresh, refreshing }: TopbarProps) {
   const { currentUser } = useAuth();
 
@@ -51,15 +57,18 @@ export default function Topbar({ title, onMenuOpen, onRefresh, refreshing }: Top
           <RefreshIcon />
         </button>
         <NotificationBell />
-        <div className={styles.avatar}>
-          {currentUser?.profile_photo_url
-            ? <img src={currentUser.profile_photo_url} alt="" className={styles.avatarImg} />
-            : initials}
-        </div>
-        <div className={styles.userInfo}>
-          <div className={styles.userName}>{currentUser?.full_name || currentUser?.username}</div>
-          <div className={styles.userRole}>{currentUser?.role}</div>
-        </div>
+        <button className={styles.userMenu} aria-label="User menu" title="User menu">
+          <div className={styles.avatar}>
+            {currentUser?.profile_photo_url
+              ? <img src={currentUser.profile_photo_url} alt="" className={styles.avatarImg} />
+              : initials}
+          </div>
+          <div className={styles.userInfo}>
+            <div className={styles.userName}>{currentUser?.full_name || currentUser?.username}</div>
+            <div className={styles.userRole}>{currentUser?.role}</div>
+          </div>
+          <ChevronDownIcon />
+        </button>
       </div>
     </header>
   );
