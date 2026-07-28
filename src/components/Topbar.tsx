@@ -4,6 +4,7 @@ import styles from './Topbar.module.css';
 
 interface TopbarProps {
   title: string;
+  subtitle?: string;
   onMenuOpen: () => void;
   onRefresh: () => void;
   refreshing: boolean;
@@ -30,7 +31,7 @@ const ChevronDownIcon = () => (
   </svg>
 );
 
-export default function Topbar({ title, onMenuOpen, onRefresh, refreshing }: TopbarProps) {
+export default function Topbar({ title, subtitle, onMenuOpen, onRefresh, refreshing }: TopbarProps) {
   const { currentUser } = useAuth();
 
   const initials = (currentUser?.full_name || currentUser?.username || 'U')
@@ -45,7 +46,10 @@ export default function Topbar({ title, onMenuOpen, onRefresh, refreshing }: Top
       <button className={styles.menuBtn} onClick={onMenuOpen} aria-label="Open navigation menu">
         <HamburgerIcon />
       </button>
-      <span className={styles.title}>{title}</span>
+      <div className={styles.titleGroup}>
+        <span className={styles.title}>{title}</span>
+        {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
+      </div>
       <div className={styles.right}>
         <button
           className={`${styles.refreshBtn} ${refreshing ? styles.refreshBtnSpinning : ''}`}

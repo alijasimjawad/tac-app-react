@@ -26,6 +26,13 @@ const PAGE_TITLES: Record<string, string> = {
   '/backup-restore':    'Backup & Restore',
 };
 
+const PAGE_SUBTITLES: Record<string, string> = {
+  '/attendance':        'Track your working hours, attendance history, and field check-ins.',
+  '/daily-activities':  'Plan, assign and track field activities',
+  '/route-planner':     'Paste a site list, split across teams, and get a day-by-day itinerary. Estimates use straight-line distance.',
+  '/sites-db':          'Manage, search, map, and review telecom site records.',
+};
+
 // ── Pull-to-refresh / resume-refresh tuning ─────────────────────────────────
 const PULL_THRESHOLD = 70;   // px of pull needed before releasing triggers a refresh
 const MAX_PULL = 110;        // rubber-band cap so it can't be dragged forever
@@ -39,6 +46,7 @@ const RESUME_REFRESH_AFTER_MS = 20_000;
 export default function AppLayout() {
   const { pathname } = useLocation();
   const title = PAGE_TITLES[pathname] ?? 'TAC Network';
+  const subtitle = PAGE_SUBTITLES[pathname];
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Slim top progress bar shown whenever the route changes (i.e. switching
@@ -184,7 +192,7 @@ export default function AppLayout() {
       )}
       <Sidebar key={refreshKey} mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
       <div className={styles.main}>
-        <Topbar title={title} onMenuOpen={() => setMobileOpen(true)} onRefresh={triggerRefresh} refreshing={refreshing} />
+        <Topbar title={title} subtitle={subtitle} onMenuOpen={() => setMobileOpen(true)} onRefresh={triggerRefresh} refreshing={refreshing} />
         <div className={styles.content} ref={contentRef}>
           {indicatorVisible && (
             <div
