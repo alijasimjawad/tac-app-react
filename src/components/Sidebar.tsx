@@ -93,7 +93,29 @@ function NetworkScopesTree() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    ensureSectionsLoaded().then(() => setSections(getSections()));
+    ensureSectionsLoaded().then(async () => {
+      setSections(getSections());
+      // Seed any default sections that don't yet have a DB row (e.g. newly added projects).
+      const existing = getSections();
+      const toInsert = PROJECTS.flatMap(proj =>
+        (DEFAULT_SECTIONS[proj] ?? [])
+          .filter(key => !existing.some(s => s.project_name === proj && s.section_name === key))
+          .map(key => ({
+            project_name: proj,
+            section_name: key,
+            section_label: SEC_LABELS[key] ?? key,
+            columns: DEFAULT_HEADERS,
+            custom_columns: [] as string[],
+            is_custom: false,
+          }))
+      );
+      if (toInsert.length > 0) {
+        await supabase.from('sections').insert(toInsert);
+        invalidateSections();
+        await ensureSectionsLoaded();
+        setSections(getSections());
+      }
+    });
   }, []);
 
   // Auto-expand the active project when route changes.
