@@ -22,11 +22,12 @@ const DEFAULT_SECTIONS: Record<string, string[]> = {
   nokia:  ['ftk', 'tdd', 'addsector'],
   huawei: ['ftk', 'tdd', 'addsector'],
   ipt:    ['tdd'],
+  moj:    ['ftk', 'tdd', 'addsector'],
 };
 
 const DEFAULT_HEADERS = ['Site ID', 'Governate', 'Imp. Date', 'ATP Status', 'Comment'];
 
-const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt'] as const;
+const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt', 'moj'] as const;
 
 type MajorGroup = 'finance' | 'hr' | 'admin';
 

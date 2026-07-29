@@ -11,7 +11,7 @@ import styles from './NetworkScopes.module.css';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 export const PROJ_NAMES: Record<string, string> = {
-  zain: 'Zain Project', nokia: 'Nokia Project', huawei: 'Huawei Project', ipt: 'IPT Project',
+  zain: 'Zain Project', nokia: 'Nokia Project', huawei: 'Huawei Project', ipt: 'IPT Project', moj: 'MOJ Project',
 };
 export const SEC_LABELS: Record<string, string> = { ftk: 'FTK', tdd: 'TDD', addsector: 'Add Sector' };
 

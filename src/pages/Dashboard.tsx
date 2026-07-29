@@ -29,16 +29,17 @@ const DEFAULT_SECTIONS: Record<string, string[]> = {
   nokia:  ['ftk', 'tdd', 'addsector'],
   huawei: ['ftk', 'tdd', 'addsector'],
   ipt:    ['tdd'],
+  moj:    ['ftk', 'tdd', 'addsector'],
 };
 
-const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt'] as const;
+const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt', 'moj'] as const;
 
 const PROJ_COLORS: Record<string, string> = {
-  zain: '#3B82F6', nokia: '#10B981', huawei: '#EF4444', ipt: '#F43F5E',
+  zain: '#3B82F6', nokia: '#10B981', huawei: '#EF4444', ipt: '#F43F5E', moj: '#8B5CF6',
 };
 
 const PROJ_INITIALS: Record<string, string> = {
-  zain: 'ZP', nokia: 'NP', huawei: 'HP', ipt: 'IP',
+  zain: 'ZP', nokia: 'NP', huawei: 'HP', ipt: 'IP', moj: 'MJ',
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
