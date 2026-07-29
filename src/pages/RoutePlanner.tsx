@@ -71,6 +71,10 @@ interface RoutePlan {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const TEAM_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
+// Line style per day (cycles if a team's plan runs past 4 days) — paired
+// with the numbered marker badges so day 1 vs day 2 vs day 3 is readable
+// on the map at a glance, not just team color.
+const DAY_DASH: (string | undefined)[] = [undefined, '7,5', '2,5', '10,4,2,4'];
 
 // ── Pure algorithm functions (faithful ports) ─────────────────────────────────
 
@@ -485,28 +489,55 @@ export default function RoutePlanner() {
 
     p.teamsPlan.forEach((team, ti) => {
       const color = TEAM_COLORS[ti % TEAM_COLORS.length];
-      const allStops = team.days.flatMap(d => d.stops);
-      if (!allStops.length) return;
+      if (!team.days.length) return;
 
-      const latlngs: [number, number][] = allStops.map(s => [s.site.latitude, s.site.longitude]);
-      if (p.startLoc && latlngs.length) {
-        L.polyline([[p.startLoc.latitude, p.startLoc.longitude], latlngs[0]], {
-          color, weight: 2, opacity: 0.5, dashArray: '4,6',
-        }).addTo(layerGroupRef.current!);
-      }
-      L.polyline(latlngs, { color, weight: 3, opacity: 0.85 }).addTo(layerGroupRef.current!);
+      // Draw one polyline per day (not one continuous line across the whole
+      // plan) so a dashed/dotted style can mark day 2, day 3, etc. — the
+      // team color alone no longer has to carry which day each stop is on.
+      team.days.forEach((day, di) => {
+        if (!day.stops.length) return;
+        const dayLatlngs: [number, number][] = day.stops.map(s => [s.site.latitude, s.site.longitude]);
+        const dashArray = DAY_DASH[di % DAY_DASH.length];
 
-      allStops.forEach((stop, si) => {
-        const s = stop.site;
-        const dayNum = team.days.find(d => d.stops.includes(stop))?.dayNum ?? '';
-        L.circleMarker([s.latitude, s.longitude], {
-          radius: s._priority ? 8 : 6.5, color: '#fff', weight: 2, fillColor: color, fillOpacity: 1,
-        }).bindPopup(`<div style="font-family:inherit;min-width:170px">
-          <div style="font-weight:700;font-size:13px;margin-bottom:2px">${s.site_code || 'Site'}${s._priority ? ' ⭐' : ''}</div>
-          <div style="font-size:12px;color:#64748b;margin-bottom:4px">${s.site_name || ''}</div>
-          <div style="font-size:11.5px;color:#94a3b8">${team.name} · Day ${dayNum} · Stop ${si + 1}</div>
-        </div>`).addTo(layerGroupRef.current!);
-        allPts.push([s.latitude, s.longitude]);
+        if (di === 0 && p.startLoc) {
+          L.polyline([[p.startLoc.latitude, p.startLoc.longitude], dayLatlngs[0]], {
+            color, weight: 2, opacity: 0.5, dashArray: '4,6',
+          }).addTo(layerGroupRef.current!);
+        } else if (di > 0) {
+          // Thin connector from the previous day's last stop, so it's clear
+          // day 2 continues from where day 1 left off, without implying
+          // it's part of day 1's route.
+          const prevDay = team.days[di - 1];
+          const prevLast = prevDay.stops[prevDay.stops.length - 1];
+          if (prevLast) {
+            L.polyline([[prevLast.site.latitude, prevLast.site.longitude], dayLatlngs[0]], {
+              color, weight: 1.5, opacity: 0.35, dashArray: '2,6',
+            }).addTo(layerGroupRef.current!);
+          }
+        }
+
+        L.polyline(dayLatlngs, { color, weight: 3, opacity: 0.85, dashArray }).addTo(layerGroupRef.current!);
+
+        day.stops.forEach((stop, si) => {
+          const s = stop.site;
+          const ring = s._priority ? '0 0 0 2px #fff, 0 0 0 4px #f59e0b' : '0 0 0 2px #fff';
+          const icon = L.divIcon({
+            className: '',
+            html: `<div style="width:22px;height:22px;border-radius:50%;background:${color};
+              box-shadow:${ring};display:flex;align-items:center;justify-content:center;
+              font:700 11px/1 inherit;color:#fff;">${day.dayNum}</div>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+          });
+          L.marker([s.latitude, s.longitude], { icon })
+            .bindPopup(`<div style="font-family:inherit;min-width:170px">
+              <div style="font-weight:700;font-size:13px;margin-bottom:2px">${s.site_code || 'Site'}${s._priority ? ' ⭐' : ''}</div>
+              <div style="font-size:12px;color:#64748b;margin-bottom:4px">${s.site_name || ''}</div>
+              <div style="font-size:11.5px;color:#94a3b8">${team.name} · Day ${day.dayNum} · Stop ${si + 1}</div>
+            </div>`)
+            .addTo(layerGroupRef.current!);
+          allPts.push([s.latitude, s.longitude]);
+        });
       });
     });
 
@@ -1183,6 +1214,9 @@ function MapLegend({ plan }: { plan: RoutePlan }) {
           </span>
         );
       })}
+      <span className={styles.legendItem} style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+        Marker number = day · dashed line = later day
+      </span>
     </div>
   );
 }
