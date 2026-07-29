@@ -83,7 +83,7 @@ function NetworkScopesTree() {
 
   // Section management state
   const [addSecState, setAddSecState]       = useState<{ proj: string; name: string } | null>(null);
-  const [renameSecState, setRenameSecState] = useState<{ proj: string; secId: string; name: string } | null>(null);
+  const [renameSecState, setRenameSecState] = useState<{ proj: string; secId: string; sectionKey: string; name: string } | null>(null);
   const [deleteSecState, setDeleteSecState] = useState<{
     proj: string; secId: string; key: string; label: string; isCustom: boolean; typed: string;
   } | null>(null);
@@ -218,15 +218,34 @@ function NetworkScopesTree() {
     });
   }
 
+  async function ensureDefaultSectionRow(proj: string, sectionKey: string): Promise<string | null> {
+    const { data, error } = await supabase.from('sections').insert({
+      project_name: proj,
+      section_name: sectionKey,
+      section_label: SEC_LABELS[sectionKey] ?? sectionKey,
+      columns: DEFAULT_HEADERS,
+      custom_columns: [],
+      is_custom: false,
+    }).select('id').single();
+    if (error || !data) return null;
+    return (data as { id: string }).id;
+  }
+
   async function confirmRenameSection() {
     if (!renameSecState) return;
     const label = renameSecState.name.trim();
     if (!label) { setSecError('Name cannot be empty'); return; }
     setSecModalSaving(true);
     setSecError(null);
+    let secId = renameSecState.secId;
+    if (!secId) {
+      const newId = await ensureDefaultSectionRow(renameSecState.proj, renameSecState.sectionKey);
+      if (!newId) { setSecError('Failed to initialize section. Please try again.'); setSecModalSaving(false); return; }
+      secId = newId;
+    }
     const { error } = await supabase.from('sections')
       .update({ section_label: label })
-      .eq('id', renameSecState.secId);
+      .eq('id', secId);
     setSecModalSaving(false);
     if (error) { setSecError(error.message); return; }
     await reloadSections();
@@ -249,11 +268,24 @@ function NetworkScopesTree() {
     setSecModalSaving(true);
     setSecError(null);
     let saveErr: { message: string } | null = null;
+    let secId = deleteSecState.secId;
     if (deleteSecState.isCustom) {
-      const res = await supabase.from('sections').delete().eq('id', deleteSecState.secId);
+      const res = await supabase.from('sections').delete().eq('id', secId);
+      saveErr = res.error;
+    } else if (!secId) {
+      // Default section with no DB row yet — insert it directly as deleted
+      const res = await supabase.from('sections').insert({
+        project_name: deleteSecState.proj,
+        section_name: deleteSecState.key,
+        section_label: deleteSecState.label,
+        columns: DEFAULT_HEADERS,
+        custom_columns: [],
+        is_custom: false,
+        is_deleted: true,
+      });
       saveErr = res.error;
     } else {
-      const res = await supabase.from('sections').update({ is_deleted: true }).eq('id', deleteSecState.secId);
+      const res = await supabase.from('sections').update({ is_deleted: true }).eq('id', secId);
       saveErr = res.error;
     }
     setSecModalSaving(false);
@@ -319,7 +351,7 @@ function NetworkScopesTree() {
                       {secs.map(({ key, label, isCustom, id }) => {
                         const isActive = params.proj === proj && params.sec === key;
                         const menuOpen = secMenu?.proj === proj && secMenu?.key === key;
-                        const showMenu = canManageSec && id !== '';
+                        const showMenu = canManageSec;
                         return (
                           <div key={key} className={styles.secLinkWrap}>
                             <NavLink
@@ -352,7 +384,7 @@ function NetworkScopesTree() {
                                         onClick={() => {
                                           setSecMenu(null);
                                           setSecError(null);
-                                          setRenameSecState({ proj, secId: id, name: label });
+                                          setRenameSecState({ proj, secId: id, sectionKey: key, name: label });
                                         }}
                                       >
                                         Rename
