@@ -29,7 +29,7 @@ const PAGE_TITLES: Record<string, string> = {
 const PAGE_SUBTITLES: Record<string, string> = {
   '/attendance':        'Track your working hours, attendance history, and field check-ins.',
   '/daily-activities':  'Plan, assign and track field activities',
-  '/route-planner':     'Paste a site list, split across teams, and get a day-by-day itinerary. Estimates use straight-line distance.',
+  '/route-planner':     'Paste a site list, split across teams, and get a day-by-day itinerary. Distances refine to real road routes once loaded.',
   '/sites-db':          'Manage, search, map, and review telecom site records.',
 };
 

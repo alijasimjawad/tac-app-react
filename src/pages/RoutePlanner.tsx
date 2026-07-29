@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../context/AuthContext';
 import { haversineKm } from '../lib/sitesNearest';
 import { cacheOk, getAllSites, ensureFullLoad } from '../lib/sitesCache';
+import { getRoadRoute, hasOrsToken } from '../lib/orsRouting';
 import styles from './RoutePlanner.module.css';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -30,6 +31,10 @@ interface DayPlan {
   stops: Stop[];
   distanceKm: number;
   minutes: number;
+  /** True once distanceKm/minutes have been refined with a real ORS road
+   *  route (see enrichRoadRoutes) — false/undefined means these are still
+   *  the straight-line (haversine) estimates from plan generation. */
+  road?: boolean;
 }
 
 interface TeamPlan {
@@ -412,11 +417,18 @@ export default function RoutePlanner() {
   const [copyLabel, setCopyLabel] = useState('Copy as Text');
   const [generating, setGenerating] = useState(false);
   const [activeTeam, setActiveTeam] = useState(0);
+  // Real road paths from OpenRouteService, keyed by "${teamIdx}-${dayIdx}" —
+  // populated asynchronously after a plan is generated (see
+  // enrichRoadRoutes). Used by renderMapLayers to draw the actual driving
+  // route instead of a straight line, once available for that team/day.
+  const [roadRoutes, setRoadRoutes] = useState<Record<string, [number, number][]>>({});
+  const [roadStatus, setRoadStatus] = useState<'idle' | 'loading' | 'done'>('idle');
 
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const roadRunIdRef = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -452,11 +464,12 @@ export default function RoutePlanner() {
         mapRef.current = map;
         layerGroupRef.current = L.layerGroup().addTo(map);
       }
-      renderMapLayers(plan);
+      renderMapLayers(plan, roadRoutes);
       setTimeout(() => { if (mapRef.current) mapRef.current.invalidateSize(); }, 50);
     }, 50);
     return () => clearTimeout(t);
-  }, [plan]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, roadRoutes]);
 
   useEffect(() => {
     return () => {
@@ -475,7 +488,7 @@ export default function RoutePlanner() {
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
-  function renderMapLayers(p: RoutePlan) {
+  function renderMapLayers(p: RoutePlan, roads: Record<string, [number, number][]>) {
     if (!mapRef.current || !layerGroupRef.current) return;
     layerGroupRef.current.clearLayers();
     const allPts: [number, number][] = [];
@@ -498,25 +511,34 @@ export default function RoutePlanner() {
         if (!day.stops.length) return;
         const dayLatlngs: [number, number][] = day.stops.map(s => [s.site.latitude, s.site.longitude]);
         const dashArray = DAY_DASH[di % DAY_DASH.length];
+        const roadGeometry = roads[`${ti}-${di}`];
 
-        if (di === 0 && p.startLoc) {
-          L.polyline([[p.startLoc.latitude, p.startLoc.longitude], dayLatlngs[0]], {
-            color, weight: 2, opacity: 0.5, dashArray: '4,6',
-          }).addTo(layerGroupRef.current!);
-        } else if (di > 0) {
-          // Thin connector from the previous day's last stop, so it's clear
-          // day 2 continues from where day 1 left off, without implying
-          // it's part of day 1's route.
-          const prevDay = team.days[di - 1];
-          const prevLast = prevDay.stops[prevDay.stops.length - 1];
-          if (prevLast) {
-            L.polyline([[prevLast.site.latitude, prevLast.site.longitude], dayLatlngs[0]], {
-              color, weight: 1.5, opacity: 0.35, dashArray: '2,6',
+        if (roadGeometry) {
+          // Real driving path from OpenRouteService — already includes the
+          // leg from the start location / previous day's last stop, so it
+          // replaces both the connector line and the straight stop-to-stop
+          // line below with one real road-following polyline.
+          L.polyline(roadGeometry, { color, weight: 3, opacity: 0.85, dashArray }).addTo(layerGroupRef.current!);
+        } else {
+          if (di === 0 && p.startLoc) {
+            L.polyline([[p.startLoc.latitude, p.startLoc.longitude], dayLatlngs[0]], {
+              color, weight: 2, opacity: 0.5, dashArray: '4,6',
             }).addTo(layerGroupRef.current!);
+          } else if (di > 0) {
+            // Thin connector from the previous day's last stop, so it's clear
+            // day 2 continues from where day 1 left off, without implying
+            // it's part of day 1's route.
+            const prevDay = team.days[di - 1];
+            const prevLast = prevDay.stops[prevDay.stops.length - 1];
+            if (prevLast) {
+              L.polyline([[prevLast.site.latitude, prevLast.site.longitude], dayLatlngs[0]], {
+                color, weight: 1.5, opacity: 0.35, dashArray: '2,6',
+              }).addTo(layerGroupRef.current!);
+            }
           }
-        }
 
-        L.polyline(dayLatlngs, { color, weight: 3, opacity: 0.85, dashArray }).addTo(layerGroupRef.current!);
+          L.polyline(dayLatlngs, { color, weight: 3, opacity: 0.85, dashArray }).addTo(layerGroupRef.current!);
+        }
 
         day.stops.forEach((stop, si) => {
           const s = stop.site;
@@ -544,6 +566,57 @@ export default function RoutePlanner() {
     if (allPts.length) mapRef.current.fitBounds(allPts, { padding: [30, 30], maxZoom: 14 });
   }
 
+  // After a plan is generated (with fast, synchronous straight-line
+  // estimates), refine it with real road distances/times + a real driving
+  // path from OpenRouteService — one request per team-per-day (not per leg,
+  // which would blow through the free-tier rate limit fast). Runs in the
+  // background; if a request fails or there's no ORS token configured, that
+  // day's straight-line estimate is simply left as-is.
+  async function enrichRoadRoutes(p: RoutePlan) {
+    if (!hasOrsToken()) { setRoadStatus('idle'); return; }
+    const runId = ++roadRunIdRef.current;
+    setRoadStatus('loading');
+
+    for (let ti = 0; ti < p.teamsPlan.length; ti++) {
+      const team = p.teamsPlan[ti];
+      for (let di = 0; di < team.days.length; di++) {
+        if (runId !== roadRunIdRef.current) return; // a newer plan superseded this run
+        const day = team.days[di];
+        if (!day.stops.length) continue;
+
+        // Mirror the same "previous point" chain the haversine estimates
+        // use: day 1 starts from the start location (if any); later days
+        // continue from the previous day's last stop.
+        const prevPoint = di === 0
+          ? p.startLoc
+          : team.days[di - 1].stops[team.days[di - 1].stops.length - 1]?.site;
+        const points = [
+          ...(prevPoint ? [{ latitude: prevPoint.latitude, longitude: prevPoint.longitude }] : []),
+          ...day.stops.map(s => ({ latitude: s.site.latitude, longitude: s.site.longitude })),
+        ];
+        if (points.length < 2) continue;
+
+        const route = await getRoadRoute(points);
+        if (!route || runId !== roadRunIdRef.current) continue;
+
+        const key = `${ti}-${di}`;
+        setRoadRoutes(prev => ({ ...prev, [key]: route.geometry }));
+        setPlan(prev => {
+          if (!prev) return prev;
+          const teamsPlan = prev.teamsPlan.map((t, tix) => {
+            if (tix !== ti) return t;
+            const days = t.days.map((d, dix) => dix === di
+              ? { ...d, distanceKm: route.distanceKm, minutes: route.minutes, road: true }
+              : d);
+            return { ...t, days };
+          });
+          return { ...prev, teamsPlan };
+        });
+      }
+    }
+    if (runId === roadRunIdRef.current) setRoadStatus('done');
+  }
+
   async function handleGenerate() {
     setPlanError('');
     setGenerating(true);
@@ -557,12 +630,19 @@ export default function RoutePlanner() {
     if ('error' in result) { setPlanError(result.error); setPlan(null); return; }
     setPlan(result.plan);
     setActiveTeam(0);
+    setRoadRoutes({});
+    roadRunIdRef.current++;
+    setRoadStatus('idle');
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
+    void enrichRoadRoutes(result.plan);
   }
 
   function handleClear() {
     setPlan(null);
     setPlanError('');
+    setRoadRoutes({});
+    roadRunIdRef.current++;
+    setRoadStatus('idle');
     setActiveTeam(0);
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
   }
@@ -933,6 +1013,7 @@ export default function RoutePlanner() {
               mapDivRef={mapDivRef}
               onSelectTeam={setActiveTeam}
               onFullscreenMap={handleFullscreenMap}
+              roadStatus={roadStatus}
             />
           )}
         </div>
@@ -972,7 +1053,7 @@ function RoutePlannerEmptyState() {
 // ── Results sub-component ──────────────────────────────────────────────────────
 
 function PlanResults({
-  plan, activeTeam, onCopyText, copyLabel, mapDivRef, onSelectTeam, onFullscreenMap,
+  plan, activeTeam, onCopyText, copyLabel, mapDivRef, onSelectTeam, onFullscreenMap, roadStatus,
 }: {
   plan: RoutePlan;
   activeTeam: number;
@@ -981,6 +1062,7 @@ function PlanResults({
   mapDivRef: React.RefObject<HTMLDivElement | null>;
   onSelectTeam: (i: number) => void;
   onFullscreenMap: () => void;
+  roadStatus: 'idle' | 'loading' | 'done';
 }) {
   const notFound = plan.unmatched.filter(u => u.reason === 'not_found');
   const noCoord = plan.unmatched.filter(u => u.reason === 'missing_coordinates');
@@ -1097,7 +1179,7 @@ function PlanResults({
       {/* Map — always shown above the results now */}
       <div className={styles.mapWrap}>
         <div ref={mapDivRef} className={styles.mapBox} />
-        <MapLegend plan={plan} />
+        <MapLegend plan={plan} roadStatus={roadStatus} />
       </div>
 
       {/* Team tabs */}
@@ -1151,7 +1233,9 @@ function PlanResults({
                   <span className={styles.dayTitle}>Day {day.dayNum}</span>
                   <span className={styles.dayMeta}>
                     <span className={styles.dayMetaChip}>{day.stops.length} sites</span>
-                    <span className={styles.dayMetaChip}>{day.distanceKm.toFixed(1)} km</span>
+                    <span className={styles.dayMetaChip} title={day.road ? 'Real road distance (OpenRouteService)' : 'Straight-line estimate'}>
+                      {day.distanceKm.toFixed(1)} km{day.road ? ' 🛣️' : ''}
+                    </span>
                     <span className={styles.dayMetaChip}>{formatMin(day.minutes)} drive</span>
                   </span>
                 </div>
@@ -1201,7 +1285,7 @@ function PlanResults({
   );
 }
 
-function MapLegend({ plan }: { plan: RoutePlan }) {
+function MapLegend({ plan, roadStatus }: { plan: RoutePlan; roadStatus: 'idle' | 'loading' | 'done' }) {
   return (
     <div className={styles.mapLegend}>
       {plan.teamsPlan.map((team, ti) => {
@@ -1216,6 +1300,8 @@ function MapLegend({ plan }: { plan: RoutePlan }) {
       })}
       <span className={styles.legendItem} style={{ color: 'var(--text-muted)', fontSize: 12 }}>
         Marker number = day · dashed line = later day
+        {roadStatus === 'loading' && ' · fetching real road routes…'}
+        {roadStatus === 'done' && ' · 🛣️ = real road distance'}
       </span>
     </div>
   );
