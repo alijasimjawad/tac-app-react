@@ -213,6 +213,14 @@ function splitIntoDays(ordered: Site[], numDays: number, dailyMin: number, speed
   let prev: { latitude: number; longitude: number } | null = startLoc || null;
   let doneDays = false;
 
+  // Spread this team's sites evenly across the requested number of days
+  // instead of packing everything into day 1 whenever it fits the time
+  // budget — e.g. 9 sites over 2 days should land ~5/4, not 9/0. If
+  // Max Sites/Team is set tighter than that even split, it still wins
+  // (it's a hard per-day cap); the daily time budget always wins too.
+  const evenTarget = Math.ceil(ordered.length / numDays);
+  const dayTargetCap = maxSitesPerTeam > 0 ? Math.min(maxSitesPerTeam, evenTarget) : evenTarget;
+
   const pushDay = () => {
     if (stops.length) result.push({ dayNum, stops, distanceKm: dayDistance, minutes: dayMin });
     stops = []; dayMin = 0; dayDistance = 0;
@@ -225,10 +233,10 @@ function splitIntoDays(ordered: Site[], numDays: number, dailyMin: number, speed
       legKm = haversineKm(prev.latitude, prev.longitude, site.latitude, site.longitude);
       legMin = (legKm / speed) * 60;
     }
-    // Max Sites/Team is a per-day cap on this team — once a day already holds
-    // that many stops, the next site has to start a new day even if there's
-    // still time left in the current one.
-    const dayFull = maxSitesPerTeam > 0 && stops.length >= maxSitesPerTeam;
+    // A day is "full" once it hits the even-split target (or the tighter
+    // Max Sites/Team cap, if set) — that's what forces the remaining sites
+    // onto the next day instead of all being crammed into day 1.
+    const dayFull = stops.length >= dayTargetCap;
     if (prev && (dayMin + legMin > dailyMin || dayFull)) {
       if (dayNum >= numDays) { pushDay(); doneDays = true; leftover.push(site); continue; }
       pushDay();
