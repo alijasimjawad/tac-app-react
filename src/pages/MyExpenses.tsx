@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import styles from './MyExpenses.module.css';
 
-const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
+const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'MOJ Project', 'General'];
 
 const QUICK_CATEGORIES = [
   'Accommodation', 'Fuel', 'Tools & Materials', 'Communication', 'Parking',
