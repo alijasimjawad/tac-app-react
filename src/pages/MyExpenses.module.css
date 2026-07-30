@@ -795,6 +795,19 @@
   line-height: 1.4;
 }
 
+/* ── Inline field errors ── */
+.fieldErrMsg {
+  font-size: 11.5px;
+  color: #DC2626;
+  margin-top: 2px;
+}
+.inputErr {
+  border-color: #DC2626 !important;
+}
+.inputErr:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1) !important;
+}
+
 /* ── Delete confirm modal ── */
 .overlay {
   position: fixed;
@@ -906,6 +919,7 @@
   .drawer { width: 100vw; }
   .formGrid2 { grid-template-columns: 1fr; }
   .extraCard { grid-template-columns: 1fr 1fr auto; }
+  .drawerFooter .cancelBtn { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

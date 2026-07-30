@@ -12,6 +12,22 @@ const QUICK_CATEGORIES = [
 
 const PAGE_SIZES = [10, 25, 50];
 
+const NAME_TO_KEY: Record<string, string> = {
+  'Zain Project': 'zain',
+  'Nokia Project': 'nokia',
+  'Huawei Project': 'huawei',
+  'IPT Project': 'ipt',
+  'MOJ Project': 'moj',
+};
+
+const ACTIVITY_TYPES = ['Installation', 'Integration', 'Clearance', 'Photo Reports', 'Other'];
+
+interface SectionRow {
+  id: string;
+  section_label: string | null;
+  section_name: string | null;
+}
+
 interface ExpenseClaim {
   id: string;
   member_id: string;
@@ -94,7 +110,8 @@ export default function MyExpenses() {
   // form fields
   const [fProject, setFProject] = useState('');
   const [fSiteId, setFSiteId] = useState('');
-  const [fDesc, setFDesc] = useState('');
+  const [fActivityType, setFActivityType] = useState('');
+  const [fOtherDesc, setFOtherDesc] = useState('');
   const [fDate, setFDate] = useState(today());
   const [fTransport, setFTransport] = useState<string>('');
   const [fFood, setFFood] = useState<string>('');
@@ -106,6 +123,9 @@ export default function MyExpenses() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [empDropOpen, setEmpDropOpen] = useState(false);
   const empDropRef = useRef<HTMLDivElement>(null);
+  const [sections, setSections] = useState<SectionRow[]>([]);
+  const [fSectionId, setFSectionId] = useState('');
+  const [fieldErrs, setFieldErrs] = useState<Record<string, string>>({});
 
   // filters
   const [searchQ, setSearchQ] = useState('');
@@ -176,6 +196,18 @@ export default function MyExpenses() {
     return () => document.removeEventListener('keydown', handler);
   }, [formOpen, detailClaim, deleteId]);
 
+  useEffect(() => {
+    setSections([]);
+    setFSectionId('');
+    if (!fProject) return;
+    const projKey = NAME_TO_KEY[fProject];
+    if (!projKey) return;
+    supabase.from('sections').select('id,section_label,section_name')
+      .eq('project_name', projKey).neq('is_deleted', true)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => setSections((data as SectionRow[]) || []));
+  }, [fProject]);
+
   const summary = useMemo(() => {
     const approved = claims.filter(c => c.status === 'approved');
     const pending  = claims.filter(c => c.status === 'pending');
@@ -219,20 +251,30 @@ export default function MyExpenses() {
   }
 
   function openNew() {
-    setEditId(null); setFProject(''); setFSiteId(''); setFDesc(''); setFDate(today());
+    setEditId(null); setFProject(''); setFSiteId(''); setFDate(today());
     setFTransport(''); setFFood(''); setFExtra([]); setFNotes(''); setFEmployeeIds([]);
-    setFormErr(''); setQuickOpen(false); setEmpDropOpen(false);
+    setSections([]); setFSectionId('');
+    setFActivityType(''); setFOtherDesc('');
+    setFormErr(''); setFieldErrs({}); setQuickOpen(false); setEmpDropOpen(false);
     setDetailClaim(null); setFormOpen(true);
   }
 
   function openEdit(c: ExpenseClaim) {
     setEditId(c.id); setFProject(c.project_name ?? ''); setFSiteId(c.site_id ?? '');
-    setFDesc(c.description ?? ''); setFDate(c.activity_date ?? today());
+    setFDate(c.activity_date ?? today());
     setFTransport(c.transport_amount != null ? String(c.transport_amount) : '');
     setFFood(c.food_amount != null ? String(c.food_amount) : '');
     setFExtra(parseExtra(c.extra_categories)); setFNotes(c.notes ?? '');
     setFEmployeeIds(parseEmployeeIds(c.employee_ids));
-    setFormErr(''); setQuickOpen(false); setEmpDropOpen(false);
+    setFSectionId('');
+    const desc = c.description ?? '';
+    const knownTypes = ACTIVITY_TYPES.filter(t => t !== 'Other');
+    if (knownTypes.includes(desc)) {
+      setFActivityType(desc); setFOtherDesc('');
+    } else {
+      setFActivityType(desc ? 'Other' : ''); setFOtherDesc(desc);
+    }
+    setFormErr(''); setFieldErrs({}); setQuickOpen(false); setEmpDropOpen(false);
     setDetailClaim(null); setFormOpen(true);
   }
 
@@ -246,11 +288,17 @@ export default function MyExpenses() {
   function getEmpName(id: string) { return teamMembers.find(m => m.id === id)?.full_name ?? id; }
 
   async function saveClaim() {
+    const errs: Record<string, string> = {};
+    if (!fProject) errs.project = 'Select a project.';
+    if (NAME_TO_KEY[fProject] && !fSectionId) errs.section = 'Select a section.';
+    if (!fActivityType) errs.activityType = 'Select an activity type.';
+    if (fActivityType === 'Other' && !fOtherDesc.trim()) errs.otherDesc = 'Describe the activity.';
+    if (!fSiteId.trim()) errs.siteId = 'Enter a Site ID.';
+    if (!fDate) errs.date = 'Select an activity date.';
+    setFieldErrs(errs);
+    if (Object.keys(errs).length > 0) return;
+    const finalDesc = fActivityType === 'Other' ? fOtherDesc.trim() : fActivityType;
     setFormErr('');
-    if (!fProject) { setFormErr('Please select a project.'); return; }
-    if (!fSiteId.trim()) { setFormErr('Please enter a Site ID.'); return; }
-    if (!fDesc.trim()) { setFormErr('Please enter a description.'); return; }
-    if (!fDate) { setFormErr('Please select an activity date.'); return; }
     if (!editId) {
       const dup = claims.find(c => c.site_id === fSiteId.trim() && c.activity_date === fDate && c.status !== 'rejected');
       if (dup) { setFormErr('A claim for this site and date already exists (non-rejected).'); return; }
@@ -258,7 +306,7 @@ export default function MyExpenses() {
     setSaving(true);
     const payload = {
       member_id: memberId, project_name: fProject, site_id: fSiteId.trim(),
-      description: fDesc.trim(), activity_date: fDate,
+      description: finalDesc, activity_date: fDate,
       transport_amount: parseFloat(fTransport) || 0,
       food_amount: parseFloat(fFood) || 0,
       extra_categories: fExtra.filter(r => r.category.trim()),
@@ -575,28 +623,84 @@ export default function MyExpenses() {
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
                         <label className={styles.fieldLabel}>Project <span className={styles.req}>*</span></label>
-                        <select className={styles.select} value={fProject} onChange={e => setFProject(e.target.value)}>
+                        <select
+                          className={`${styles.select} ${fieldErrs.project ? styles.inputErr : ''}`}
+                          value={fProject}
+                          onChange={e => { setFProject(e.target.value); setFieldErrs(p => ({ ...p, project: '' })); }}
+                        >
                           <option value="">Select project…</option>
                           {FIN_PROJECTS.map(p => <option key={p}>{p}</option>)}
                         </select>
+                        {fieldErrs.project && <span className={styles.fieldErrMsg}>{fieldErrs.project}</span>}
                       </div>
                       <div className={styles.fieldGroup}>
                         <label className={styles.fieldLabel}>Activity Date <span className={styles.req}>*</span></label>
-                        <input type="date" className={styles.input} value={fDate} onChange={e => setFDate(e.target.value)} />
+                        <input
+                          type="date"
+                          className={`${styles.input} ${fieldErrs.date ? styles.inputErr : ''}`}
+                          value={fDate}
+                          onChange={e => { setFDate(e.target.value); setFieldErrs(p => ({ ...p, date: '' })); }}
+                        />
+                        {fieldErrs.date && <span className={styles.fieldErrMsg}>{fieldErrs.date}</span>}
                       </div>
+                    </div>
+                    <div className={styles.fieldGroup} style={{ marginBottom: 10 }}>
+                      <label className={styles.fieldLabel}>Section <span className={styles.req}>*</span></label>
+                      <select
+                        className={`${styles.select} ${fieldErrs.section ? styles.inputErr : ''}`}
+                        value={fSectionId}
+                        disabled={!fProject || !NAME_TO_KEY[fProject]}
+                        onChange={e => {
+                          setFSectionId(e.target.value);
+                          setFieldErrs(p => ({ ...p, section: '' }));
+                        }}
+                      >
+                        <option value="">{!fProject || !NAME_TO_KEY[fProject] ? 'Select project first' : sections.length === 0 ? 'Loading…' : 'Select section…'}</option>
+                        {sections.map(s => {
+                          const lbl = s.section_label || s.section_name || '';
+                          return <option key={s.id} value={s.id}>{lbl}</option>;
+                        })}
+                      </select>
+                      {fieldErrs.section && <span className={styles.fieldErrMsg}>{fieldErrs.section}</span>}
                     </div>
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
                         <label className={styles.fieldLabel}>Site ID <span className={styles.req}>*</span></label>
-                        <input className={styles.input} placeholder="e.g. ZN-BGH-001" value={fSiteId} onChange={e => setFSiteId(e.target.value)} />
+                        <input
+                          className={`${styles.input} ${fieldErrs.siteId ? styles.inputErr : ''}`}
+                          placeholder="e.g. ZN-BGH-001"
+                          value={fSiteId}
+                          onChange={e => { setFSiteId(e.target.value); setFieldErrs(p => ({ ...p, siteId: '' })); }}
+                        />
+                        {fieldErrs.siteId && <span className={styles.fieldErrMsg}>{fieldErrs.siteId}</span>}
                       </div>
                       <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Description <span className={styles.req}>*</span></label>
-                        <input className={styles.input} placeholder="Brief description of activity" value={fDesc} onChange={e => setFDesc(e.target.value)} />
+                        <label className={styles.fieldLabel}>Activity Type <span className={styles.req}>*</span></label>
+                        <select
+                          className={`${styles.select} ${fieldErrs.activityType ? styles.inputErr : ''}`}
+                          value={fActivityType}
+                          onChange={e => { setFActivityType(e.target.value); setFieldErrs(p => ({ ...p, activityType: '', otherDesc: '' })); }}
+                        >
+                          <option value="">Select type…</option>
+                          {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        {fieldErrs.activityType && <span className={styles.fieldErrMsg}>{fieldErrs.activityType}</span>}
                       </div>
                     </div>
+                    {fActivityType === 'Other' && (
+                      <div className={styles.fieldGroup} style={{ marginBottom: 10 }}>
+                        <label className={styles.fieldLabel}>Describe Activity <span className={styles.req}>*</span></label>
+                        <input
+                          className={`${styles.input} ${fieldErrs.otherDesc ? styles.inputErr : ''}`}
+                          placeholder="Describe the activity…"
+                          value={fOtherDesc}
+                          onChange={e => { setFOtherDesc(e.target.value); setFieldErrs(p => ({ ...p, otherDesc: '' })); }}
+                        />
+                        {fieldErrs.otherDesc && <span className={styles.fieldErrMsg}>{fieldErrs.otherDesc}</span>}
+                      </div>
+                    )}
 
-                    <div className={styles.formSection}>Amounts (IQD)</div>
+                    <div className={styles.formSection}>Additional Costs (IQD)</div>
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
                         <label className={styles.fieldLabel}>Transport</label>
