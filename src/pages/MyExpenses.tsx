@@ -35,6 +35,8 @@ interface ExpenseClaim {
   submitted_at: string;
   project_name: string | null;
   site_id: string | null;
+  section_id: string | null;
+  section_label: string | null;
   description: string | null;
   transport_amount: number | null;
   food_amount: number | null;
@@ -125,6 +127,7 @@ export default function MyExpenses() {
   const empDropRef = useRef<HTMLDivElement>(null);
   const [sections, setSections] = useState<SectionRow[]>([]);
   const [fSectionId, setFSectionId] = useState('');
+  const pendingSectionRef = useRef<string | null>(null);
   const [fieldErrs, setFieldErrs] = useState<Record<string, string>>({});
 
   // filters
@@ -198,7 +201,9 @@ export default function MyExpenses() {
 
   useEffect(() => {
     setSections([]);
-    setFSectionId('');
+    const restoreId = pendingSectionRef.current;
+    pendingSectionRef.current = null;
+    setFSectionId(restoreId || '');
     if (!fProject) return;
     const projKey = NAME_TO_KEY[fProject];
     if (!projKey) return;
@@ -251,6 +256,7 @@ export default function MyExpenses() {
   }
 
   function openNew() {
+    pendingSectionRef.current = null;
     setEditId(null); setFProject(''); setFSiteId(''); setFDate(today());
     setFTransport(''); setFFood(''); setFExtra([]); setFNotes(''); setFEmployeeIds([]);
     setSections([]); setFSectionId('');
@@ -260,13 +266,14 @@ export default function MyExpenses() {
   }
 
   function openEdit(c: ExpenseClaim) {
+    pendingSectionRef.current = c.section_id ?? null;
     setEditId(c.id); setFProject(c.project_name ?? ''); setFSiteId(c.site_id ?? '');
     setFDate(c.activity_date ?? today());
     setFTransport(c.transport_amount != null ? String(c.transport_amount) : '');
     setFFood(c.food_amount != null ? String(c.food_amount) : '');
     setFExtra(parseExtra(c.extra_categories)); setFNotes(c.notes ?? '');
     setFEmployeeIds(parseEmployeeIds(c.employee_ids));
-    setFSectionId('');
+    setFSectionId(c.section_id ?? '');
     const desc = c.description ?? '';
     const knownTypes = ACTIVITY_TYPES.filter(t => t !== 'Other');
     if (knownTypes.includes(desc)) {
@@ -298,6 +305,8 @@ export default function MyExpenses() {
     setFieldErrs(errs);
     if (Object.keys(errs).length > 0) return;
     const finalDesc = fActivityType === 'Other' ? fOtherDesc.trim() : fActivityType;
+    const selectedSection = sections.find(s => s.id === fSectionId);
+    const finalSectionLabel = selectedSection ? (selectedSection.section_label || selectedSection.section_name || '') : null;
     setFormErr('');
     if (!editId) {
       const dup = claims.find(c => c.site_id === fSiteId.trim() && c.activity_date === fDate && c.status !== 'rejected');
@@ -306,6 +315,7 @@ export default function MyExpenses() {
     setSaving(true);
     const payload = {
       member_id: memberId, project_name: fProject, site_id: fSiteId.trim(),
+      section_id: fSectionId || null, section_label: finalSectionLabel,
       description: finalDesc, activity_date: fDate,
       transport_amount: parseFloat(fTransport) || 0,
       food_amount: parseFloat(fFood) || 0,
@@ -457,6 +467,7 @@ export default function MyExpenses() {
                             <th>Claim ID</th>
                             <th>Site ID</th>
                             <th>Project</th>
+                            <th>Section</th>
                             <th>Description</th>
                             <th className={styles.thRight}>Amount (IQD)</th>
                             <th>Status</th>
@@ -471,6 +482,7 @@ export default function MyExpenses() {
                               <td className={styles.tdRef}>{claimRef(claims, c)}</td>
                               <td><span className={styles.siteCode}>{c.site_id}</span></td>
                               <td className={styles.tdProject}>{c.project_name}</td>
+                              <td className={styles.tdProject}>{c.section_label ?? '—'}</td>
                               <td className={styles.tdDesc} title={c.description ?? ''}>{c.description}</td>
                               <td className={styles.tdAmt}>{fmtAmt(c.total_amount)} IQD</td>
                               <td><StatusBadge status={c.status} /></td>
@@ -539,6 +551,7 @@ export default function MyExpenses() {
                         <div className={styles.detailItem}><span className={styles.detailKey}>Activity Date</span><span className={styles.detailVal}>{fmtDate(detailClaim.activity_date)}</span></div>
                         <div className={styles.detailItem}><span className={styles.detailKey}>Submitted</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.submitted_at)}</span></div>
                         <div className={styles.detailItem}><span className={styles.detailKey}>Project</span><span className={styles.detailVal}>{detailClaim.project_name ?? '—'}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>Section</span><span className={styles.detailVal}>{detailClaim.section_label ?? '—'}</span></div>
                         <div className={styles.detailItem}><span className={styles.detailKey}>Site ID</span><span className={`${styles.detailVal} ${styles.siteCode}`}>{detailClaim.site_id ?? '—'}</span></div>
                       </div>
                       <div className={styles.detailItemFull}><span className={styles.detailKey}>Description</span><span className={styles.detailVal}>{detailClaim.description ?? '—'}</span></div>
@@ -853,7 +866,7 @@ function MobileClaimCard({ claim, claimId, onView, onEdit }: {
         <span className={styles.mobileCardRef}>{claimId}</span>
         {claim.site_id && <span className={styles.siteCode}>{claim.site_id}</span>}
       </div>
-      <div className={styles.mobileCardProject}>{claim.project_name}</div>
+      <div className={styles.mobileCardProject}>{claim.project_name}{claim.section_label ? ` · ${claim.section_label}` : ''}</div>
       <div className={styles.mobileCardDesc}>{claim.description}</div>
       <div className={styles.mobileCardDates}>
         <span>Activity: {fmtDate(claim.activity_date)}</span>
