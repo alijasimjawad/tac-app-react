@@ -5,7 +5,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToUser, sendPushToRoles, getMemberUserId } from '../lib/pushNotify';
-import { iqd, FIN_PROJECTS, FIN_MONTHS } from '../lib/finHelpers';
+import { iqd, FIN_MONTHS } from '../lib/finHelpers';
+import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
 import css from './FinExpClaims.module.css';
 
 interface TeamMember { id: string; full_name: string; }
@@ -91,6 +92,11 @@ export default function FinExpClaims() {
 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [FIN_PROJECTS, setFinProjects] = useState<string[]>([]);
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => setFinProjects(getProjectNames()));
+  }, []);
 
   if (!hasPerm('view_exp_claims')) return <div className={css.errorMsg}>Access denied.</div>;
 

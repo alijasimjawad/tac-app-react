@@ -4,15 +4,22 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
+import { ensureProjectsLoaded, getProjectKeyToNameMap } from '../lib/projectsCache';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './NetworkScopes.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const PROJ_NAMES: Record<string, string> = {
-  zain: 'Zain Project', nokia: 'Nokia Project', huawei: 'Huawei Project', ipt: 'IPT Project', moj: 'MOJ Project',
-};
+// Live view over the DB-backed projects cache — reads always reflect the
+// latest loaded project list, so existing `PROJ_NAMES[key]` call sites
+// throughout the app keep working unchanged as projects are added/removed.
+export const PROJ_NAMES: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_target, prop: string) {
+    return getProjectKeyToNameMap()[prop];
+  },
+});
+void ensureProjectsLoaded();
 export const SEC_LABELS: Record<string, string> = { ftk: 'FTK', tdd: 'TDD', addsector: 'Add Sector' };
 
 const LEGACY_DEFAULT_COLS = new Set([

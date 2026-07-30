@@ -14,6 +14,7 @@ import { FinanceIcon } from '../pages/FinTeam';
 import { PROJ_NAMES, SEC_LABELS } from '../pages/NetworkScopes';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import type { SectionMeta } from '../lib/sectionsCache';
+import { ensureProjectsLoaded, getProjectKeys } from '../lib/projectsCache';
 import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN } from '../lib/permissionsCatalog';
 
 
@@ -26,8 +27,6 @@ const DEFAULT_SECTIONS: Record<string, string[]> = {
 };
 
 const DEFAULT_HEADERS = ['Site ID', 'Governate', 'Imp. Date', 'ATP Status', 'Comment'];
-
-const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt', 'moj'] as const;
 
 type MajorGroup = 'finance' | 'hr' | 'admin';
 
@@ -70,6 +69,11 @@ function NetworkScopesTree() {
   const params = useParams<{ proj?: string; sec?: string }>();
   const navigate = useNavigate();
   const [sections, setSections] = useState<SectionMeta[]>([]);
+  const [PROJECTS, setProjects] = useState<string[]>([]);
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => setProjects(getProjectKeys()));
+  }, []);
 
   // Accordion: only one project open at a time. Initialize from params (current route) or localStorage.
   const [openProj, setOpenProj] = useState<string | null>(() => {
@@ -93,11 +97,11 @@ function NetworkScopesTree() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    ensureSectionsLoaded().then(async () => {
+    Promise.all([ensureSectionsLoaded(), ensureProjectsLoaded()]).then(async () => {
       setSections(getSections());
       // Seed any default sections that don't yet have a DB row (e.g. newly added projects).
       const existing = getSections();
-      const toInsert = PROJECTS.flatMap(proj =>
+      const toInsert = getProjectKeys().flatMap(proj =>
         (DEFAULT_SECTIONS[proj] ?? [])
           .filter(key => !existing.some(s => s.project_name === proj && s.section_name === key))
           .map(key => ({

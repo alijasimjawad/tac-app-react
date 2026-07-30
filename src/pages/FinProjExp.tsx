@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
+import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
 import styles from './FinPages.module.css';
 
-const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
 const FIN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const PE_CATS = ['Materials', 'Transport', 'Equipment', 'Accommodation', 'Food', 'Maintenance', 'Other'];
 const FPE_DESC_PRESETS = ['Delivery', 'Installation', 'Integration', 'ATP', 'Clearance', 'Other'];
@@ -88,12 +88,17 @@ export default function FinProjExp() {
   const [delSaving, setDelSaving] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [FIN_PROJECTS, setFinProjects] = useState<string[]>([]);
 
   function showToast(msg: string) {
     setToastMsg(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastMsg(null), 3200);
   }
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => setFinProjects(getProjectNames()));
+  }, []);
 
   useEffect(() => {
     if (hasPerm('view_fin_projexp')) { loadData(); loadTeam(); }

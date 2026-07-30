@@ -1,5 +1,3 @@
-export const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
-
 export const FIN_MONTHS = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
 import styles from './MyExpenses.module.css';
-
-const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'MOJ Project', 'General'];
 
 const QUICK_CATEGORIES = [
   'Accommodation', 'Fuel', 'Tools & Materials', 'Communication', 'Parking',
@@ -11,14 +10,6 @@ const QUICK_CATEGORIES = [
 ];
 
 const PAGE_SIZES = [10, 25, 50];
-
-const NAME_TO_KEY: Record<string, string> = {
-  'Zain Project': 'zain',
-  'Nokia Project': 'nokia',
-  'Huawei Project': 'huawei',
-  'IPT Project': 'ipt',
-  'MOJ Project': 'moj',
-};
 
 const ACTIVITY_TYPES = ['Installation', 'Integration', 'Clearance', 'Photo Reports', 'Other'];
 
@@ -129,6 +120,8 @@ export default function MyExpenses() {
   const [fSectionId, setFSectionId] = useState('');
   const pendingSectionRef = useRef<string | null>(null);
   const [fieldErrs, setFieldErrs] = useState<Record<string, string>>({});
+  const [projectNames, setProjectNames] = useState<string[]>([]);
+  const [nameToKey, setNameToKey] = useState<Record<string, string>>({});
 
   // filters
   const [searchQ, setSearchQ] = useState('');
@@ -144,6 +137,13 @@ export default function MyExpenses() {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3500);
   }
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => {
+      setProjectNames(getProjectNames());
+      setNameToKey(getProjectNameToKeyMap());
+    });
+  }, []);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -205,13 +205,13 @@ export default function MyExpenses() {
     pendingSectionRef.current = null;
     setFSectionId(restoreId || '');
     if (!fProject) return;
-    const projKey = NAME_TO_KEY[fProject];
+    const projKey = nameToKey[fProject];
     if (!projKey) return;
     supabase.from('sections').select('id,section_label,section_name')
       .eq('project_name', projKey).neq('is_deleted', true)
       .order('created_at', { ascending: true })
       .then(({ data }) => setSections((data as SectionRow[]) || []));
-  }, [fProject]);
+  }, [fProject, nameToKey]);
 
   const summary = useMemo(() => {
     const approved = claims.filter(c => c.status === 'approved');
@@ -297,7 +297,7 @@ export default function MyExpenses() {
   async function saveClaim() {
     const errs: Record<string, string> = {};
     if (!fProject) errs.project = 'Select a project.';
-    if (NAME_TO_KEY[fProject] && !fSectionId) errs.section = 'Select a section.';
+    if (nameToKey[fProject] && !fSectionId) errs.section = 'Select a section.';
     if (!fActivityType) errs.activityType = 'Select an activity type.';
     if (fActivityType === 'Other' && !fOtherDesc.trim()) errs.otherDesc = 'Describe the activity.';
     if (!fSiteId.trim()) errs.siteId = 'Enter a Site ID.';
@@ -411,7 +411,7 @@ export default function MyExpenses() {
                   </select>
                   <select className={styles.filterSelect} value={filterProject} onChange={e => { setFilterProject(e.target.value); setPage(0); }}>
                     <option value="">All Projects</option>
-                    {FIN_PROJECTS.map(p => <option key={p}>{p}</option>)}
+                    {projectNames.map(p => <option key={p}>{p}</option>)}
                   </select>
                   <select className={styles.filterSelect} value={filterMonth} onChange={e => { setFilterMonth(e.target.value); setPage(0); }}>
                     <option value="">All Months</option>
@@ -642,7 +642,7 @@ export default function MyExpenses() {
                           onChange={e => { setFProject(e.target.value); setFieldErrs(p => ({ ...p, project: '' })); }}
                         >
                           <option value="">Select project…</option>
-                          {FIN_PROJECTS.map(p => <option key={p}>{p}</option>)}
+                          {projectNames.map(p => <option key={p}>{p}</option>)}
                         </select>
                         {fieldErrs.project && <span className={styles.fieldErrMsg}>{fieldErrs.project}</span>}
                       </div>
@@ -662,13 +662,13 @@ export default function MyExpenses() {
                       <select
                         className={`${styles.select} ${fieldErrs.section ? styles.inputErr : ''}`}
                         value={fSectionId}
-                        disabled={!fProject || !NAME_TO_KEY[fProject]}
+                        disabled={!fProject || !nameToKey[fProject]}
                         onChange={e => {
                           setFSectionId(e.target.value);
                           setFieldErrs(p => ({ ...p, section: '' }));
                         }}
                       >
-                        <option value="">{!fProject || !NAME_TO_KEY[fProject] ? 'Select project first' : sections.length === 0 ? 'Loading…' : 'Select section…'}</option>
+                        <option value="">{!fProject || !nameToKey[fProject] ? 'Select project first' : sections.length === 0 ? 'Loading…' : 'Select section…'}</option>
                         {sections.map(s => {
                           const lbl = s.section_label || s.section_name || '';
                           return <option key={s.id} value={s.id}>{lbl}</option>;

@@ -4,17 +4,11 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
+import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
 import styles from './DailyActivities.module.css';
 
-const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
 const ACTIVITY_TYPES = ['Installation', 'Maintenance', 'Survey', 'Testing', 'Commissioning', 'Integration', 'Clearance'];
 const STATUS_OPTIONS = ['In Progress', 'Completed', 'Blocked'];
-const NAME_TO_KEY: Record<string, string> = {
-  'Zain Project': 'zain',
-  'Nokia Project': 'nokia',
-  'Huawei Project': 'huawei',
-  'IPT Project': 'ipt',
-};
 
 interface DailyActivity {
   id: string;
@@ -181,7 +175,9 @@ export default function DailyActivities() {
 
   // Form
   const [date, setDate] = useState(today());
-  const [project, setProject] = useState(FIN_PROJECTS[0]);
+  const [project, setProject] = useState('');
+  const [projectNames, setProjectNames] = useState<string[]>([]);
+  const [nameToKey, setNameToKey] = useState<Record<string, string>>({});
   const [sections, setSections] = useState<SectionRow[]>([]);
   const [sectionId, setSectionId] = useState('');
   const [sectionLabel, setSectionLabel] = useState('');
@@ -237,6 +233,15 @@ export default function DailyActivities() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [filterActivityType, setFilterActivityType] = useState(() => searchParams.get('type') || 'All');
   const [filterIssuedBy, setFilterIssuedBy] = useState(() => searchParams.get('issuedBy') || '');
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => {
+      const names = getProjectNames();
+      setProjectNames(names);
+      setNameToKey(getProjectNameToKeyMap());
+      setProject(prev => prev || names[0] || '');
+    });
+  }, []);
 
   // Debounce the search box so filtering doesn't re-run on every keystroke.
   useEffect(() => {
@@ -332,7 +337,7 @@ export default function DailyActivities() {
     setSiteInput('');
     setGovernate('');
     if (!project) { setSections([]); return; }
-    const projKey = NAME_TO_KEY[project] || project;
+    const projKey = nameToKey[project] || project;
     supabase
       .from('sections')
       .select('id,section_label,section_name')
@@ -340,7 +345,7 @@ export default function DailyActivities() {
       .neq('is_deleted', true)
       .order('created_at', { ascending: true })
       .then(({ data }) => setSections(data || []));
-  }, [project]);
+  }, [project, nameToKey]);
 
   // ── Site IDs load on section change ──
   useEffect(() => {
@@ -531,7 +536,7 @@ export default function DailyActivities() {
     setFormTouched(false);
     setFieldErrors({});
     setDate(today());
-    setProject(FIN_PROJECTS[0]);
+    setProject(projectNames[0] || '');
     setSectionId('');
     setSectionLabel('');
     setSiteTags([]);
@@ -551,7 +556,7 @@ export default function DailyActivities() {
     setFieldErrors({});
     setEditingId(a.id);
     setDate(a.date || today());
-    setProject(a.project || FIN_PROJECTS[0]);
+    setProject(a.project || projectNames[0] || '');
     setSiteTags(String(a.site_id || '').split(',').map(s => s.trim()).filter(Boolean));
     setSiteInput('');
     setGovernate(a.governate || '');
@@ -940,7 +945,7 @@ export default function DailyActivities() {
                       value={project}
                       onChange={e => { setProject(e.target.value); setFieldErrors(fe => ({ ...fe, project: '' })); }}
                     >
-                      {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
+                      {projectNames.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                     {fieldErrors.project && <span className={styles.fieldErrMsg}>{fieldErrors.project}</span>}
                   </div>
@@ -1224,7 +1229,7 @@ export default function DailyActivities() {
             </div>
             <select className={styles.filterSelect} value={filterProject} onChange={e => setFilterProject(e.target.value)}>
               <option value="All">All Projects</option>
-              {FIN_PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
+              {projectNames.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
             <select className={styles.filterSelect} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
               <option value="All">All Status</option>

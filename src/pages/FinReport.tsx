@@ -12,7 +12,8 @@ import {
 import { Bar } from 'react-chartjs-2';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { FIN_MONTHS, FIN_PROJECTS, iqd, getYears } from '../lib/finHelpers';
+import { FIN_MONTHS, iqd, getYears } from '../lib/finHelpers';
+import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
 import css from './FinReport.module.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
@@ -156,6 +157,11 @@ export default function FinReport() {
   const [adjAllState,  setAdjAllState]  = useState<AdjAllState>({ type: 'override', pct: '100', reason: '' });
   const [toast,        setToast]        = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [FIN_PROJECTS, setFinProjects] = useState<string[]>([]);
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => setFinProjects(getProjectNames()));
+  }, []);
 
   if (!hasPerm('view_fin_report')) {
     return <div style={{ padding: 40, color: '#ef4444' }}>Access denied.</div>;

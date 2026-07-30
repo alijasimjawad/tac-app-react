@@ -4,17 +4,13 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { isAtpAccepted, findImpColIdx, findAtpColIdx, PROJ_NAMES, SEC_LABELS } from './NetworkScopes';
 import { ensureSectionsLoaded, getSections } from '../lib/sectionsCache';
+import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
 import styles from './FinPages.module.css';
 
-const FIN_PROJECTS = ['Zain Project', 'Nokia Project', 'Huawei Project', 'IPT Project', 'General'];
 const FIN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const REVENUE_CUTOFF_DATE = new Date('2026-07-01T00:00:00');
-const NAME_TO_KEY: Record<string, string> = {
-  'Zain Project': 'zain', 'Nokia Project': 'nokia',
-  'Huawei Project': 'huawei', 'IPT Project': 'ipt',
-};
 
 function iqd(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -77,12 +73,21 @@ export default function FinRevenue() {
   const [fixing, setFixing] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [FIN_PROJECTS, setFinProjects] = useState<string[]>([]);
+  const [NAME_TO_KEY, setNameToKey] = useState<Record<string, string>>({});
 
   function showToast(msg: string) {
     setToastMsg(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastMsg(null), 3200);
   }
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => {
+      setFinProjects(getProjectNames());
+      setNameToKey(getProjectNameToKeyMap());
+    });
+  }, []);
 
   useEffect(() => {
     if (hasPerm('view_fin_revenue')) loadData();

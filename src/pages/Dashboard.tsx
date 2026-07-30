@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import type { SectionMeta } from '../lib/sectionsCache';
+import { ensureProjectsLoaded, getProjectKeys } from '../lib/projectsCache';
 import { isAtpAccepted, findImpColIdx, findAtpColIdx, PROJ_NAMES, SEC_LABELS } from './NetworkScopes';
 import styles from './Dashboard.module.css';
 
@@ -31,8 +32,6 @@ const DEFAULT_SECTIONS: Record<string, string[]> = {
   ipt:    ['tdd'],
   moj:    ['ftk', 'tdd', 'addsector'],
 };
-
-const PROJECTS = ['zain', 'nokia', 'huawei', 'ipt', 'moj'] as const;
 
 const PROJ_COLORS: Record<string, string> = {
   zain: '#3B82F6', nokia: '#10B981', huawei: '#EF4444', ipt: '#F43F5E', moj: '#8B5CF6',
@@ -700,7 +699,7 @@ export default function Dashboard() {
     if (refresh) invalidateSections();
 
     try {
-      await ensureSectionsLoaded();
+      await Promise.all([ensureSectionsLoaded(), ensureProjectsLoaded()]);
       const allSections    = getSections();
       const activeSections = allSections.filter(s => !s.is_deleted);
       const sectionIds     = activeSections.map(s => s.id).filter(Boolean);
@@ -721,7 +720,7 @@ export default function Dashboard() {
       }
 
       const result: ProjData[] = [];
-      for (const proj of PROJECTS) {
+      for (const proj of getProjectKeys()) {
         if (!hasPerm(`view_${proj}`)) continue;
         const projSections = getSectionsForProj(proj, allSections);
         const secStats: SecStats[] = [];

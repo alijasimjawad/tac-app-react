@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { FIN_PROJECTS, iqd } from '../lib/finHelpers';
+import { iqd } from '../lib/finHelpers';
+import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
 import css from './FinBilling.module.css';
 
 // ── Types ─────────────────────────────────────────────────────
@@ -205,6 +206,11 @@ export default function FinInvoices() {
   // ── Toast ─────────────────────────────────────────────────
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [FIN_PROJECTS, setFinProjects] = useState<string[]>([]);
+
+  useEffect(() => {
+    ensureProjectsLoaded().then(() => setFinProjects(getProjectNames()));
+  }, []);
 
   if (!hasPerm('view_fin_invoices')) return <div className={css.errorMsg}>Access denied.</div>;
 
