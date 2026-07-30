@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import styles from './MyExpenses.module.css';
@@ -10,6 +10,8 @@ const QUICK_CATEGORIES = [
   'Refreshments', 'Equipment Rental', 'Other',
 ];
 
+const PAGE_SIZES = [10, 25, 50];
+
 interface ExpenseClaim {
   id: string;
   member_id: string;
@@ -20,8 +22,8 @@ interface ExpenseClaim {
   description: string | null;
   transport_amount: number | null;
   food_amount: number | null;
-  extra_categories: ExtraRow[] | null; // jsonb — already parsed by Supabase client
-  employee_ids: string[] | null;       // jsonb — already parsed by Supabase client
+  extra_categories: ExtraRow[] | null;
+  employee_ids: string[] | null;
   notes: string | null;
   status: string;
   total_amount: number | null;
@@ -30,21 +32,10 @@ interface ExpenseClaim {
   reviewed_by: string | null;
 }
 
-interface ExtraRow {
-  category: string;
-  amount: number | string;
-}
+interface ExtraRow { category: string; amount: number | string; }
+interface TeamMember { id: string; full_name: string; username: string; is_active: boolean | null; }
 
-interface TeamMember {
-  id: string;
-  full_name: string;
-  username: string;
-  is_active: boolean | null;
-}
-
-function today() {
-  return new Date().toISOString().split('T')[0];
-}
+function today() { return new Date().toISOString().split('T')[0]; }
 
 function fmtDate(iso: string) {
   const [yr, mo, dy] = iso.split('-');
@@ -53,14 +44,11 @@ function fmtDate(iso: string) {
 
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }
 
-function fmtAmt(n: number | null | undefined) {
-  return (n ?? 0).toLocaleString('en-US');
-}
+function fmtAmt(n: number | null | undefined) { return (n ?? 0).toLocaleString('en-US'); }
 
 function parseExtra(raw: ExtraRow[] | null): ExtraRow[] {
   if (!raw) return [];
@@ -72,6 +60,22 @@ function parseEmployeeIds(raw: string[] | null): string[] {
   return Array.isArray(raw) ? raw : [];
 }
 
+function claimRef(allClaims: ExpenseClaim[], claim: ExpenseClaim): string {
+  const year = new Date(claim.submitted_at).getFullYear();
+  const sorted = [...allClaims]
+    .filter(c => new Date(c.submitted_at).getFullYear() === year)
+    .sort((a, b) => a.submitted_at.localeCompare(b.submitted_at));
+  const idx = sorted.findIndex(c => c.id === claim.id);
+  return `EXP-${year}-${String(idx + 1).padStart(4, '0')}`;
+}
+
+function monthKey(iso: string) { return iso.slice(0, 7); }
+
+function formatMonth(ym: string) {
+  const [y, m] = ym.split('-');
+  return new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+}
+
 export default function MyExpenses() {
   const { currentUser, hasPerm } = useAuth();
   const [memberId, setMemberId] = useState<string | null>(null);
@@ -81,9 +85,11 @@ export default function MyExpenses() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
-  // ── modal state ──
-  const [modalOpen, setModalOpen] = useState(false);
+  // drawer state
+  const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [detailClaim, setDetailClaim] = useState<ExpenseClaim | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // form fields
   const [fProject, setFProject] = useState('');
@@ -101,25 +107,25 @@ export default function MyExpenses() {
   const [empDropOpen, setEmpDropOpen] = useState(false);
   const empDropRef = useRef<HTMLDivElement>(null);
 
-  // ── detail / view modal ──
-  const [detailClaim, setDetailClaim] = useState<ExpenseClaim | null>(null);
+  // filters
+  const [searchQ, setSearchQ] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterProject, setFilterProject] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
 
-  // ── delete confirm ──
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  // pagination
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3500);
   }
 
-  // resolve member_id
   useEffect(() => {
     if (!currentUser) return;
     async function resolve() {
-      const { data } = await supabase
-        .from('team_members')
-        .select('id, full_name, username, is_active')
-        .order('full_name');
+      const { data } = await supabase.from('team_members').select('id, full_name, username, is_active').order('full_name');
       if (!data) { setLoading(false); setMemberResolved(true); return; }
       setTeamMembers(data.filter((m: TeamMember) => m.is_active !== false));
       const name = (currentUser?.full_name || '').trim().toLowerCase();
@@ -134,7 +140,6 @@ export default function MyExpenses() {
     resolve();
   }, [currentUser]);
 
-  // load claims — only runs once member resolution is settled and we have a real id
   useEffect(() => {
     if (!memberResolved) return;
     if (!memberId) { setLoading(false); return; }
@@ -145,132 +150,121 @@ export default function MyExpenses() {
     if (!memberId) return;
     setLoading(true);
     const { data } = await supabase
-      .from('expense_claims')
-      .select('*')
+      .from('expense_claims').select('*')
       .eq('member_id', memberId)
       .order('submitted_at', { ascending: false });
     setClaims((data as ExpenseClaim[]) ?? []);
     setLoading(false);
   }
 
-  // close emp dropdown on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (empDropRef.current && !empDropRef.current.contains(e.target as Node)) {
-        setEmpDropOpen(false);
-      }
+      if (empDropRef.current && !empDropRef.current.contains(e.target as Node)) setEmpDropOpen(false);
     }
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // ── total calc ──
-  function calcTotal(): number {
-    const t = parseFloat(fTransport as string) || 0;
-    const f = parseFloat(fFood as string) || 0;
-    const ex = fExtra.reduce((s, r) => s + (parseFloat(r.amount as string) || 0), 0);
-    return t + f + ex;
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (formOpen) { setFormOpen(false); return; }
+      if (detailClaim) { setDetailClaim(null); return; }
+      if (deleteId) setDeleteId(null);
+    }
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [formOpen, detailClaim, deleteId]);
+
+  const summary = useMemo(() => {
+    const approved = claims.filter(c => c.status === 'approved');
+    const pending  = claims.filter(c => c.status === 'pending');
+    const rejected = claims.filter(c => c.status === 'rejected');
+    return {
+      totalAmt:    claims.reduce((s, c) => s + (c.total_amount ?? 0), 0),
+      totalCount:  claims.length,
+      approvedAmt: approved.reduce((s, c) => s + (c.total_amount ?? 0), 0), approvedCount: approved.length,
+      pendingAmt:  pending.reduce((s, c) => s + (c.total_amount ?? 0), 0),  pendingCount:  pending.length,
+      rejectedAmt: rejected.reduce((s, c) => s + (c.total_amount ?? 0), 0), rejectedCount: rejected.length,
+    };
+  }, [claims]);
+
+  const availableMonths = useMemo(() => {
+    const set = new Set(claims.map(c => monthKey(c.activity_date)));
+    return [...set].sort().reverse();
+  }, [claims]);
+
+  const filteredClaims = useMemo(() => claims.filter(c => {
+    if (searchQ) {
+      const q = searchQ.toLowerCase();
+      if (!((c.site_id ?? '').toLowerCase().includes(q) ||
+            (c.project_name ?? '').toLowerCase().includes(q) ||
+            (c.description ?? '').toLowerCase().includes(q))) return false;
+    }
+    if (filterStatus && c.status !== filterStatus) return false;
+    if (filterProject && c.project_name !== filterProject) return false;
+    if (filterMonth && !c.activity_date?.startsWith(filterMonth)) return false;
+    return true;
+  }), [claims, searchQ, filterStatus, filterProject, filterMonth]);
+
+  const filtersActive = !!(searchQ || filterStatus || filterProject || filterMonth);
+  const totalPages = Math.ceil(filteredClaims.length / pageSize);
+  const pagedClaims = filteredClaims.slice(page * pageSize, (page + 1) * pageSize);
+
+  function clearFilters() { setSearchQ(''); setFilterStatus(''); setFilterProject(''); setFilterMonth(''); setPage(0); }
+
+  function calcTotal() {
+    return (parseFloat(fTransport) || 0) + (parseFloat(fFood) || 0) +
+      fExtra.reduce((s, r) => s + (parseFloat(r.amount as string) || 0), 0);
   }
 
-  // ── open new modal ──
   function openNew() {
-    setEditId(null);
-    setFProject('');
-    setFSiteId('');
-    setFDesc('');
-    setFDate(today());
-    setFTransport('');
-    setFFood('');
-    setFExtra([]);
-    setFNotes('');
-    setFEmployeeIds([]);
-    setFormErr('');
-    setQuickOpen(false);
-    setEmpDropOpen(false);
-    setModalOpen(true);
+    setEditId(null); setFProject(''); setFSiteId(''); setFDesc(''); setFDate(today());
+    setFTransport(''); setFFood(''); setFExtra([]); setFNotes(''); setFEmployeeIds([]);
+    setFormErr(''); setQuickOpen(false); setEmpDropOpen(false);
+    setDetailClaim(null); setFormOpen(true);
   }
 
-  // ── open edit modal ──
   function openEdit(c: ExpenseClaim) {
-    setEditId(c.id);
-    setFProject(c.project_name ?? '');
-    setFSiteId(c.site_id ?? '');
-    setFDesc(c.description ?? '');
-    setFDate(c.activity_date ?? today());
+    setEditId(c.id); setFProject(c.project_name ?? ''); setFSiteId(c.site_id ?? '');
+    setFDesc(c.description ?? ''); setFDate(c.activity_date ?? today());
     setFTransport(c.transport_amount != null ? String(c.transport_amount) : '');
     setFFood(c.food_amount != null ? String(c.food_amount) : '');
-    setFExtra(parseExtra(c.extra_categories));
-    setFNotes(c.notes ?? '');
+    setFExtra(parseExtra(c.extra_categories)); setFNotes(c.notes ?? '');
     setFEmployeeIds(parseEmployeeIds(c.employee_ids));
-    setFormErr('');
-    setQuickOpen(false);
-    setEmpDropOpen(false);
-    setModalOpen(true);
+    setFormErr(''); setQuickOpen(false); setEmpDropOpen(false);
+    setDetailClaim(null); setFormOpen(true);
   }
 
-  // ── extra rows ──
-  function addExtraRow() {
-    setFExtra(prev => [...prev, { category: '', amount: '' }]);
-  }
-  function removeExtraRow(i: number) {
-    setFExtra(prev => prev.filter((_, idx) => idx !== i));
-  }
+  function addExtraRow() { setFExtra(prev => [...prev, { category: '', amount: '' }]); }
+  function removeExtraRow(i: number) { setFExtra(prev => prev.filter((_, idx) => idx !== i)); }
   function updateExtraRow(i: number, field: 'category' | 'amount', val: string) {
     setFExtra(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r));
   }
-  function applyQuickAdd(cat: string) {
-    setFExtra(prev => [...prev, { category: cat, amount: '' }]);
-    setQuickOpen(false);
-  }
+  function applyQuickAdd(cat: string) { setFExtra(prev => [...prev, { category: cat, amount: '' }]); setQuickOpen(false); }
+  function toggleEmployee(id: string) { setFEmployeeIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); }
+  function getEmpName(id: string) { return teamMembers.find(m => m.id === id)?.full_name ?? id; }
 
-  // ── employee multi-select ──
-  function toggleEmployee(id: string) {
-    setFEmployeeIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id],
-    );
-  }
-  function getEmpName(id: string) {
-    return teamMembers.find(m => m.id === id)?.full_name ?? id;
-  }
-
-  // ── save ──
   async function saveClaim() {
     setFormErr('');
     if (!fProject) { setFormErr('Please select a project.'); return; }
     if (!fSiteId.trim()) { setFormErr('Please enter a Site ID.'); return; }
     if (!fDesc.trim()) { setFormErr('Please enter a description.'); return; }
     if (!fDate) { setFormErr('Please select an activity date.'); return; }
-
-    // duplicate check for new claims
     if (!editId) {
-      const dup = claims.find(c =>
-        c.site_id === fSiteId.trim() &&
-        c.activity_date === fDate &&
-        c.status !== 'rejected',
-      );
-      if (dup) {
-        setFormErr('A claim for this site and date already exists (non-rejected).');
-        return;
-      }
+      const dup = claims.find(c => c.site_id === fSiteId.trim() && c.activity_date === fDate && c.status !== 'rejected');
+      if (dup) { setFormErr('A claim for this site and date already exists (non-rejected).'); return; }
     }
-
     setSaving(true);
-    const extraRows = fExtra.filter(r => r.category.trim());
     const payload = {
-      member_id: memberId,
-      project_name: fProject,
-      site_id: fSiteId.trim(),
-      description: fDesc.trim(),
-      activity_date: fDate,
-      transport_amount: parseFloat(fTransport as string) || 0,
-      food_amount: parseFloat(fFood as string) || 0,
-      extra_categories: extraRows,
-      employee_ids: fEmployeeIds,
-      notes: fNotes.trim() || null,
-      total_amount: calcTotal(),
-      status: 'pending',
+      member_id: memberId, project_name: fProject, site_id: fSiteId.trim(),
+      description: fDesc.trim(), activity_date: fDate,
+      transport_amount: parseFloat(fTransport) || 0,
+      food_amount: parseFloat(fFood) || 0,
+      extra_categories: fExtra.filter(r => r.category.trim()),
+      employee_ids: fEmployeeIds, notes: fNotes.trim() || null,
+      total_amount: calcTotal(), status: 'pending',
     };
-
     let error: { message: string } | null = null;
     if (editId) {
       const res = await supabase.from('expense_claims').update(payload).eq('id', editId);
@@ -279,15 +273,13 @@ export default function MyExpenses() {
       const res = await supabase.from('expense_claims').insert({ ...payload, submitted_at: new Date().toISOString() });
       error = res.error;
     }
-
     setSaving(false);
-    if (error) { setFormErr(error.message); return; }
-    setModalOpen(false);
-    showToast(editId ? 'Claim resubmitted.' : 'Claim submitted.', true);
+    if (error) { setFormErr('Unable to submit the expense claim. Please check the required fields and try again.'); return; }
+    setFormOpen(false);
+    showToast(editId ? 'Claim resubmitted successfully.' : 'Expense claim submitted successfully.', true);
     loadClaims();
   }
 
-  // ── delete ──
   async function confirmDelete() {
     if (!deleteId) return;
     const { error } = await supabase.from('expense_claims').delete().eq('id', deleteId);
@@ -300,25 +292,27 @@ export default function MyExpenses() {
   if (!hasPerm('view_my_expenses')) {
     return (
       <div className={styles.page}>
-        <p style={{ color: 'var(--text-muted)', marginTop: 40 }}>
-          You do not have permission to view this page.
-        </p>
+        <p className={styles.denied}>You do not have permission to view this page.</p>
       </div>
     );
   }
 
+  const drawerOpen = formOpen || !!detailClaim;
+
   return (
     <div className={styles.page}>
-      {/* header */}
-      <div className={styles.header}>
+      {/* ── Header ── */}
+      <div className={styles.pageHeader}>
+        <div>
+          <h1 className={styles.pageTitle}>My Expenses</h1>
+          <p className={styles.pageSubtitle}>Submit and track your expense claims.</p>
+        </div>
         {memberResolved && memberId && hasPerm('mywork_expenses_add') && (
-          <button className={styles.newBtn} onClick={openNew}>
-            <PlusIcon /> New Claim
-          </button>
+          <button className={styles.newBtn} onClick={openNew}><PlusIcon /> New Claim</button>
         )}
       </div>
 
-      {/* not linked notice */}
+      {/* ── Not linked ── */}
       {memberResolved && !memberId && (
         <div className={styles.notLinked}>
           <strong>Account not linked to a team member profile.</strong>
@@ -326,275 +320,377 @@ export default function MyExpenses() {
         </div>
       )}
 
-      {/* table */}
-      {(!memberResolved || loading) ? (
-        <div className={styles.emptyState}>Loading…</div>
-      ) : !memberId ? null : claims.length === 0 ? (
-        <div className={styles.emptyState}>No expense claims yet. Submit your first claim.</div>
-      ) : (
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Activity Date</th>
-                <th>Submitted</th>
-                <th>Site ID</th>
-                <th>Project</th>
-                <th>Description</th>
-                <th>Total (IQD)</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {claims.map(c => (
-                <tr key={c.id}>
-                  <td>{fmtDate(c.activity_date)}</td>
-                  <td className={styles.cellMuted}>{fmtDateTime(c.submitted_at)}</td>
-                  <td><span className={styles.siteCode}>{c.site_id}</span></td>
-                  <td>{c.project_name}</td>
-                  <td className={styles.descCell}>{c.description}</td>
-                  <td className={styles.amtCell}>{fmtAmt(c.total_amount)}</td>
-                  <td><StatusBadge status={c.status} /></td>
-                  <td>
-                    <div className={styles.actionCol}>
-                      <button className={styles.viewBtn} onClick={() => setDetailClaim(c)}>View</button>
-                      {c.status === 'rejected' && (
-                        <div className={styles.rejBox}>
-                          {c.rejection_reason && (
-                            <div className={styles.rejReason}>
-                              <strong>Reason:</strong> {c.rejection_reason}
-                            </div>
-                          )}
-                          <div className={styles.rejActions}>
-                            {hasPerm('mywork_expenses_edit') && (
-                              <button className={styles.editBtn} onClick={() => openEdit(c)}>Edit &amp; Resubmit</button>
-                            )}
-                            {hasPerm('mywork_expenses_delete') && (
-                              <button className={styles.deleteBtn} onClick={() => setDeleteId(c.id)}>Delete</button>
-                            )}
+      {memberId && (
+        <>
+          {/* ── Summary cards ── */}
+          <div className={styles.summaryGrid}>
+            <SummaryCard label="Total Claimed" amount={summary.totalAmt} count={summary.totalCount} color="blue" icon={<WalletIcon />} />
+            <SummaryCard label="Approved" amount={summary.approvedAmt} count={summary.approvedCount} color="green" icon={<CheckCircleIcon />} />
+            <SummaryCard label="Pending" amount={summary.pendingAmt} count={summary.pendingCount} color="amber" icon={<ClockCircleIcon />} />
+            <SummaryCard label="Rejected" amount={summary.rejectedAmt} count={summary.rejectedCount} color="red" icon={<XCircleIcon />} />
+          </div>
+
+          {/* ── Content row ── */}
+          <div className={`${styles.contentRow} ${drawerOpen ? styles.contentRowOpen : ''}`}>
+            <div className={styles.claimsArea}>
+              {/* Filters */}
+              <div className={styles.filterCard}>
+                <div className={styles.filterRow}>
+                  <div className={styles.filterSearch}>
+                    <SearchIcon />
+                    <input
+                      className={styles.filterInput}
+                      placeholder="Search by site, project, or description…"
+                      value={searchQ}
+                      onChange={e => { setSearchQ(e.target.value); setPage(0); }}
+                    />
+                  </div>
+                  <select className={styles.filterSelect} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(0); }}>
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                  <select className={styles.filterSelect} value={filterProject} onChange={e => { setFilterProject(e.target.value); setPage(0); }}>
+                    <option value="">All Projects</option>
+                    {FIN_PROJECTS.map(p => <option key={p}>{p}</option>)}
+                  </select>
+                  <select className={styles.filterSelect} value={filterMonth} onChange={e => { setFilterMonth(e.target.value); setPage(0); }}>
+                    <option value="">All Months</option>
+                    {availableMonths.map(m => <option key={m} value={m}>{formatMonth(m)}</option>)}
+                  </select>
+                  {filtersActive && (
+                    <button className={styles.clearFiltersBtn} onClick={clearFilters}>Clear Filters</button>
+                  )}
+                </div>
+                <div className={styles.filterCount}>{filteredClaims.length} claim{filteredClaims.length !== 1 ? 's' : ''}</div>
+              </div>
+
+              {/* Claims card */}
+              <div className={styles.claimsCard}>
+                <div className={styles.claimsCardHeader}>
+                  <div className={styles.claimsCardTitle}>Expense Claims</div>
+                  <div className={styles.claimsCardSub}>Review submitted claims and approval status.</div>
+                </div>
+
+                {loading ? (
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyTitle}>Loading…</div>
+                  </div>
+                ) : claims.length === 0 ? (
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyIcon}><ReceiptEmptyIcon /></div>
+                    <div className={styles.emptyTitle}>No expense claims yet</div>
+                    <div className={styles.emptySub}>Submit your first expense claim for review and approval.</div>
+                    {hasPerm('mywork_expenses_add') && (
+                      <button className={styles.newBtn} onClick={openNew} style={{ marginTop: 18 }}><PlusIcon /> New Claim</button>
+                    )}
+                  </div>
+                ) : filteredClaims.length === 0 ? (
+                  <div className={styles.emptyState}>
+                    <div className={styles.emptyIcon}><SearchEmptyIcon /></div>
+                    <div className={styles.emptyTitle}>No claims match your filters</div>
+                    <div className={styles.emptySub}>Try adjusting your search or filters.</div>
+                    <div className={styles.emptyActions}>
+                      <button className={styles.outlineBtn} onClick={clearFilters}>Clear Filters</button>
+                      {hasPerm('mywork_expenses_add') && (
+                        <button className={styles.newBtn} onClick={openNew}><PlusIcon /> New Claim</button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Desktop table */}
+                    <div className={styles.tableWrap}>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>Activity Date</th>
+                            <th>Claim ID</th>
+                            <th>Site ID</th>
+                            <th>Project</th>
+                            <th>Description</th>
+                            <th className={styles.thRight}>Amount (IQD)</th>
+                            <th>Status</th>
+                            <th>Submitted</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pagedClaims.map(c => (
+                            <tr key={c.id} className={styles.tableRow} onClick={() => setDetailClaim(c)}>
+                              <td className={styles.tdDate}>{fmtDate(c.activity_date)}</td>
+                              <td className={styles.tdRef}>{claimRef(claims, c)}</td>
+                              <td><span className={styles.siteCode}>{c.site_id}</span></td>
+                              <td className={styles.tdProject}>{c.project_name}</td>
+                              <td className={styles.tdDesc} title={c.description ?? ''}>{c.description}</td>
+                              <td className={styles.tdAmt}>{fmtAmt(c.total_amount)} IQD</td>
+                              <td><StatusBadge status={c.status} /></td>
+                              <td className={styles.tdSub}>{fmtDateTime(c.submitted_at)}</td>
+                              <td className={styles.tdActions} onClick={e => e.stopPropagation()}>
+                                <button className={styles.viewBtn} onClick={() => setDetailClaim(c)} aria-label="View details" title="View Details"><EyeIcon /></button>
+                                {c.status === 'rejected' && hasPerm('mywork_expenses_edit') && (
+                                  <button className={styles.editRowBtn} onClick={() => openEdit(c)} aria-label="Edit and resubmit" title="Edit & Resubmit"><EditIcon /></button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile cards */}
+                    <div className={styles.mobileCards}>
+                      {pagedClaims.map(c => (
+                        <MobileClaimCard
+                          key={c.id} claim={c} claimId={claimRef(claims, c)}
+                          onView={() => setDetailClaim(c)}
+                          onEdit={c.status === 'rejected' && hasPerm('mywork_expenses_edit') ? () => openEdit(c) : undefined}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Pagination */}
+                    <div className={styles.pagination}>
+                      <span className={styles.pgInfo}>
+                        Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filteredClaims.length)} of {filteredClaims.length} claim{filteredClaims.length !== 1 ? 's' : ''}
+                      </span>
+                      <div className={styles.pgControls}>
+                        <span className={styles.pgLabel}>Rows per page</span>
+                        <select className={styles.pgSelect} value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}>
+                          {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <button className={styles.pgBtn} disabled={page === 0} onClick={() => setPage(p => p - 1)} aria-label="Previous page">‹</button>
+                        <button className={styles.pgBtn} disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} aria-label="Next page">›</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* ── Detail drawer ── */}
+            {detailClaim && (
+              <>
+                <div className={styles.drawerOverlay} onClick={() => setDetailClaim(null)} />
+                <div className={styles.drawer} role="dialog" aria-label="Claim Details">
+                  <div className={styles.drawerHeader}>
+                    <div>
+                      <div className={styles.drawerClaimId}>{claimRef(claims, detailClaim)}</div>
+                      <div className={styles.drawerTitle}>Claim Details</div>
+                    </div>
+                    <div className={styles.drawerHeaderRight}>
+                      <StatusBadge status={detailClaim.status} />
+                      <button className={styles.drawerClose} onClick={() => setDetailClaim(null)} aria-label="Close">✕</button>
+                    </div>
+                  </div>
+                  <div className={styles.drawerBody}>
+                    <div className={styles.drawerSection}>
+                      <div className={styles.drawerSectionTitle}>Claim Information</div>
+                      <div className={styles.detailGrid}>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>Activity Date</span><span className={styles.detailVal}>{fmtDate(detailClaim.activity_date)}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>Submitted</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.submitted_at)}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>Project</span><span className={styles.detailVal}>{detailClaim.project_name ?? '—'}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>Site ID</span><span className={`${styles.detailVal} ${styles.siteCode}`}>{detailClaim.site_id ?? '—'}</span></div>
+                      </div>
+                      <div className={styles.detailItemFull}><span className={styles.detailKey}>Description</span><span className={styles.detailVal}>{detailClaim.description ?? '—'}</span></div>
+                    </div>
+
+                    <div className={styles.drawerSection}>
+                      <div className={styles.drawerSectionTitle}>Amount</div>
+                      {(detailClaim.transport_amount ?? 0) > 0 && (
+                        <div className={styles.amtRow}><span>Transport</span><span>{fmtAmt(detailClaim.transport_amount)} IQD</span></div>
+                      )}
+                      {(detailClaim.food_amount ?? 0) > 0 && (
+                        <div className={styles.amtRow}><span>Food &amp; Meals</span><span>{fmtAmt(detailClaim.food_amount)} IQD</span></div>
+                      )}
+                      {parseExtra(detailClaim.extra_categories).map((r, i) => (
+                        <div key={i} className={styles.amtRow}><span>{r.category}</span><span>{fmtAmt(parseFloat(r.amount as string) || 0)} IQD</span></div>
+                      ))}
+                      <div className={styles.amtTotal}><span>Total Amount</span><span>{fmtAmt(detailClaim.total_amount)} IQD</span></div>
+                    </div>
+
+                    {parseEmployeeIds(detailClaim.employee_ids).length > 0 && (
+                      <div className={styles.drawerSection}>
+                        <div className={styles.drawerSectionTitle}>Team Members</div>
+                        <div className={styles.empTags}>
+                          {parseEmployeeIds(detailClaim.employee_ids).map(id => (
+                            <span key={id} className={styles.empTag}>{getEmpName(id)}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {detailClaim.notes && (
+                      <div className={styles.drawerSection}>
+                        <div className={styles.drawerSectionTitle}>Notes</div>
+                        <p className={styles.notesText}>{detailClaim.notes}</p>
+                      </div>
+                    )}
+
+                    <div className={styles.drawerSection}>
+                      <div className={styles.drawerSectionTitle}>Status Information</div>
+                      <div className={styles.statusInfo}>
+                        <div className={styles.statusInfoRow}><span className={styles.detailKey}>Status</span><StatusBadge status={detailClaim.status} /></div>
+                        <div className={styles.statusInfoRow}><span className={styles.detailKey}>Submitted</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.submitted_at)}</span></div>
+                        {detailClaim.reviewed_at && (
+                          <div className={styles.statusInfoRow}><span className={styles.detailKey}>Reviewed</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.reviewed_at)}</span></div>
+                        )}
+                        {detailClaim.reviewed_by && (
+                          <div className={styles.statusInfoRow}><span className={styles.detailKey}>Reviewed by</span><span className={styles.detailVal}>{detailClaim.reviewed_by}</span></div>
+                        )}
+                        {detailClaim.rejection_reason && (
+                          <div className={styles.rejBlock}>
+                            <span className={styles.detailKey}>Rejection Reason</span>
+                            <span className={styles.rejText}>{detailClaim.rejection_reason}</span>
                           </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.drawerFooter}>
+                    {detailClaim.status === 'rejected' && hasPerm('mywork_expenses_edit') && (
+                      <button className={styles.editClaimBtn} onClick={() => openEdit(detailClaim)}><EditIcon /> Edit Claim</button>
+                    )}
+                    {detailClaim.status === 'rejected' && hasPerm('mywork_expenses_delete') && (
+                      <button className={styles.cancelClaimBtn} onClick={() => { setDeleteId(detailClaim.id); setDetailClaim(null); }}>Cancel Claim</button>
+                    )}
+                    <button className={styles.closeDrawerBtn} onClick={() => setDetailClaim(null)}>Close</button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Form drawer ── */}
+            {formOpen && (
+              <>
+                <div className={styles.drawerOverlay} onClick={() => setFormOpen(false)} />
+                <div className={styles.drawer} role="dialog" aria-label={editId ? 'Edit Claim' : 'New Expense Claim'}>
+                  <div className={styles.drawerHeader}>
+                    <div className={styles.drawerTitle}>{editId ? 'Edit & Resubmit Claim' : 'New Expense Claim'}</div>
+                    <button className={styles.drawerClose} onClick={() => setFormOpen(false)} aria-label="Close">✕</button>
+                  </div>
+                  <div className={styles.drawerBody}>
+                    <div className={styles.formSection}>Activity Info</div>
+                    <div className={styles.formGrid2}>
+                      <div className={styles.fieldGroup}>
+                        <label className={styles.fieldLabel}>Project <span className={styles.req}>*</span></label>
+                        <select className={styles.select} value={fProject} onChange={e => setFProject(e.target.value)}>
+                          <option value="">Select project…</option>
+                          {FIN_PROJECTS.map(p => <option key={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div className={styles.fieldGroup}>
+                        <label className={styles.fieldLabel}>Activity Date <span className={styles.req}>*</span></label>
+                        <input type="date" className={styles.input} value={fDate} onChange={e => setFDate(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className={styles.formGrid2}>
+                      <div className={styles.fieldGroup}>
+                        <label className={styles.fieldLabel}>Site ID <span className={styles.req}>*</span></label>
+                        <input className={styles.input} placeholder="e.g. ZN-BGH-001" value={fSiteId} onChange={e => setFSiteId(e.target.value)} />
+                      </div>
+                      <div className={styles.fieldGroup}>
+                        <label className={styles.fieldLabel}>Description <span className={styles.req}>*</span></label>
+                        <input className={styles.input} placeholder="Brief description of activity" value={fDesc} onChange={e => setFDesc(e.target.value)} />
+                      </div>
+                    </div>
+
+                    <div className={styles.formSection}>Amounts (IQD)</div>
+                    <div className={styles.formGrid2}>
+                      <div className={styles.fieldGroup}>
+                        <label className={styles.fieldLabel}>Transport</label>
+                        <input type="number" min="0" inputMode="numeric" className={styles.input} placeholder="0" value={fTransport} onChange={e => setFTransport(e.target.value)} />
+                      </div>
+                      <div className={styles.fieldGroup}>
+                        <label className={styles.fieldLabel}>Food &amp; Meals</label>
+                        <input type="number" min="0" inputMode="numeric" className={styles.input} placeholder="0" value={fFood} onChange={e => setFFood(e.target.value)} />
+                      </div>
+                    </div>
+
+                    {fExtra.length > 0 && (
+                      <div className={styles.extraRows}>
+                        {fExtra.map((row, i) => (
+                          <div key={i} className={styles.extraCard}>
+                            <div className={styles.fieldGroup}>
+                              <label className={styles.fieldLabel}>Category</label>
+                              <input className={styles.input} placeholder="e.g. Accommodation" value={row.category} onChange={e => updateExtraRow(i, 'category', e.target.value)} />
+                            </div>
+                            <div className={styles.fieldGroup}>
+                              <label className={styles.fieldLabel}>Amount (IQD)</label>
+                              <input type="number" min="0" inputMode="numeric" className={styles.input} placeholder="0" value={row.amount} onChange={e => updateExtraRow(i, 'amount', e.target.value)} />
+                            </div>
+                            <button className={styles.removeRowBtn} onClick={() => removeExtraRow(i)} title="Remove">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className={styles.extraRowActions}>
+                      <button className={styles.addRowBtn} onClick={addExtraRow}>+ Add Category</button>
+                      <button className={styles.addRowBtn} onClick={() => setQuickOpen(q => !q)}>⚡ Quick Add</button>
+                    </div>
+
+                    {quickOpen && (
+                      <div className={styles.quickPanel}>
+                        <div className={styles.quickTitle}>Quick Add Category</div>
+                        <div className={styles.quickGrid}>
+                          {QUICK_CATEGORIES.map(cat => (
+                            <button key={cat} className={styles.quickChip} onClick={() => applyQuickAdd(cat)}>{cat}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className={styles.totalBox}>
+                      <span className={styles.totalLabel}>Estimated Total</span>
+                      <span className={styles.totalAmount}>{calcTotal().toLocaleString('en-US')} IQD</span>
+                    </div>
+
+                    <div className={styles.formSection}>Team Members <span className={styles.optional}>(optional)</span></div>
+                    <div className={styles.empWrap} ref={empDropRef}>
+                      <div className={styles.empSelect} onClick={() => setEmpDropOpen(o => !o)}>
+                        {fEmployeeIds.length === 0 && <span className={styles.empPlaceholder}>Select team members…</span>}
+                        {fEmployeeIds.map(id => (
+                          <span key={id} className={styles.empPill}>
+                            {getEmpName(id)}
+                            <button className={styles.pillRemove} onClick={e => { e.stopPropagation(); toggleEmployee(id); }}>×</button>
+                          </span>
+                        ))}
+                        <span className={styles.empChevron}>▾</span>
+                      </div>
+                      {empDropOpen && (
+                        <div className={styles.empDropdown}>
+                          {teamMembers.map(m => (
+                            <div
+                              key={m.id}
+                              className={`${styles.empOption} ${fEmployeeIds.includes(m.id) ? styles.empOptionSelected : ''}`}
+                              onClick={() => toggleEmployee(m.id)}
+                            >
+                              {fEmployeeIds.includes(m.id) && <span className={styles.empCheck}>✓</span>}
+                              {m.full_name}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
 
-      {/* ── New/Edit claim modal ── */}
-      {modalOpen && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setModalOpen(false); }}>
-          <div className={styles.modal}>
-            <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>{editId ? 'Edit & Resubmit Claim' : 'New Expense Claim'}</h2>
-              <button className={styles.closeBtn} onClick={() => setModalOpen(false)}>✕</button>
-            </div>
-            <div className={styles.modalBody}>
+                    <div className={styles.formSection}>Notes <span className={styles.optional}>(optional)</span></div>
+                    <textarea className={styles.textarea} rows={3} placeholder="Any additional notes…" value={fNotes} onChange={e => setFNotes(e.target.value)} />
 
-              {/* Activity Info */}
-              <div className={styles.sectionLabel}>Activity Info</div>
-              <div className={styles.formGrid2}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.fieldLabel}>Project *</label>
-                  <select className={styles.select} value={fProject} onChange={e => setFProject(e.target.value)}>
-                    <option value="">Select project…</option>
-                    {FIN_PROJECTS.map(p => <option key={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.fieldLabel}>Activity Date *</label>
-                  <input type="date" className={styles.input} value={fDate} onChange={e => setFDate(e.target.value)} />
-                </div>
-              </div>
-              <div className={styles.formGrid2}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.fieldLabel}>Site ID *</label>
-                  <input className={styles.input} placeholder="e.g. ZN-BGH-001" value={fSiteId} onChange={e => setFSiteId(e.target.value)} />
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.fieldLabel}>Description *</label>
-                  <input className={styles.input} placeholder="Brief description of activity" value={fDesc} onChange={e => setFDesc(e.target.value)} />
-                </div>
-              </div>
-
-              {/* Amounts */}
-              <div className={styles.sectionLabel}>Amounts (IQD)</div>
-              <div className={styles.formGrid2}>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.fieldLabel}>Transport</label>
-                  <input type="number" min="0" className={styles.input} placeholder="0" value={fTransport} onChange={e => setFTransport(e.target.value)} />
-                </div>
-                <div className={styles.fieldGroup}>
-                  <label className={styles.fieldLabel}>Food & Meals</label>
-                  <input type="number" min="0" className={styles.input} placeholder="0" value={fFood} onChange={e => setFFood(e.target.value)} />
-                </div>
-              </div>
-
-              {/* Extra categories */}
-              {fExtra.length > 0 && (
-                <div className={styles.extraRows}>
-                  {fExtra.map((row, i) => (
-                    <div key={i} className={styles.extraCard}>
-                      <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Category</label>
-                        <input className={styles.input} placeholder="e.g. Accommodation" value={row.category} onChange={e => updateExtraRow(i, 'category', e.target.value)} />
-                      </div>
-                      <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Amount (IQD)</label>
-                        <input type="number" min="0" className={styles.input} placeholder="0" value={row.amount} onChange={e => updateExtraRow(i, 'amount', e.target.value)} />
-                      </div>
-                      <button className={styles.removeRowBtn} onClick={() => removeExtraRow(i)} title="Remove">✕</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className={styles.extraRowActions}>
-                <button className={styles.addRowBtn} onClick={addExtraRow}>+ Add Category</button>
-                <button className={styles.addRowBtn} onClick={() => setQuickOpen(q => !q)}>⚡ Quick Add</button>
-              </div>
-
-              {quickOpen && (
-                <div className={styles.quickPanel}>
-                  <div className={styles.quickTitle}>Quick Add Category</div>
-                  <div className={styles.quickGrid}>
-                    {QUICK_CATEGORIES.map(cat => (
-                      <button key={cat} className={styles.quickChip} onClick={() => applyQuickAdd(cat)}>{cat}</button>
-                    ))}
+                    {formErr && <div className={styles.formErr} role="alert">{formErr}</div>}
+                  </div>
+                  <div className={styles.drawerFooter}>
+                    <button className={styles.cancelBtn} onClick={() => setFormOpen(false)}>Cancel</button>
+                    <button className={styles.submitBtn} onClick={saveClaim} disabled={saving}>
+                      {saving ? 'Submitting…' : editId ? 'Resubmit Claim' : 'Submit Claim'}
+                    </button>
                   </div>
                 </div>
-              )}
-
-              {/* Total */}
-              <div className={styles.totalBox}>
-                <span className={styles.totalLabel}>Estimated Total</span>
-                <span className={styles.totalAmount}>{calcTotal().toLocaleString('en-US')} IQD</span>
-              </div>
-
-              {/* Team members */}
-              <div className={styles.sectionLabel}>Team Members (optional)</div>
-              <div className={styles.empWrap} ref={empDropRef}>
-                <div className={styles.empSelect} onClick={() => setEmpDropOpen(o => !o)}>
-                  {fEmployeeIds.length === 0 && (
-                    <span className={styles.empPlaceholder}>Select team members…</span>
-                  )}
-                  {fEmployeeIds.map(id => (
-                    <span key={id} className={styles.empPill}>
-                      {getEmpName(id)}
-                      <button className={styles.pillRemove} onClick={e => { e.stopPropagation(); toggleEmployee(id); }}>×</button>
-                    </span>
-                  ))}
-                  <span className={styles.empChevron}>▾</span>
-                </div>
-                {empDropOpen && (
-                  <div className={styles.empDropdown}>
-                    {teamMembers.map(m => (
-                      <div
-                        key={m.id}
-                        className={`${styles.empOption} ${fEmployeeIds.includes(m.id) ? styles.empOptionSelected : ''}`}
-                        onClick={() => toggleEmployee(m.id)}
-                      >
-                        {fEmployeeIds.includes(m.id) && <span className={styles.empCheck}>✓</span>}
-                        {m.full_name}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Notes */}
-              <div className={styles.sectionLabel}>Notes (optional)</div>
-              <textarea className={styles.textarea} rows={3} placeholder="Any additional notes…" value={fNotes} onChange={e => setFNotes(e.target.value)} />
-
-              {formErr && <div className={styles.formErr}>{formErr}</div>}
-            </div>
-
-            <div className={styles.modalFooter}>
-              <button className={styles.cancelBtn} onClick={() => setModalOpen(false)}>Cancel</button>
-              <button className={styles.submitBtn} onClick={saveClaim} disabled={saving}>
-                {saving ? 'Submitting…' : editId ? 'Resubmit Claim' : 'Submit Claim'}
-              </button>
-            </div>
+              </>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* ── Detail / view modal ── */}
-      {detailClaim && (
-        <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setDetailClaim(null); }}>
-          <div className={styles.modal}>
-            <div className={styles.modalHeader}>
-              <h2 className={styles.modalTitle}>Claim Details</h2>
-              <button className={styles.closeBtn} onClick={() => setDetailClaim(null)}>✕</button>
-            </div>
-            <div className={styles.modalBody}>
-              <div className={styles.detailGrid}>
-                <div className={styles.detailItem}><span className={styles.detailKey}>Project</span><span>{detailClaim.project_name}</span></div>
-                <div className={styles.detailItem}><span className={styles.detailKey}>Site ID</span><span className={styles.siteCode}>{detailClaim.site_id}</span></div>
-                <div className={styles.detailItem}><span className={styles.detailKey}>Activity Date</span><span>{fmtDate(detailClaim.activity_date)}</span></div>
-                <div className={styles.detailItem}><span className={styles.detailKey}>Submitted</span><span>{fmtDateTime(detailClaim.submitted_at)}</span></div>
-                <div className={`${styles.detailItem} ${styles.detailFull}`}><span className={styles.detailKey}>Description</span><span>{detailClaim.description}</span></div>
-              </div>
-
-              <div className={styles.sectionLabel} style={{ marginTop: 16 }}>Amounts</div>
-              <div className={styles.detailGrid}>
-                <div className={styles.detailItem}><span className={styles.detailKey}>Transport</span><span>{fmtAmt(detailClaim.transport_amount)} IQD</span></div>
-                <div className={styles.detailItem}><span className={styles.detailKey}>Food &amp; Meals</span><span>{fmtAmt(detailClaim.food_amount)} IQD</span></div>
-                {parseExtra(detailClaim.extra_categories).map((r, i) => (
-                  <div key={i} className={styles.detailItem}>
-                    <span className={styles.detailKey}>{r.category}</span>
-                    <span>{fmtAmt(parseFloat(r.amount as string) || 0)} IQD</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className={styles.totalBox} style={{ marginTop: 12 }}>
-                <span className={styles.totalLabel}>Total Amount</span>
-                <span className={styles.totalAmount}>{fmtAmt(detailClaim.total_amount)} IQD</span>
-              </div>
-
-              {parseEmployeeIds(detailClaim.employee_ids).length > 0 && (
-                <>
-                  <div className={styles.sectionLabel} style={{ marginTop: 16 }}>Team Members</div>
-                  <div className={styles.empTags}>
-                    {parseEmployeeIds(detailClaim.employee_ids).map(id => (
-                      <span key={id} className={styles.empTag}>{getEmpName(id)}</span>
-                    ))}
-                  </div>
-                </>
-              )}
-
-              {detailClaim.notes && (
-                <>
-                  <div className={styles.sectionLabel} style={{ marginTop: 16 }}>Notes</div>
-                  <p className={styles.notesText}>{detailClaim.notes}</p>
-                </>
-              )}
-
-              {/* Status timeline */}
-              <div className={styles.sectionLabel} style={{ marginTop: 20 }}>Status</div>
-              <div className={styles.timeline}>
-                <TimelineStep label="Submitted" sub={fmtDateTime(detailClaim.submitted_at)} />
-                {detailClaim.status === 'approved' && (
-                  <TimelineStep label="Approved" sub={detailClaim.reviewed_at ? fmtDateTime(detailClaim.reviewed_at) : ''} type="approved" />
-                )}
-                {detailClaim.status === 'rejected' && (
-                  <TimelineStep label="Rejected" sub={detailClaim.rejection_reason ?? ''} type="rejected" />
-                )}
-                {detailClaim.status === 'pending' && (
-                  <TimelineStep pending label="Pending Review" sub="Awaiting approval" />
-                )}
-              </div>
-            </div>
-            <div className={styles.modalFooter}>
-              <button className={styles.cancelBtn} onClick={() => setDetailClaim(null)}>Close</button>
-            </div>
-          </div>
-        </div>
+        </>
       )}
 
       {/* ── Delete confirm ── */}
@@ -613,7 +709,7 @@ export default function MyExpenses() {
 
       {/* ── Toast ── */}
       {toast && (
-        <div className={`${styles.toast} ${toast.ok ? styles.toastOk : styles.toastErr}`}>
+        <div className={`${styles.toast} ${toast.ok ? styles.toastOk : styles.toastErr}`} role="status" aria-live="polite">
           {toast.msg}
         </div>
       )}
@@ -621,44 +717,97 @@ export default function MyExpenses() {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const s = status?.toLowerCase();
-  const cls = s === 'approved' ? styles.badgeApproved : s === 'rejected' ? styles.badgeRejected : styles.badgePending;
-  return <span className={`${styles.badge} ${cls}`}>{status}</span>;
-}
+// ── Sub-components ────────────────────────────────────────────────────────────
 
-interface TimelineStepProps {
-  label: string;
-  sub: string;
-  pending?: boolean;
-  type?: 'approved' | 'rejected';
-}
-
-function TimelineStep({ label, sub, pending, type }: TimelineStepProps) {
-  const dotCls = type === 'approved'
-    ? styles.tlDotApproved
-    : type === 'rejected'
-    ? styles.tlDotRejected
-    : pending
-    ? styles.tlDotPending
-    : styles.tlDotDone;
-
+function SummaryCard({ label, amount, count, color, icon }: {
+  label: string; amount: number; count: number;
+  color: 'blue' | 'green' | 'amber' | 'red'; icon: ReactNode;
+}) {
   return (
-    <div className={styles.tlStep}>
-      <div className={`${styles.tlDot} ${dotCls}`} />
-      <div className={styles.tlContent}>
-        <div className={styles.tlLabel}>{label}</div>
-        {sub && <div className={styles.tlSub}>{sub}</div>}
+    <div className={styles.summaryCard}>
+      <div className={`${styles.summaryIcon} ${styles[`summaryIcon_${color}` as keyof typeof styles]}`}>{icon}</div>
+      <div className={styles.summaryContent}>
+        <div className={styles.summaryLabel}>{label}</div>
+        <div className={styles.summaryAmount}>{fmtAmt(amount)} IQD</div>
+        <div className={styles.summaryCount}>{count} claim{count !== 1 ? 's' : ''}</div>
       </div>
     </div>
   );
 }
 
-function PlusIcon() {
+function MobileClaimCard({ claim, claimId, onView, onEdit }: {
+  claim: ExpenseClaim; claimId: string;
+  onView: () => void; onEdit?: () => void;
+}) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
+    <div className={styles.mobileCard}>
+      <div className={styles.mobileCardTop}>
+        <StatusBadge status={claim.status} />
+        <span className={styles.mobileCardAmt}>{fmtAmt(claim.total_amount)} IQD</span>
+      </div>
+      <div className={styles.mobileCardMeta}>
+        <span className={styles.mobileCardRef}>{claimId}</span>
+        {claim.site_id && <span className={styles.siteCode}>{claim.site_id}</span>}
+      </div>
+      <div className={styles.mobileCardProject}>{claim.project_name}</div>
+      <div className={styles.mobileCardDesc}>{claim.description}</div>
+      <div className={styles.mobileCardDates}>
+        <span>Activity: {fmtDate(claim.activity_date)}</span>
+        <span>Submitted: {fmtDateTime(claim.submitted_at)}</span>
+      </div>
+      <div className={styles.mobileCardActions}>
+        <button className={styles.mobileViewBtn} onClick={onView}>View Details →</button>
+        {onEdit && <button className={styles.mobileEditBtn} onClick={onEdit}>Edit &amp; Resubmit</button>}
+      </div>
+    </div>
   );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const s = status?.toLowerCase();
+  const cls = s === 'approved' ? styles.badgeApproved : s === 'rejected' ? styles.badgeRejected : styles.badgePending;
+  const icon = s === 'approved' ? <CheckIcon /> : s === 'rejected' ? <AlertIcon /> : <ClockIcon />;
+  return <span className={`${styles.badge} ${cls}`}>{icon}{status}</span>;
+}
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+function PlusIcon() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+}
+function WalletIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>;
+}
+function CheckCircleIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+}
+function ClockCircleIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+}
+function XCircleIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>;
+}
+function SearchIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--text-muted)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+}
+function EyeIcon() {
+  return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+}
+function EditIcon() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+}
+function CheckIcon() {
+  return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>;
+}
+function AlertIcon() {
+  return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>;
+}
+function ClockIcon() {
+  return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+}
+function ReceiptEmptyIcon() {
+  return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>;
+}
+function SearchEmptyIcon() {
+  return <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>;
 }
