@@ -73,13 +73,43 @@ interface RoutePlan {
   maxSitesPerTeam: number;
 }
 
+interface SavedRoutePlan {
+  id: string;
+  name: string;
+  savedAt: string;
+  plan: RoutePlan;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+const SAVED_PLANS_KEY = 'tac_route_planner_saved_plans';
 
 const TEAM_COLORS = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
 // Line style per day (cycles if a team's plan runs past 4 days) — paired
 // with the numbered marker badges so day 1 vs day 2 vs day 3 is readable
 // on the map at a glance, not just team color.
 const DAY_DASH: (string | undefined)[] = [undefined, '7,5', '2,5', '10,4,2,4'];
+
+// ── Saved plans (browser localStorage only — no backend) ──────────────────────
+
+function loadSavedPlansFromStorage(): SavedRoutePlan[] {
+  try {
+    const raw = localStorage.getItem(SAVED_PLANS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedPlans(list: SavedRoutePlan[]) {
+  try {
+    localStorage.setItem(SAVED_PLANS_KEY, JSON.stringify(list));
+  } catch {
+    // Storage full/unavailable — saved plans just won't persist this time.
+  }
+}
 
 // ── Pure algorithm functions (faithful ports) ─────────────────────────────────
 
@@ -424,6 +454,14 @@ export default function RoutePlanner() {
   const [roadRoutes, setRoadRoutes] = useState<Record<string, [number, number][]>>({});
   const [roadStatus, setRoadStatus] = useState<'idle' | 'loading' | 'done'>('idle');
 
+  // Saved plans (localStorage) + Export Plan / Save Plan UI state
+  const [savedPlans, setSavedPlans] = useState<SavedRoutePlan[]>(() => loadSavedPlansFromStorage());
+  const [savedPlansOpen, setSavedPlansOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [savePlanName, setSavePlanName] = useState('');
+  const [saveModalError, setSaveModalError] = useState('');
+
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -752,6 +790,90 @@ export default function RoutePlanner() {
     navigator.clipboard.writeText(lines.join('\n'))
       .then(() => { setCopyLabel('✓ Copied'); setTimeout(() => setCopyLabel('Copy as Text'), 1500); })
       .catch(() => alert('Could not copy to clipboard.'));
+    setExportMenuOpen(false);
+  }
+
+  function csvEscape(val: string | number): string {
+    const s = String(val);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  function handleDownloadCsv() {
+    if (!plan) return;
+    const rows: (string | number)[][] = [
+      ['Team', 'Day', 'Stop #', 'Site Code', 'Site Name', 'Governorate', 'Priority', 'Leg Km', 'Leg Min', 'Cumulative Km', 'Cumulative Min'],
+    ];
+    plan.teamsPlan.forEach(team => {
+      team.days.forEach(day => {
+        let cumKm = 0, cumMin = 0;
+        day.stops.forEach((stop, si) => {
+          cumKm += stop.legKm;
+          cumMin += stop.legMin;
+          rows.push([
+            team.name, day.dayNum, si + 1,
+            stop.site.site_code || '', stop.site.site_name || '', stop.site.governorate || '',
+            stop.site._priority ? 'Yes' : 'No',
+            stop.legKm.toFixed(2), Math.round(stop.legMin),
+            cumKm.toFixed(2), Math.round(cumMin),
+          ]);
+        });
+      });
+    });
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `route-plan-${plan.operator || 'plan'}-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setExportMenuOpen(false);
+  }
+
+  // ── Save Plan / Saved Plans (localStorage) ──────────────────────────────────
+
+  function handleSavePlanClick() {
+    if (!plan) return;
+    setSavePlanName(`${plan.operator || 'Plan'} – ${new Date().toLocaleDateString()}`);
+    setSaveModalError('');
+    setSaveModalOpen(true);
+  }
+
+  function handleConfirmSavePlan() {
+    if (!plan) return;
+    const name = savePlanName.trim();
+    if (!name) { setSaveModalError('Please enter a name for this plan.'); return; }
+    const entry: SavedRoutePlan = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      savedAt: new Date().toISOString(),
+      plan,
+    };
+    const next = [entry, ...savedPlans];
+    setSavedPlans(next);
+    persistSavedPlans(next);
+    setSaveModalOpen(false);
+  }
+
+  function handleLoadSavedPlan(entry: SavedRoutePlan) {
+    setPlan(entry.plan);
+    setActiveTeam(0);
+    setPlanError('');
+    setRoadRoutes({});
+    roadRunIdRef.current++;
+    setRoadStatus('idle');
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; layerGroupRef.current = null; }
+    setSavedPlansOpen(false);
+    void enrichRoadRoutes(entry.plan);
+  }
+
+  function handleDeleteSavedPlan(id: string) {
+    const next = savedPlans.filter(sp => sp.id !== id);
+    setSavedPlans(next);
+    persistSavedPlans(next);
   }
 
   // Stepper logic
@@ -768,13 +890,83 @@ export default function RoutePlanner() {
 
   return (
     <div className={styles.page}>
-      {/* Info banner */}
-      <div className={styles.infoBanner}>
-        <InfoIcon />
-        <p className={styles.infoBannerText}>
-          Route estimates use geographic distance and configured average speed, not live road routing.
-        </p>
+      {/* Info banner + saved-plan actions */}
+      <div className={styles.topBar}>
+        <div className={styles.infoBanner}>
+          <InfoIcon />
+          <p className={styles.infoBannerText}>
+            Route estimates use geographic distance and configured average speed, not live road routing.
+          </p>
+        </div>
+        <div className={styles.topBarActions}>
+          <div className={styles.savedPlansWrap}>
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={() => setSavedPlansOpen(o => !o)}
+              title="Saved plans"
+            >
+              <SavedPlansIcon /> Saved Plans{savedPlans.length ? ` (${savedPlans.length})` : ''}
+            </button>
+            {savedPlansOpen && (
+              <>
+                <div className={styles.menuBackdrop} onClick={() => setSavedPlansOpen(false)} />
+                <div className={styles.savedPlansMenu}>
+                  <div className={styles.savedPlansTitle}>Saved Plans</div>
+                  {savedPlans.length === 0 && (
+                    <div className={styles.savedPlansEmpty}>No saved plans yet. Generate a plan, then click "Save Plan".</div>
+                  )}
+                  {savedPlans.map(sp => (
+                    <div key={sp.id} className={styles.savedPlanRow}>
+                      <div className={styles.savedPlanInfo} onClick={() => handleLoadSavedPlan(sp)}>
+                        <span className={styles.savedPlanName}>{sp.name}</span>
+                        <span className={styles.savedPlanMeta}>
+                          {sp.plan.operator} · {sp.plan.numTeams} team(s) · {new Date(sp.savedAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className={styles.savedPlanDeleteBtn}
+                        title="Delete"
+                        aria-label="Delete saved plan"
+                        onClick={() => handleDeleteSavedPlan(sp.id)}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <button type="button" className={styles.generateBtn} style={{ flex: 'none' }} onClick={handleClear} title="Start a new plan">
+            New Plan
+          </button>
+        </div>
       </div>
+
+      {saveModalOpen && (
+        <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setSaveModalOpen(false); }}>
+          <div className={styles.modal}>
+            <h3 className={styles.modalTitle}>Save Route Plan</h3>
+            <p className={styles.modalSub}>Saved in this browser only — give this plan a name so you can find it later.</p>
+            <input
+              type="text"
+              className={styles.modalInput}
+              value={savePlanName}
+              onChange={e => setSavePlanName(e.target.value)}
+              placeholder="e.g. Zain – North teams – Aug 3"
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') handleConfirmSavePlan(); }}
+            />
+            <div className={styles.modalErr}>{saveModalError}</div>
+            <div className={styles.modalActions}>
+              <button className={styles.secondaryBtn} onClick={() => setSaveModalOpen(false)}>Cancel</button>
+              <button className={styles.generateBtn} onClick={handleConfirmSavePlan}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stepper */}
       <div className={styles.stepper}>
@@ -1014,6 +1206,11 @@ export default function RoutePlanner() {
               onSelectTeam={setActiveTeam}
               onFullscreenMap={handleFullscreenMap}
               roadStatus={roadStatus}
+              exportMenuOpen={exportMenuOpen}
+              onToggleExportMenu={() => setExportMenuOpen(o => !o)}
+              onCloseExportMenu={() => setExportMenuOpen(false)}
+              onDownloadCsv={handleDownloadCsv}
+              onSavePlanClick={handleSavePlanClick}
             />
           )}
         </div>
@@ -1054,6 +1251,7 @@ function RoutePlannerEmptyState() {
 
 function PlanResults({
   plan, activeTeam, onCopyText, copyLabel, mapDivRef, onSelectTeam, onFullscreenMap, roadStatus,
+  exportMenuOpen, onToggleExportMenu, onCloseExportMenu, onDownloadCsv, onSavePlanClick,
 }: {
   plan: RoutePlan;
   activeTeam: number;
@@ -1063,6 +1261,11 @@ function PlanResults({
   onSelectTeam: (i: number) => void;
   onFullscreenMap: () => void;
   roadStatus: 'idle' | 'loading' | 'done';
+  exportMenuOpen: boolean;
+  onToggleExportMenu: () => void;
+  onCloseExportMenu: () => void;
+  onDownloadCsv: () => void;
+  onSavePlanClick: () => void;
 }) {
   const notFound = plan.unmatched.filter(u => u.reason === 'not_found');
   const noCoord = plan.unmatched.filter(u => u.reason === 'missing_coordinates');
@@ -1171,8 +1374,26 @@ function PlanResults({
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
-          <button className={styles.copyBtn} onClick={onCopyText}>
-            <CopyIcon /> {copyLabel}
+          <div className={styles.exportWrap}>
+            <button className={styles.copyBtn} onClick={onToggleExportMenu}>
+              <DownloadIcon /> Export Plan <ChevronDownIcon />
+            </button>
+            {exportMenuOpen && (
+              <>
+                <div className={styles.menuBackdrop} onClick={onCloseExportMenu} />
+                <div className={styles.exportMenu}>
+                  <button className={styles.exportMenuItem} onClick={onCopyText}>
+                    <CopyIcon /> {copyLabel}
+                  </button>
+                  <button className={styles.exportMenuItem} onClick={onDownloadCsv}>
+                    <DownloadIcon /> Download CSV
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <button className={styles.copyBtn} onClick={onSavePlanClick}>
+            <SaveIcon /> Save Plan
           </button>
         </div>
         <div className={styles.toolbarRight}>
@@ -1392,6 +1613,32 @@ function SpinnerInlineIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
       style={{ animation: 'spin 0.75s linear infinite' }}>
       <path d="M21 12a9 9 0 1 1-6.219-8.56" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function SavedPlansIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+      <path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/>
     </svg>
   );
 }
