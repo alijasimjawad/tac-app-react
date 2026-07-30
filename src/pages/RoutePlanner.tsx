@@ -1074,50 +1074,56 @@ function PlanResults({
       {/* Summary stat cards */}
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
-          <div className={styles.summaryTopRow}>
-            <div className={`${styles.summaryIconBox} ${styles.iconBlue}`}><TargetIcon /></div>
+          <div className={`${styles.summaryIconBox} ${styles.iconBlue}`}><TargetIcon /></div>
+          <div className={styles.summaryTextCol}>
             <span className={styles.summaryLabel}>Sites Matched</span>
+            <span className={`${styles.summaryVal} ${styles.summaryValGood}`}>{plan.totalMatched}</span>
+            <span className={styles.summarySub}>of {plan.totalRequested} pasted</span>
           </div>
-          <div className={`${styles.summaryVal} ${styles.summaryValGood}`}>{plan.totalMatched}</div>
         </div>
         <div className={styles.summaryCard}>
-          <div className={styles.summaryTopRow}>
-            <div className={`${styles.summaryIconBox} ${styles.iconPurple}`}><TeamsIcon /></div>
+          <div className={`${styles.summaryIconBox} ${styles.iconPurple}`}><TeamsIcon /></div>
+          <div className={styles.summaryTextCol}>
             <span className={styles.summaryLabel}>Teams</span>
+            <span className={styles.summaryVal}>{plan.numTeams}</span>
+            <span className={styles.summarySub}>teams</span>
           </div>
-          <div className={styles.summaryVal}>{plan.numTeams}</div>
         </div>
         <div className={styles.summaryCard}>
-          <div className={styles.summaryTopRow}>
-            <div className={`${styles.summaryIconBox} ${styles.iconAmber}`}><SearchXIcon /></div>
+          <div className={`${styles.summaryIconBox} ${styles.iconAmber}`}><SearchXIcon /></div>
+          <div className={styles.summaryTextCol}>
             <span className={styles.summaryLabel}>Not Found</span>
-          </div>
-          <div className={`${styles.summaryVal} ${plan.unmatched.length > 0 ? styles.summaryValWarn : ''}`}>
-            {plan.unmatched.length}
+            <span className={`${styles.summaryVal} ${plan.unmatched.length > 0 ? styles.summaryValWarn : ''}`}>
+              {plan.unmatched.length}
+            </span>
+            <span className={styles.summarySub}>unmatched</span>
           </div>
         </div>
         <div className={styles.summaryCard}>
-          <div className={styles.summaryTopRow}>
-            <div className={`${styles.summaryIconBox} ${styles.iconRed}`}><WarnTriangleIcon /></div>
+          <div className={`${styles.summaryIconBox} ${styles.iconRed}`}><WarnTriangleIcon /></div>
+          <div className={styles.summaryTextCol}>
             <span className={styles.summaryLabel}>Left Over</span>
-          </div>
-          <div className={`${styles.summaryVal} ${plan.leftoverCount > 0 ? styles.summaryValBad : ''}`}>
-            {plan.leftoverCount}
+            <span className={`${styles.summaryVal} ${plan.leftoverCount > 0 ? styles.summaryValBad : ''}`}>
+              {plan.leftoverCount}
+            </span>
+            <span className={styles.summarySub}>didn't fit</span>
           </div>
         </div>
         <div className={styles.summaryCard}>
-          <div className={styles.summaryTopRow}>
-            <div className={`${styles.summaryIconBox} ${styles.iconCyan}`}><RouteDistanceIcon /></div>
+          <div className={`${styles.summaryIconBox} ${styles.iconCyan}`}><RouteDistanceIcon /></div>
+          <div className={styles.summaryTextCol}>
             <span className={styles.summaryLabel}>Est. Distance</span>
+            <span className={styles.summaryVal}>{totalDistanceKm.toFixed(0)} km</span>
+            <span className={styles.summarySub}>{roadStatus === 'done' ? 'Real road' : roadStatus === 'loading' ? 'Refining…' : 'Straight-line'}</span>
           </div>
-          <div className={styles.summaryVal}>{totalDistanceKm.toFixed(0)} km</div>
         </div>
         <div className={styles.summaryCard}>
-          <div className={styles.summaryTopRow}>
-            <div className={`${styles.summaryIconBox} ${styles.iconIndigo}`}><ClockDurationIcon /></div>
+          <div className={`${styles.summaryIconBox} ${styles.iconIndigo}`}><ClockDurationIcon /></div>
+          <div className={styles.summaryTextCol}>
             <span className={styles.summaryLabel}>Est. Time</span>
+            <span className={styles.summaryVal}>{formatMin(totalMinutes)}</span>
+            <span className={styles.summarySub}>Total time</span>
           </div>
-          <div className={styles.summaryVal}>{formatMin(totalMinutes)}</div>
         </div>
       </div>
 
@@ -1227,46 +1233,50 @@ function PlanResults({
             {!team.days.length && (
               <div className={styles.noSites}>No sites assigned to this team.</div>
             )}
-            {team.days.map(day => (
-              <div key={day.dayNum} className={styles.dayCard}>
-                <div className={styles.dayHead}>
-                  <span className={styles.dayTitle}>Day {day.dayNum}</span>
-                  <span className={styles.dayMeta}>
-                    <span className={styles.dayMetaChip}>{day.stops.length} sites</span>
-                    <span className={styles.dayMetaChip} title={day.road ? 'Real road distance (OpenRouteService)' : 'Straight-line estimate'}>
-                      {day.distanceKm.toFixed(1)} km{day.road ? ' 🛣️' : ''}
-                    </span>
-                    <span className={styles.dayMetaChip}>{formatMin(day.minutes)} drive</span>
-                  </span>
-                </div>
-                <div className={styles.timeline}>
-                  {day.stops.map((stop, si) => {
-                    const s = stop.site;
-                    const isVeryFirst = day.dayNum === 1 && si === 0;
-                    let legLabel: string;
-                    if (isVeryFirst && !plan.startLoc) legLabel = 'Route start';
-                    else if (isVeryFirst && plan.startLoc) legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from ${plan.startLoc._label || 'start'}`;
-                    else if (si === 0) legLabel = stop.legMin > 0 ? `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} continuing` : 'Continues from previous day';
-                    else legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from prev`;
-                    return (
-                      <div key={si} className={styles.stop}>
-                        <div className={`${styles.stopDot} ${s._priority ? styles.stopDotPriority : ''}`} style={{ background: color, borderColor: color }}>
-                          {si + 1}
-                        </div>
-                        <div className={styles.stopBody}>
-                          <div className={styles.stopCode}>
-                            {s.site_code || '—'}
-                            {s._priority && <span className={styles.priorityChip}>Priority</span>}
+            {!!team.days.length && (
+              <div className={styles.daysGrid}>
+                {team.days.map(day => (
+                  <div key={day.dayNum} className={styles.dayCard}>
+                    <div className={styles.dayHead}>
+                      <span className={styles.dayTitle}>Day {day.dayNum}</span>
+                      <span className={styles.dayMeta}>
+                        <span className={styles.dayMetaChip}>{day.stops.length} sites</span>
+                        <span className={styles.dayMetaChip} title={day.road ? 'Real road distance (OpenRouteService)' : 'Straight-line estimate'}>
+                          {day.distanceKm.toFixed(1)} km{day.road ? ' 🛣️' : ''}
+                        </span>
+                        <span className={styles.dayMetaChip}>{formatMin(day.minutes)} drive</span>
+                      </span>
+                    </div>
+                    <div className={styles.timeline}>
+                      {day.stops.map((stop, si) => {
+                        const s = stop.site;
+                        const isVeryFirst = day.dayNum === 1 && si === 0;
+                        let legLabel: string;
+                        if (isVeryFirst && !plan.startLoc) legLabel = 'Route start';
+                        else if (isVeryFirst && plan.startLoc) legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from ${plan.startLoc._label || 'start'}`;
+                        else if (si === 0) legLabel = stop.legMin > 0 ? `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} continuing` : 'Continues from previous day';
+                        else legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from prev`;
+                        return (
+                          <div key={si} className={styles.stop}>
+                            <div className={`${styles.stopDot} ${s._priority ? styles.stopDotPriority : ''}`} style={{ background: color, borderColor: color }}>
+                              {si + 1}
+                            </div>
+                            <div className={styles.stopBody}>
+                              <div className={styles.stopCode}>
+                                {s.site_code || '—'}
+                                {s._priority && <span className={styles.priorityChip}>Priority</span>}
+                              </div>
+                              <div className={styles.stopName}>{s.site_name || '—'}{s.governorate ? ` · ${s.governorate}` : ''}</div>
+                              <div className={styles.stopLeg}>{legLabel}</div>
+                            </div>
                           </div>
-                          <div className={styles.stopName}>{s.site_name || '—'}{s.governorate ? ` · ${s.governorate}` : ''}</div>
-                          <div className={styles.stopLeg}>{legLabel}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         );
       })}
