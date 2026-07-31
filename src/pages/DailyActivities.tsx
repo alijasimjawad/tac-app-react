@@ -11,6 +11,22 @@ import styles from './DailyActivities.module.css';
 const ACTIVITY_TYPES = ['Installation', 'Maintenance', 'Survey', 'Testing', 'Commissioning', 'Integration', 'Clearance'];
 const STATUS_OPTIONS = ['In Progress', 'Completed', 'Blocked'];
 
+const ACTIVITY_TYPE_KEYS: Record<string, string> = {
+  'Installation': 'da_type_installation',
+  'Maintenance':  'da_type_maintenance',
+  'Survey':       'da_type_survey',
+  'Testing':      'da_type_testing',
+  'Commissioning':'da_type_commissioning',
+  'Integration':  'da_type_integration',
+  'Clearance':    'da_type_clearance',
+};
+
+const STATUS_KEYS: Record<string, string> = {
+  'Completed':   'da_completed',
+  'In Progress': 'da_inProgress',
+  'Blocked':     'da_blocked',
+};
+
 interface DailyActivity {
   id: string;
   date: string;
@@ -247,8 +263,8 @@ export default function DailyActivities() {
 
   // Debounce the search box so filtering doesn't re-run on every keystroke.
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
   }, [searchQuery]);
 
   useEffect(() => {
@@ -472,12 +488,12 @@ export default function DailyActivities() {
   // ── Inline field validation ──
   function validateForm(): Record<string, string> {
     const errs: Record<string, string> = {};
-    if (!date) errs.date = 'Date is required.';
-    if (!project) errs.project = 'Project is required.';
+    if (!date) errs.date = t('da_dateRequired');
+    if (!project) errs.project = t('da_projectRequired');
     const hasSite = siteTags.length > 0 || siteInput.trim().length > 0;
-    if (!hasSite) errs.site_id = 'At least one Site ID is required.';
-    if (!activityType) errs.activityType = 'Activity type is required.';
-    if (!status) errs.status = 'Status is required.';
+    if (!hasSite) errs.site_id = t('da_siteRequired');
+    if (!activityType) errs.activityType = t('da_actTypeRequired');
+    if (!status) errs.status = t('da_statusRequired');
     return errs;
   }
 
@@ -486,7 +502,7 @@ export default function DailyActivities() {
     const errs = validateForm();
     setFieldErrors(errs);
     if (Object.keys(errs).length > 0) {
-      showToast('Please fix the highlighted fields.', false);
+      showToast(t('da_pleaseFixFields'), false);
       return;
     }
 
@@ -509,14 +525,14 @@ export default function DailyActivities() {
 
     if (editingId) {
       const reason = await promptReason();
-      if (!reason) { showToast('Update cancelled — a reason is required.', false); setSaving(false); return; }
+      if (!reason) { showToast(t('da_updateCancelled'), false); setSaving(false); return; }
       const payload = {
         ...v, is_edited: true, edit_reason: reason,
         updated_at: new Date().toISOString(), updated_by: byUser,
       };
       const { error } = await supabase.from('daily_activities').update(payload).eq('id', editingId);
       if (error) { showToast(error.message, false); setSaving(false); return; }
-      showToast('Activity updated!', true);
+      showToast(t('da_activityUpdated'), true);
       ftSyncTrip(editingId, v, byUser).catch(() => {});
       setEditingId(null);
     } else {
@@ -524,7 +540,7 @@ export default function DailyActivities() {
       const { data: inserted, error } = await supabase
         .from('daily_activities').insert(payload).select().single();
       if (error) { showToast(error.message, false); setSaving(false); return; }
-      showToast('Activity saved!', true);
+      showToast(t('da_activitySaved'), true);
       if (inserted?.id) ftCreateTrip(inserted.id, v, byUser).catch(() => {});
     }
 
@@ -568,18 +584,18 @@ export default function DailyActivities() {
     setSelectedMemberIds(new Set(a.team_member_ids || []));
     setMemberSearch('');
     formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    showToast('Editing activity — update the form and click Update Activity.', true);
+    showToast(t('da_editingNotice'), true);
   }
 
   function cancelEdit() {
     setEditingId(null);
     resetForm();
-    showToast('Edit cancelled.', true);
+    showToast(t('da_editCancelled'), true);
   }
 
   // ── Delete ──
   async function deleteActivity(id: string) {
-    if (!window.confirm('Delete this activity?')) return;
+    if (!window.confirm(t('da_deleteConfirm'))) return;
     const a = activities.find(x => x.id === id);
     // Delete trip participants first (no guarantee of cascade), then trip, then activity
     const { data: trip } = await supabase.from('field_trips').select('id').eq('daily_activity_id', id).single();
@@ -590,7 +606,7 @@ export default function DailyActivities() {
     const { error } = await supabase.from('daily_activities').delete().eq('id', id);
     if (error) { showToast(error.message, false); return; }
     setActivities(prev => prev.filter(x => x.id !== id));
-    showToast('Deleted.', true);
+    showToast(t('da_deleted'), true);
     logActivity({
       userFullName: currentUser?.full_name ?? currentUser?.username,
       action: 'Deleted Daily Activity',
@@ -660,9 +676,9 @@ export default function DailyActivities() {
   }
 
   function statusPill(s: string | null) {
-    if (s === 'Completed') return <span className={`${styles.pill} ${styles.pillDone}`}><span className={styles.dot} />{s}</span>;
-    if (s === 'In Progress') return <span className={`${styles.pill} ${styles.pillInprog}`}><span className={styles.dot} />{s}</span>;
-    if (s === 'Blocked') return <span className={`${styles.pill} ${styles.pillBlocked}`}><span className={styles.dot} />{s}</span>;
+    if (s === 'Completed')  return <span className={`${styles.pill} ${styles.pillDone}`}><span className={styles.dot} />{t('da_completed')}</span>;
+    if (s === 'In Progress') return <span className={`${styles.pill} ${styles.pillInprog}`}><span className={styles.dot} />{t('da_inProgress')}</span>;
+    if (s === 'Blocked')    return <span className={`${styles.pill} ${styles.pillBlocked}`}><span className={styles.dot} />{t('da_blocked')}</span>;
     return <span className={styles.pill}>{s || '—'}</span>;
   }
 
@@ -820,7 +836,7 @@ export default function DailyActivities() {
     return (
       <div className={styles.page}>
         <p style={{ color: 'var(--text-muted)', marginTop: 40 }}>
-          You do not have permission to view this page.
+          {t('ns_noPermission')}
         </p>
       </div>
     );
@@ -864,9 +880,9 @@ export default function DailyActivities() {
             </svg>
           </div>
           <div>
-            <div className={styles.kpiLabel}>Total Activities</div>
+            <div className={styles.kpiLabel}>{t('da_totalActivities')}</div>
             <div className={styles.kpiValue}>{loading ? '—' : total}</div>
-            <div className={styles.kpiSub}>All recorded activities</div>
+            <div className={styles.kpiSub}>{t('da_allRecorded')}</div>
           </div>
         </div>
         <div className={`${styles.kpiCard} ${styles.kpiGreen}`}>
@@ -878,7 +894,7 @@ export default function DailyActivities() {
           <div>
             <div className={styles.kpiLabel}>{t('da_completed')}</div>
             <div className={styles.kpiValue}>{loading ? '—' : completed}</div>
-            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(completed)}% of total activities`}</div>
+            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : t('da_pctOfTotal', { pct: pct(completed) })}</div>
           </div>
         </div>
         <div className={`${styles.kpiCard} ${styles.kpiAmber}`}>
@@ -890,7 +906,7 @@ export default function DailyActivities() {
           <div>
             <div className={styles.kpiLabel}>{t('da_inProgress')}</div>
             <div className={styles.kpiValue}>{loading ? '—' : inProg}</div>
-            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(inProg)}% of total activities`}</div>
+            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : t('da_pctOfTotal', { pct: pct(inProg) })}</div>
           </div>
         </div>
         <div className={`${styles.kpiCard} ${styles.kpiRed}`}>
@@ -903,7 +919,7 @@ export default function DailyActivities() {
           <div>
             <div className={styles.kpiLabel}>{t('da_blocked')}</div>
             <div className={styles.kpiValue}>{loading ? '—' : blocked}</div>
-            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(blocked)}% of total activities`}</div>
+            <div className={styles.kpiSub}>{loading || total === 0 ? '—' : t('da_pctOfTotal', { pct: pct(blocked) })}</div>
           </div>
         </div>
       </div>
@@ -1048,7 +1064,7 @@ export default function DailyActivities() {
                       value={activityType}
                       onChange={e => { setActivityType(e.target.value); setFieldErrors(fe => ({ ...fe, activityType: '' })); }}
                     >
-                      {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      {ACTIVITY_TYPES.map(atype => <option key={atype} value={atype}>{t(ACTIVITY_TYPE_KEYS[atype] ?? atype)}</option>)}
                     </select>
                     {fieldErrors.activityType && <span className={styles.fieldErrMsg}>{fieldErrors.activityType}</span>}
                   </div>
@@ -1059,7 +1075,7 @@ export default function DailyActivities() {
                       value={status}
                       onChange={e => { setStatus(e.target.value); setFieldErrors(fe => ({ ...fe, status: '' })); }}
                     >
-                      {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                      {STATUS_OPTIONS.map(s => <option key={s} value={s}>{t(STATUS_KEYS[s] ?? s)}</option>)}
                     </select>
                     {fieldErrors.status && <span className={styles.fieldErrMsg}>{fieldErrors.status}</span>}
                   </div>
@@ -1084,7 +1100,7 @@ export default function DailyActivities() {
                   <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                   <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
-                <div className={styles.subCardTitle}>Team Members</div>
+                <div className={styles.subCardTitle}>{t('da_teamMembersLabel')}</div>
               </div>
               <div className={styles.subCardBody}>
                 <div
@@ -1098,7 +1114,7 @@ export default function DailyActivities() {
                     ref={memberSearchInputRef}
                     className={styles.memberSearchInput}
                     type="text"
-                    placeholder="Search team members…"
+                    placeholder={t('da_searchMembers')}
                     value={memberSearch}
                     onFocus={() => setMemberDropdownOpen(true)}
                     onBlur={() => setTimeout(() => setMemberDropdownOpen(false), 150)}
@@ -1112,7 +1128,7 @@ export default function DailyActivities() {
                 {(memberDropdownOpen || memberSearch.trim()) && (
                   <div className={styles.memberSearchResults}>
                     {filteredNonSelected.length === 0 ? (
-                      <div className={styles.memberSearchEmpty}>No members found</div>
+                      <div className={styles.memberSearchEmpty}>{t('da_noMembersFound')}</div>
                     ) : filteredNonSelected.map(m => {
                       const isBusy = busyIds.has(m.id);
                       const rt = roleTag(m.role);
@@ -1128,7 +1144,7 @@ export default function DailyActivities() {
                           <span className={styles.chipAv}>{initials(m.full_name)}</span>
                           <span className={styles.memberSearchName}>{m.full_name}</span>
                           {rt && <span className={styles.roleTag} style={{ background: rt.bg, color: rt.text }} title={rt.title}>{rt.label}</span>}
-                          {isBusy && <span className={styles.chipBusyTag}>Assigned</span>}
+                          {isBusy && <span className={styles.chipBusyTag}>{t('da_assigned')}</span>}
                         </div>
                       );
                     })}
@@ -1137,7 +1153,7 @@ export default function DailyActivities() {
 
                 <div className={styles.memberMeta}>
                   <span className={styles.memberCount}>
-                    {selectedMemberIds.size} member{selectedMemberIds.size !== 1 ? 's' : ''} selected
+                    {t('da_membersSelected', { count: selectedMemberIds.size })}
                   </span>
                   {selectedMemberIds.size > 0 && (
                     <button
@@ -1145,14 +1161,14 @@ export default function DailyActivities() {
                       className={styles.clearAllBtn}
                       onClick={() => setSelectedMemberIds(new Set())}
                     >
-                      Clear all
+                      {t('da_clearAll')}
                     </button>
                   )}
                 </div>
 
                 <div className={styles.selectedChipsWrap}>
                   {selectedMemberIds.size === 0 ? (
-                    <span className={styles.noSelectionHint}>Search above to add team members</span>
+                    <span className={styles.noSelectionHint}>{t('da_addMembersHint')}</span>
                   ) : [...selectedMemberIds].map(id => {
                     const member = teamMembers.find(m => m.id === id);
                     if (!member) return null;
@@ -1190,16 +1206,16 @@ export default function DailyActivities() {
                 <polyline points="17 21 17 13 7 13 7 21"/>
                 <polyline points="7 3 7 8 15 8"/>
               </svg>
-              {saving ? 'Saving…' : editingId ? 'Update Activity' : 'Save Activity'}
+              {saving ? t('da_saving') : editingId ? t('da_updateActivity') : t('da_saveActivity')}
             </button>
             {editingId && (
-              <button className={styles.btnGhost} onClick={cancelEdit}>Cancel Edit</button>
+              <button className={styles.btnGhost} onClick={cancelEdit}>{t('da_cancelEdit')}</button>
             )}
             <button className={`${styles.btnGhost} ${styles.btnWa}`} onClick={sendWa}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
               </svg>
-              Send to WhatsApp
+              {t('da_sendToWhatsApp')}
             </button>
           </div>
         </div>
@@ -1213,8 +1229,8 @@ export default function DailyActivities() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
-            Activity History
-            <span className={styles.countBadge}>{sortedActivities.length} records</span>
+            {t('da_historyTitle')}
+            <span className={styles.countBadge}>{t('da_records', { count: sortedActivities.length })}</span>
           </div>
 
           <div className={styles.historyToolbar}>
@@ -1224,29 +1240,29 @@ export default function DailyActivities() {
               </svg>
               <input
                 type="text"
-                placeholder="Search by site, project, team…"
+                placeholder={t('da_searchHistPh')}
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
             <select className={styles.filterSelect} value={filterProject} onChange={e => setFilterProject(e.target.value)}>
-              <option value="All">All Projects</option>
+              <option value="All">{t('da_allProjects')}</option>
               {projectNames.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
             <select className={styles.filterSelect} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-              <option value="All">All Status</option>
-              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              <option value="All">{t('da_allStatus')}</option>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{t(STATUS_KEYS[s] ?? s)}</option>)}
             </select>
             <select
               className={styles.filterSelect}
               value=""
-              title="Quick date range"
+              title={t('da_quickRange')}
               onChange={e => { if (e.target.value) applyDatePreset(e.target.value as 'today' | 'week' | 'month'); }}
             >
-              <option value="">Quick range</option>
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
+              <option value="">{t('da_quickRange')}</option>
+              <option value="today">{t('da_today_filter')}</option>
+              <option value="week">{t('da_thisWeek')}</option>
+              <option value="month">{t('da_thisMonth')}</option>
             </select>
             <div className={styles.dateRangeBox}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1255,14 +1271,14 @@ export default function DailyActivities() {
               </svg>
               <div className={styles.dateInputWrap}>
                 <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-                {!dateFrom && <span className={styles.dateInputPlaceholder}>From</span>}
+                {!dateFrom && <span className={styles.dateInputPlaceholder}>{t('da_fromPh')}</span>}
               </div>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={styles.dateRangeArrow}>
                 <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
               </svg>
               <div className={styles.dateInputWrap}>
                 <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
-                {!dateTo && <span className={styles.dateInputPlaceholder}>To</span>}
+                {!dateTo && <span className={styles.dateInputPlaceholder}>{t('da_toPh')}</span>}
               </div>
               {(dateFrom || dateTo) && (
                 <button
@@ -1281,19 +1297,19 @@ export default function DailyActivities() {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
               </svg>
-              Filters
+              {t('da_filters')}
               {hasAdvancedFilters && <span className={styles.filtersDot} />}
             </button>
-            <button type="button" className={styles.exportBtn} title="Export filtered results as Excel" onClick={exportCsv}>
+            <button type="button" className={styles.exportBtn} title={t('da_export')} onClick={exportCsv}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Export
+              {t('da_export')}
             </button>
             {hasActiveFilters && (
               <button type="button" className={styles.clearFiltersBtn} onClick={clearFilters}>
-                Clear Filters
+                {t('da_clearFilters')}
               </button>
             )}
           </div>
@@ -1313,16 +1329,16 @@ export default function DailyActivities() {
         {showAdvancedFilters && (
           <div className={styles.advancedFiltersRow}>
             <div className={styles.advFilterField}>
-              <label>Activity Type</label>
+              <label>{t('da_activityTypeFilter')}</label>
               <select value={filterActivityType} onChange={e => setFilterActivityType(e.target.value)}>
-                <option value="All">All Activity Types</option>
-                {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                <option value="All">{t('da_allActivityTypes')}</option>
+                {ACTIVITY_TYPES.map(atype => <option key={atype} value={atype}>{t(ACTIVITY_TYPE_KEYS[atype] ?? atype)}</option>)}
               </select>
             </div>
             <div className={styles.advFilterField}>
-              <label>Issued By</label>
+              <label>{t('da_issuedByFilter')}</label>
               <select value={filterIssuedBy} onChange={e => setFilterIssuedBy(e.target.value)}>
-                <option value="">All Issuers</option>
+                <option value="">{t('da_allIssuers')}</option>
                 {issuedByOptions.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </div>
@@ -1334,20 +1350,20 @@ export default function DailyActivities() {
             <thead>
               <tr>
                 <th className={styles.sortableTh} onClick={() => toggleSort('date')}>
-                  <span>Date{sortIndicator('date')}</span>
+                  <span>{t('da_dateCol')}{sortIndicator('date')}</span>
                 </th>
                 <th className={styles.sortableTh} onClick={() => toggleSort('project')}>
-                  <span>Project{sortIndicator('project')}</span>
+                  <span>{t('da_projectCol')}{sortIndicator('project')}</span>
                 </th>
-                <th>Site ID</th>
-                <th>Governorate</th>
-                <th>Team</th>
-                <th>Activity</th>
+                <th>{t('da_siteIdCol')}</th>
+                <th>{t('da_governorateCol')}</th>
+                <th>{t('da_teamCol')}</th>
+                <th>{t('da_activityCol')}</th>
                 <th className={styles.sortableTh} onClick={() => toggleSort('status')}>
-                  <span>Status{sortIndicator('status')}</span>
+                  <span>{t('da_statusCol')}{sortIndicator('status')}</span>
                 </th>
-                <th>Issued By</th>
-                <th>Actions</th>
+                <th>{t('da_issuedByCol')}</th>
+                <th>{t('da_actionsCol')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1360,7 +1376,7 @@ export default function DailyActivities() {
                   </tr>
                 ))
               ) : pagedActivities.length === 0 ? (
-                <tr><td colSpan={9} className={styles.empty}>{visibleActivities.length === 0 ? 'No activities yet.' : 'No activities match your filters.'}</td></tr>
+                <tr><td colSpan={9} className={styles.empty}>{visibleActivities.length === 0 ? t('da_noActivities') : t('da_noFilterMatch')}</td></tr>
               ) : pagedActivities.map(a => {
                 const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names : [];
                 const updatedTitle = a.is_edited
@@ -1388,7 +1404,7 @@ export default function DailyActivities() {
                     <td data-label="Activity" style={{ fontSize: 13 }}>{a.activity_type || ''}</td>
                     <td data-label="Status">
                       {statusPill(a.status)}
-                      {a.is_edited && <span className={styles.updatedBadge} title={updatedTitle}>Updated</span>}
+                      {a.is_edited && <span className={styles.updatedBadge} title={updatedTitle}>{t('da_updated')}</span>}
                     </td>
                     <td data-label="Issued By" style={{ fontSize: 12.5, color: 'var(--slate-600)' }}>{a.created_by || '—'}</td>
                     <td data-label="Actions">
@@ -1433,8 +1449,8 @@ export default function DailyActivities() {
         <div className={styles.paginationBar}>
           <div className={styles.paginationInfo}>
             {sortedActivities.length === 0
-              ? 'No entries'
-              : `Showing ${pageStart + 1} to ${Math.min(pageStart + rowsPerPage, sortedActivities.length)} of ${sortedActivities.length} entries`}
+              ? t('da_noEntries')
+              : t('da_showingEntries', { from: pageStart + 1, to: Math.min(pageStart + rowsPerPage, sortedActivities.length), total: sortedActivities.length })}
           </div>
           <div className={styles.paginationControls}>
             <select
@@ -1442,9 +1458,9 @@ export default function DailyActivities() {
               value={rowsPerPage}
               onChange={e => setRowsPerPage(Number(e.target.value))}
             >
-              <option value={10}>10 per page</option>
-              <option value={25}>25 per page</option>
-              <option value={50}>50 per page</option>
+              <option value={10}>10 {t('da_perPage')}</option>
+              <option value={25}>25 {t('da_perPage')}</option>
+              <option value={50}>50 {t('da_perPage')}</option>
             </select>
             <button
               type="button"
@@ -1476,21 +1492,21 @@ export default function DailyActivities() {
       {reasonModal && (
         <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) cancelReason(); }}>
           <div className={styles.modal}>
-            <p className={styles.modalTitle}>Reason for Update</p>
-            <p className={styles.modalSub}>Provide a mandatory reason before saving the edit.</p>
+            <p className={styles.modalTitle}>{t('da_reasonTitle')}</p>
+            <p className={styles.modalSub}>{t('da_reasonSub')}</p>
             <input
               className={styles.modalInput}
               type="text"
-              placeholder="e.g. Corrected site ID…"
+              placeholder={t('da_reasonPh')}
               value={reasonVal}
               autoFocus
               onChange={e => { setReasonVal(e.target.value); setReasonErr(false); }}
               onKeyDown={e => { if (e.key === 'Enter') confirmReason(); if (e.key === 'Escape') cancelReason(); }}
             />
-            <div className={styles.modalErr}>{reasonErr ? 'A reason is required.' : ''}</div>
+            <div className={styles.modalErr}>{reasonErr ? t('da_reasonRequired') : ''}</div>
             <div className={styles.modalActions}>
-              <button className={styles.btnGhost} onClick={cancelReason}>Cancel</button>
-              <button className={styles.btnPrimary} onClick={confirmReason}>Confirm Update</button>
+              <button className={styles.btnGhost} onClick={cancelReason}>{t('sidebar_cancel')}</button>
+              <button className={styles.btnPrimary} onClick={confirmReason}>{t('da_confirmUpdate')}</button>
             </div>
           </div>
         </div>
@@ -1500,7 +1516,7 @@ export default function DailyActivities() {
       {viewActivity && (
         <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setViewActivity(null); }}>
           <div className={styles.modal} style={{ width: 500 }}>
-            <p className={styles.modalTitle}>Activity Detail</p>
+            <p className={styles.modalTitle}>{t('da_activityDetail')}</p>
             <div className={styles.viewGrid}>
               <div className={styles.viewRow}>
                 <span className={styles.viewLabel}>Date</span>
@@ -1550,9 +1566,9 @@ export default function DailyActivities() {
             )}
             <div className={styles.modalActions} style={{ marginTop: 16 }}>
               <button className={styles.btnGhost} onClick={() => shareWa(viewActivity)}>
-                Share WhatsApp
+                {t('da_shareWhatsApp')}
               </button>
-              <button className={styles.btnPrimary} onClick={() => setViewActivity(null)}>Close</button>
+              <button className={styles.btnPrimary} onClick={() => setViewActivity(null)}>{t('da_close')}</button>
             </div>
           </div>
         </div>

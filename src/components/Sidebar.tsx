@@ -68,6 +68,7 @@ function CollapseIcon({ collapsed }: { collapsed: boolean }) {
 
 function NetworkScopesTree() {
   const { hasPerm, currentUser } = useAuth();
+  const { t } = useTranslation();
   const params = useParams<{ proj?: string; sec?: string }>();
   const navigate = useNavigate();
   const [sections, setSections] = useState<SectionMeta[]>([]);
@@ -195,7 +196,7 @@ function NetworkScopesTree() {
   async function confirmAddSection() {
     if (!addSecState) return;
     const name = addSecState.name.trim();
-    if (!name) { setSecError('Name cannot be empty'); return; }
+    if (!name) { setSecError(t('sidebar_nameEmpty')); return; }
     const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'section';
     const key  = base + '_' + Date.now().toString(36);
     setSecModalSaving(true);
@@ -240,7 +241,7 @@ function NetworkScopesTree() {
   async function confirmRenameSection() {
     if (!renameSecState) return;
     const label = renameSecState.name.trim();
-    if (!label) { setSecError('Name cannot be empty'); return; }
+    if (!label) { setSecError(t('sidebar_nameEmpty')); return; }
     setSecModalSaving(true);
     setSecError(null);
     let secId = renameSecState.secId;
@@ -268,7 +269,7 @@ function NetworkScopesTree() {
   async function confirmDeleteSection() {
     if (!deleteSecState) return;
     if (deleteSecState.typed.toLowerCase() !== deleteSecState.label.toLowerCase()) {
-      setSecError('Section name does not match');
+      setSecError(t('sidebar_nameNoMatch'));
       return;
     }
     setSecModalSaving(true);
@@ -320,7 +321,7 @@ function NetworkScopesTree() {
       <div className={styles.nsSectionHdr} onClick={() => setNsCollapsed(v => !v)}>
         <div className={styles.nsHdrLeft}>
           <GridTableIcon />
-          <span>Network Scopes</span>
+          <span>{t('sidebar_networkScopes')}</span>
         </div>
         <svg
           className={`${styles.nsChevron} ${nsCollapsed ? styles.nsChevronClosed : ''}`}
@@ -378,7 +379,7 @@ function NetworkScopesTree() {
                                     setSecMenu(menuOpen ? null : { proj, key });
                                     setSecError(null);
                                   }}
-                                  title="Section options"
+                                  title={t('sidebar_sectionOptions')}
                                 >
                                   ⋮
                                 </button>
@@ -393,7 +394,7 @@ function NetworkScopesTree() {
                                           setRenameSecState({ proj, secId: id, sectionKey: key, name: label });
                                         }}
                                       >
-                                        Rename
+                                        {t('sidebar_rename')}
                                       </button>
                                     )}
                                     {hasPerm('sdb_delete_section') && (
@@ -405,7 +406,7 @@ function NetworkScopesTree() {
                                           setDeleteSecState({ proj, secId: id, key, label, isCustom, typed: '' });
                                         }}
                                       >
-                                        Delete
+                                        {t('sidebar_delete')}
                                       </button>
                                     )}
                                   </div>
@@ -420,7 +421,7 @@ function NetworkScopesTree() {
                           className={styles.addSecBtn}
                           onClick={() => { setSecError(null); setAddSecState({ proj, name: '' }); }}
                         >
-                          + Add Section
+                          {t('sidebar_addSection')}
                         </button>
                       )}
                     </div>
@@ -436,13 +437,13 @@ function NetworkScopesTree() {
       {addSecState && createPortal(
         <div className={styles.secModalOverlay} onClick={() => !secModalSaving && setAddSecState(null)}>
           <div className={styles.secModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.secModalTitle}>Add Section — {PROJ_NAMES[addSecState.proj]}</div>
+            <div className={styles.secModalTitle}>{t('sidebar_addSection')} — {PROJ_NAMES[addSecState.proj]}</div>
             <div className={styles.secModalDesc}>
-              Enter a name for the new section. It will appear in the sidebar immediately.
+              {t('sidebar_newSectionDesc')}
             </div>
             <input
               className={styles.secModalInput}
-              placeholder="Section name"
+              placeholder={t('sidebar_sectionPh')}
               value={addSecState.name}
               autoFocus
               onChange={e => setAddSecState(s => s ? { ...s, name: e.target.value } : null)}
@@ -451,10 +452,10 @@ function NetworkScopesTree() {
             {secError && <div className={styles.secModalError}>{secError}</div>}
             <div className={styles.secModalActions}>
               <button className={styles.sbBtnGreen} disabled={secModalSaving} onClick={confirmAddSection}>
-                {secModalSaving ? 'Creating…' : 'Create Section'}
+                {secModalSaving ? t('sidebar_creating') : t('sidebar_createSection')}
               </button>
               <button className={styles.sbBtnGhost} disabled={secModalSaving} onClick={() => setAddSecState(null)}>
-                Cancel
+                {t('sidebar_cancel')}
               </button>
             </div>
           </div>
@@ -466,10 +467,10 @@ function NetworkScopesTree() {
       {renameSecState && createPortal(
         <div className={styles.secModalOverlay} onClick={() => !secModalSaving && setRenameSecState(null)}>
           <div className={styles.secModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.secModalTitle}>Rename Section</div>
+            <div className={styles.secModalTitle}>{t('sidebar_renameSection')}</div>
             <input
               className={styles.secModalInput}
-              placeholder="New section name"
+              placeholder={t('sidebar_sectionPh')}
               value={renameSecState.name}
               autoFocus
               onChange={e => setRenameSecState(s => s ? { ...s, name: e.target.value } : null)}
@@ -478,10 +479,10 @@ function NetworkScopesTree() {
             {secError && <div className={styles.secModalError}>{secError}</div>}
             <div className={styles.secModalActions}>
               <button className={styles.sbBtnGreen} disabled={secModalSaving} onClick={confirmRenameSection}>
-                {secModalSaving ? 'Saving…' : 'Rename'}
+                {secModalSaving ? t('sidebar_saving') : t('sidebar_rename')}
               </button>
               <button className={styles.sbBtnGhost} disabled={secModalSaving} onClick={() => setRenameSecState(null)}>
-                Cancel
+                {t('sidebar_cancel')}
               </button>
             </div>
           </div>
@@ -493,7 +494,7 @@ function NetworkScopesTree() {
       {deleteSecState && createPortal(
         <div className={styles.secModalOverlay} onClick={() => !secModalSaving && setDeleteSecState(null)}>
           <div className={styles.secModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.secModalTitle}>Delete Section</div>
+            <div className={styles.secModalTitle}>{t('sidebar_deleteSection')}</div>
             <div className={styles.secModalDesc}>
               Type <strong>{deleteSecState.label}</strong> to confirm.
               {' '}
@@ -503,7 +504,7 @@ function NetworkScopesTree() {
             </div>
             <input
               className={styles.secModalInput}
-              placeholder="Type section name to confirm"
+              placeholder={t('sidebar_deleteSectionDesc')}
               value={deleteSecState.typed}
               autoFocus
               onChange={e => setDeleteSecState(s => s ? { ...s, typed: e.target.value } : null)}
@@ -512,10 +513,10 @@ function NetworkScopesTree() {
             {secError && <div className={styles.secModalError}>{secError}</div>}
             <div className={styles.secModalActions}>
               <button className={styles.sbBtnDanger} disabled={secModalSaving} onClick={confirmDeleteSection}>
-                {secModalSaving ? 'Deleting…' : 'Delete Section'}
+                {secModalSaving ? t('sidebar_deleting') : t('sidebar_deleteSection')}
               </button>
               <button className={styles.sbBtnGhost} disabled={secModalSaving} onClick={() => setDeleteSecState(null)}>
-                Cancel
+                {t('sidebar_cancel')}
               </button>
             </div>
           </div>
@@ -575,6 +576,7 @@ interface NavGroupProps {
 
 function FinanceNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const { hasPerm } = useAuth();
+  const { t } = useTranslation();
 
   const FIN_LINKS = VIEW_FINANCE.filter(({ key }) => hasPerm(key));
 
@@ -585,7 +587,7 @@ function FinanceNavGroup({ isExpanded, onToggle }: NavGroupProps) {
       <div className={styles.nsSectionHdr} onClick={onToggle}>
         <div className={styles.nsHdrLeft}>
           <FinanceIcon />
-          <span>Finance</span>
+          <span>{t('sidebar_finance')}</span>
         </div>
         <svg
           className={`${styles.nsChevron} ${isExpanded ? '' : styles.nsChevronClosed}`}
@@ -625,6 +627,7 @@ function FinanceNavGroup({ isExpanded, onToggle }: NavGroupProps) {
 
 function HrNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const { hasPerm } = useAuth();
+  const { t } = useTranslation();
 
   const HR_LINKS = [
     ...VIEW_HR.filter(({ key }) => hasPerm(key)),
@@ -637,7 +640,7 @@ function HrNavGroup({ isExpanded, onToggle }: NavGroupProps) {
       <div className={styles.nsSectionHdr} onClick={onToggle}>
         <div className={styles.nsHdrLeft}>
           <HrGroupIcon />
-          <span>HR</span>
+          <span>{t('sidebar_hr')}</span>
         </div>
         <svg
           className={`${styles.nsChevron} ${isExpanded ? '' : styles.nsChevronClosed}`}
@@ -677,6 +680,7 @@ function HrNavGroup({ isExpanded, onToggle }: NavGroupProps) {
 
 function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   const { currentUser, hasPerm } = useAuth();
+  const { t } = useTranslation();
   const isAdmin = currentUser?.role === 'admin';
 
   const ADMIN_LINKS = [
@@ -692,7 +696,7 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
       <div className={styles.nsSectionHdr} onClick={onToggle}>
         <div className={styles.nsHdrLeft}>
           <AdminGroupIcon />
-          <span>Admin</span>
+          <span>{t('sidebar_admin')}</span>
         </div>
         <svg
           className={`${styles.nsChevron} ${isExpanded ? '' : styles.nsChevronClosed}`}
@@ -877,6 +881,7 @@ interface SidebarProps {
 
 export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   const { hasPerm, currentUser, logout } = useAuth();
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
@@ -968,10 +973,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   ];
 
   const NAV_PERSONAL = [
-    { to: '/my-profile',  label: 'My Profile',    icon: ProfileIcon },
+    { to: '/my-profile',  label: t('nav_myProfile'),  icon: ProfileIcon },
     ...(hasPerm(myAttendanceDef.key)  ? [{ to: myAttendanceDef.to,  label: myAttendanceDef.label,  icon: ClockIcon }]      : []),
     ...(hasPerm(myTripsDef.key)       ? [{ to: myTripsDef.to,       label: myTripsDef.label,       icon: CarIcon }]        : []),
-    { to: '/my-expenses', label: 'My Expenses',   icon: ReceiptIcon },
+    { to: '/my-expenses', label: t('nav_myExpenses'), icon: ReceiptIcon },
   ];
 
   const navLinks = (items: typeof NAV_TOP) => items.map(({ to, label, icon: Icon }) => (
@@ -1027,10 +1032,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             <NetworkScopesTree />
 
             <nav className={styles.nav} aria-label="Tools">
-              {NAV_TOOLS.length > 0 && <div className={styles.fieldNavLabel}>WORK TOOLS</div>}
+              {NAV_TOOLS.length > 0 && <div className={styles.fieldNavLabel}>{t('sidebar_workTools')}</div>}
               {navLinks(NAV_TOOLS)}
 
-              <div className={styles.fieldNavLabel}>MY SPACE</div>
+              <div className={styles.fieldNavLabel}>{t('sidebar_mySpace')}</div>
               {navLinks(NAV_PERSONAL)}
             </nav>
 
@@ -1063,7 +1068,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            <span className={styles.mobileSignOutLabel}>Sign out</span>
+            <span className={styles.mobileSignOutLabel}>{t('sidebar_signOut')}</span>
           </button>
         </div>
       </aside>

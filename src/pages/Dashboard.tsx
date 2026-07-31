@@ -123,20 +123,22 @@ function calcPct(count: number, total: number): number {
   return total > 0 ? Math.min(100, Math.round((count / total) * 100)) : 0;
 }
 
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
+
 function getProjStatus(projTotal: number, projInstalled: number, projRejected: number) {
-  if (projTotal === 0)                            return { label: 'No Data',        cls: styles.badgeGray  };
-  if (projInstalled >= projTotal)                 return { label: 'Complete',       cls: styles.badgeGreen };
-  if (projTotal > 0 && projRejected / projTotal > 0.1) return { label: 'High Rejection', cls: styles.badgeRed   };
-  return                                                 { label: 'In Progress',    cls: styles.badgeBlue  };
+  if (projTotal === 0)                                   return { statusKey: 'dash_projStatus_noData',   cls: styles.badgeGray  };
+  if (projInstalled >= projTotal)                        return { statusKey: 'dash_projStatus_complete', cls: styles.badgeGreen };
+  if (projTotal > 0 && projRejected / projTotal > 0.1)  return { statusKey: 'dash_projStatus_highRej',  cls: styles.badgeRed   };
+  return                                                        { statusKey: 'dash_projStatus_inProg',   cls: styles.badgeBlue  };
 }
 
-function formatRelativeTime(d: Date): string {
+function formatRelativeTime(d: Date, t: TFn): string {
   const mins = Math.floor((Date.now() - d.getTime()) / 60_000);
-  if (mins < 1)  return 'just now';
-  if (mins === 1) return '1 minute ago';
-  if (mins < 60) return `${mins} minutes ago`;
+  if (mins < 1)   return t('dash_justNow');
+  if (mins === 1)  return t('dash_minuteAgo');
+  if (mins < 60)  return t('dash_minutesAgo', { count: mins });
   const h = Math.floor(mins / 60);
-  return h === 1 ? '1 hour ago' : `${h} hours ago`;
+  return h === 1 ? t('dash_hourAgo') : t('dash_hoursAgo', { count: h });
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -241,6 +243,7 @@ const DONUT_BASE_OPTIONS = {
 function OverallProgressCard({ total, installed, accepted, rejected, remaining }: {
   total: number; installed: number; accepted: number; rejected: number; remaining: number;
 }) {
+  const { t } = useTranslation();
   const atpPct       = calcPct(accepted, total);
   const installedPct = calcPct(installed, total);
   const acceptedPct  = calcPct(accepted, total);
@@ -254,19 +257,21 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
       borderWidth: 0,
       hoverOffset: 4,
     }],
-    labels: total > 0 ? ['ATP Accepted', 'Rejected', 'Pending'] : ['No Data'],
+    labels: total > 0
+      ? [t('dash_legendAtpAcc'), t('dash_rejected'), t('dash_legendPending')]
+      : [t('dash_projStatus_noData')],
   };
 
   const legendRows = [
-    { dot: styles.dotBlue,  label: 'Installed',    count: installed, pct: installedPct },
-    { dot: styles.dotGreen, label: 'ATP Accepted', count: accepted,  pct: acceptedPct  },
-    { dot: styles.dotAmber, label: 'Pending',      count: remaining, pct: pendingPct   },
-    ...(rejected > 0 ? [{ dot: styles.dotRed, label: 'ATP Rejected', count: rejected, pct: rejectedPct }] : []),
+    { dot: styles.dotBlue,  labelKey: 'dash_legendInstalled' as const, count: installed, pct: installedPct },
+    { dot: styles.dotGreen, labelKey: 'dash_legendAtpAcc'    as const, count: accepted,  pct: acceptedPct  },
+    { dot: styles.dotAmber, labelKey: 'dash_legendPending'   as const, count: remaining, pct: pendingPct   },
+    ...(rejected > 0 ? [{ dot: styles.dotRed, labelKey: 'dash_legendAtpRej' as const, count: rejected, pct: rejectedPct }] : []),
   ];
 
   return (
     <div className={styles.analyticsCard}>
-      <h3 className={styles.analyticsTitle}>Overall Delivery Progress</h3>
+      <h3 className={styles.analyticsTitle}>{t('dash_overallProgress')}</h3>
       <div className={styles.analyticsBody}>
 
         {/* Left: Donut */}
@@ -288,7 +293,11 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
             />
             <div className={styles.donutCenter} aria-hidden="true">
               <span className={styles.donutPct}>{atpPct}%</span>
-              <span className={styles.donutCenterLabel}>ATP<br />Accepted</span>
+              <span className={styles.donutCenterLabel}>
+                {t('dash_atpCenterLabel').split('\n').map((line, i, arr) => (
+                  <React.Fragment key={i}>{line}{i < arr.length - 1 && <br />}</React.Fragment>
+                ))}
+              </span>
             </div>
           </div>
         </div>
@@ -296,10 +305,10 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
         {/* Right: Vertical legend list */}
         <div className={styles.analyticsList}>
           {legendRows.map((row, i) => (
-            <React.Fragment key={row.label}>
+            <React.Fragment key={row.labelKey}>
               <div className={styles.analyticsLegendRow}>
                 <span className={row.dot} aria-hidden="true" />
-                <span className={styles.legendLabel}>{row.label}</span>
+                <span className={styles.legendLabel}>{t(row.labelKey)}</span>
                 <span className={styles.legendValue}>
                 {row.count} <span className={styles.legendPct}>({row.pct}%)</span>
               </span>
@@ -312,7 +321,7 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
               <circle cx="6" cy="6" r="6" fill="#1D4ED8"/>
               <polyline points="3,6.5 5.2,8.5 9,3.8" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            {accepted} of {total} sites accepted
+            {t('dash_sitesAccepted', { accepted, total })}
           </div>
         </div>
       </div>
@@ -327,13 +336,13 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
   const counts = { complete: 0, active: 0, highRejection: 0, noData: 0 };
 
   for (const { sections } of projData) {
-    const pTotal     = sections.reduce((s, x) => s + x.total, 0);
-    const pInstalled = sections.reduce((s, x) => s + x.installed, 0);
-    const pRejected  = sections.reduce((s, x) => s + x.atpRejected, 0);
-    const { label }  = getProjStatus(pTotal, pInstalled, pRejected);
-    if (label === 'Complete')          counts.complete++;
-    else if (label === 'In Progress')  counts.active++;
-    else if (label === 'High Rejection') counts.highRejection++;
+    const pTotal      = sections.reduce((s, x) => s + x.total, 0);
+    const pInstalled  = sections.reduce((s, x) => s + x.installed, 0);
+    const pRejected   = sections.reduce((s, x) => s + x.atpRejected, 0);
+    const { statusKey } = getProjStatus(pTotal, pInstalled, pRejected);
+    if (statusKey === 'dash_projStatus_complete')     counts.complete++;
+    else if (statusKey === 'dash_projStatus_inProg')  counts.active++;
+    else if (statusKey === 'dash_projStatus_highRej') counts.highRejection++;
     else counts.noData++;
   }
 
@@ -377,7 +386,7 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
             />
             <div className={styles.donutCenter} aria-hidden="true">
               <span className={styles.donutPct}>{n}</span>
-              <span className={styles.donutCenterLabel}>Projects</span>
+              <span className={styles.donutCenterLabel}>{t('dash_projects')}</span>
             </div>
           </div>
         </div>
@@ -418,7 +427,7 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
   const firstKey      = sections[0]?.key ?? '';
   const hasData       = projTotal > 0;
   const secsWithData  = sections.filter(s => s.total > 0);
-  const { label: badgeLabel, cls: badgeCls } = getProjStatus(projTotal, projInstalled, projRejected);
+  const { statusKey, cls: badgeCls } = getProjStatus(projTotal, projInstalled, projRejected);
 
   const secLabelStr = (() => {
     const labels = sections.map(s => s.label);
@@ -447,8 +456,8 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
             {sections.length} section{sections.length !== 1 ? 's' : ''}{secLabelStr}
           </div>
         </div>
-        <span className={`${styles.badge} ${badgeCls}`} aria-label={`Status: ${badgeLabel}`}>
-          {badgeLabel}
+        <span className={`${styles.badge} ${badgeCls}`} aria-label={`Status: ${t(statusKey)}`}>
+          {t(statusKey)}
         </span>
       </div>
 
@@ -514,20 +523,20 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
                     <span className={styles.bdLabel}>{sec.label}</span>
                     <div className={styles.bdStats}>
                       <span className={styles.bdStat}>
-                        <span className={styles.bdKey}>Inst</span>
+                        <span className={styles.bdKey}>{t('dash_instAbbr')}</span>
                         {sec.installed}/{sec.total}
                       </span>
                       <span className={`${styles.bdStat} ${styles.bdStatGreen}`}>
-                        <span className={styles.bdKey}>Acc</span>
+                        <span className={styles.bdKey}>{t('dash_accAbbr')}</span>
                         {sec.atpAccepted}
                       </span>
                       <span className={`${styles.bdStat} ${styles.bdStatAmber}`}>
-                        <span className={styles.bdKey}>Pend</span>
+                        <span className={styles.bdKey}>{t('dash_pendAbbr')}</span>
                         {sec.atpPending}
                       </span>
                       {sec.atpRejected > 0 && (
                         <span className={`${styles.bdStat} ${styles.bdStatRed}`}>
-                          <span className={styles.bdKey}>Rej</span>
+                          <span className={styles.bdKey}>{t('dash_rejAbbr')}</span>
                           {sec.atpRejected}
                         </span>
                       )}
@@ -826,22 +835,22 @@ export default function Dashboard() {
       {/* ── Page header ──────────────────────────────────────────────────────── */}
       <div className={styles.pageHeader}>
         <div className={styles.pageTitleBlock}>
-          <h1 className={styles.pageTitle}>Dashboard</h1>
-          <p className={styles.pageSubtitle}>Network Scope Delivery Overview</p>
+          <h1 className={styles.pageTitle}>{t('dash_pageTitle')}</h1>
+          <p className={styles.pageSubtitle}>{t('dash_subtitle')}</p>
         </div>
         <div className={styles.headerRight}>
           {lastUpdated && (
             <span className={styles.lastUpdated}>
-              Updated {formatRelativeTime(lastUpdated)}
+              {t('dash_updatedAt', { time: formatRelativeTime(lastUpdated, t) })}
             </span>
           )}
           <div className={styles.headerActions}>
             <button
               className={styles.exportBtn}
-              onClick={() => showToast('Open a project section to export data', false)}
+              onClick={() => showToast(t('dash_exportToast'), false)}
             >
               <IconExport />
-              Export
+              {t('dash_export')}
             </button>
             <button
               className={styles.refreshBtn}
@@ -849,7 +858,7 @@ export default function Dashboard() {
               disabled={loading}
             >
               <IconRefresh />
-              {loading ? 'Loading…' : 'Refresh'}
+              {loading ? t('ns_loading') : t('dash_refreshBtn')}
             </button>
           </div>
         </div>
@@ -865,42 +874,42 @@ export default function Dashboard() {
           {/* ── KPI grid ─────────────────────────────────────────────────────── */}
           <div className={styles.kpiGrid}>
             <KpiCard
-              label="Total Target"
+              label={t('dash_totalTarget')}
               value={grandTotal}
-              support={`Across ${projData.length} network projects`}
+              support={t('dash_totalTargetSup')}
               Icon={IconTarget}
               accentBg="#EFF6FF"
               accentColor="#1D4ED8"
               valueColor="#0F172A"
             />
             <KpiCard
-              label="Installed"
+              label={t('dash_kpiInstalled')}
               value={grandInstalled}
-              support={`${calcPct(grandInstalled, grandTotal)}% of total target`}
+              support={t('dash_kpiInstalledSup')}
               Icon={IconInstall}
               accentBg="#EFF6FF"
               accentColor="#2563EB"
             />
             <KpiCard
-              label="ATP Accepted"
+              label={t('dash_kpiAtpAcc')}
               value={grandAccepted}
-              support={`${grandAtpPct}% acceptance rate`}
+              support={t('dash_kpiAtpAccSup')}
               Icon={IconCheck}
               accentBg="#F0FDF4"
               accentColor="#16A34A"
             />
             <KpiCard
-              label="Remaining"
+              label={t('dash_kpiRemaining')}
               value={grandRemaining}
-              support={grandRejected > 0 ? `Including ${grandRejected} rejected` : 'Pending acceptance'}
+              support={t('dash_kpiRemainingSup')}
               Icon={IconClock}
               accentBg="#FFFBEB"
               accentColor="#D97706"
             />
             <KpiCard
-              label="Overall ATP %"
+              label={t('dash_kpiAtpPct')}
               value={`${grandAtpPct}%`}
-              support={`${grandAccepted} of ${grandTotal} sites accepted`}
+              support={t('dash_kpiAtpPctSup')}
               Icon={IconPercent}
               accentBg="#F5F3FF"
               accentColor="#7C3AED"
@@ -923,9 +932,9 @@ export default function Dashboard() {
           <section className={styles.projectsSection} aria-labelledby="projects-heading">
             <div className={styles.sectionHdr}>
               <div className={styles.sectionHdrLeft}>
-                <h2 id="projects-heading" className={styles.sectionTitle}>Network Scope Projects</h2>
+                <h2 id="projects-heading" className={styles.sectionTitle}>{t('dash_projHeader')}</h2>
                 <span className={styles.sectionMeta}>
-                  {projData.length} total · {activeProjs} active · {noDataProjs} no data
+                  {t('dash_projCount', { total: projData.length, active: activeProjs, noData: noDataProjs })}
                 </span>
               </div>
               <button
@@ -933,7 +942,7 @@ export default function Dashboard() {
                 className={styles.sectionViewAll}
                 onClick={() => navigate('/network-scopes')}
               >
-                View all projects →
+                {t('dash_viewAllProjects')}
               </button>
             </div>
             <div className={styles.projectGrid}>

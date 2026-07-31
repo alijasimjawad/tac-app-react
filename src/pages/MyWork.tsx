@@ -126,35 +126,37 @@ function fmtIQD(n: number) {
   return n.toLocaleString() + ' IQD';
 }
 
-function fmtSynced(d: Date) {
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
+
+function fmtSynced(d: Date, t: TFn) {
   const diff = Date.now() - d.getTime();
-  if (diff < 60000) return 'Just now';
-  return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 60000) return t('myWork_justNow');
+  return t('myWork_minsAgo', { count: Math.floor(diff / 60000) });
 }
 
-function fmtRelative(sortKey: string): string {
+function fmtRelative(sortKey: string, t: TFn): string {
   const d = new Date(sortKey);
   if (isNaN(d.getTime())) return sortKey;
   const diffMin = Math.floor((Date.now() - d.getTime()) / 60000);
-  if (diffMin < 1) return 'Just now';
-  if (diffMin < 60) return `${diffMin} min${diffMin !== 1 ? 's' : ''} ago`;
+  if (diffMin < 1) return t('myWork_justNow');
+  if (diffMin < 60) return t('myWork_minsAgo', { count: diffMin });
   const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const tStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (dStr === todayISO()) return `Today, ${tStr}`;
-  if (dStr === daysAgoISO(1)) return `Yesterday, ${tStr}`;
+  if (dStr === todayISO()) return t('myWork_todayAt', { time: tStr });
+  if (dStr === daysAgoISO(1)) return t('myWork_yesterdayAt', { time: tStr });
   return fmtDate(dStr);
 }
 
-function wmoToCondition(code: number): string {
-  if (code === 0) return 'Clear sky';
-  if (code <= 3) return 'Partly cloudy';
-  if (code <= 48) return 'Foggy';
-  if (code <= 57) return 'Light drizzle';
-  if (code <= 67) return 'Rainy';
-  if (code <= 77) return 'Snow';
-  if (code <= 82) return 'Rain showers';
-  if (code <= 99) return 'Thunderstorm';
-  return 'Clear';
+function wmoToKey(code: number): string {
+  if (code === 0) return 'myWork_clearSky';
+  if (code <= 3) return 'myWork_partlyCloudy';
+  if (code <= 48) return 'myWork_foggy';
+  if (code <= 57) return 'myWork_lightDrizzle';
+  if (code <= 67) return 'myWork_rainy';
+  if (code <= 77) return 'myWork_snow';
+  if (code <= 82) return 'myWork_rainShowers';
+  if (code <= 99) return 'myWork_thunderstorm';
+  return 'myWork_clearWeather';
 }
 
 function actStatusCls(s: string | null) {
@@ -244,7 +246,7 @@ export default function MyWork() {
           temp:      d.current.temperature_2m,
           humidity:  d.current.relative_humidity_2m,
           windSpeed: d.current.wind_speed_10m,
-          condition: wmoToCondition(d.current.weather_code),
+          condition: wmoToKey(d.current.weather_code),
           code:      d.current.weather_code,
         });
       })
@@ -368,7 +370,6 @@ export default function MyWork() {
 
   // ── Derived ───────────────────────────────────────────────────────────────────
 
-  const today     = todayISO();
   const yesterday = daysAgoISO(1);
 
   const activeAct = todayActs.find(a => a.status === 'In Progress') ?? todayActs[0] ?? null;
@@ -386,7 +387,7 @@ export default function MyWork() {
     alerts.push({
       id:   'rej-' + e.id,
       type: 'error',
-      text: 'Expense claim rejected',
+      text: t('myWork_claimRejected'),
       sub:  `${e.description || e.project_name || 'Claim'} · ${fmtDate(e.activity_date)}`,
       to:   '/my-expenses',
     });
@@ -395,7 +396,7 @@ export default function MyWork() {
     alerts.push({
       id:   'miss-co',
       type: 'warning',
-      text: 'Missing clock-out',
+      text: t('myWork_missingClockout'),
       sub:  `Yesterday (${fmtDate(yesterday)}) — clock-in recorded but no clock-out`,
       to:   '/attendance',
     });
@@ -404,29 +405,30 @@ export default function MyWork() {
   // Recent timeline
   const events: TimelineEvent[] = [];
   if (todayAtt?.clock_in) {
-    events.push({ id: 'att-in',  iconType: 'clockIn',  text: 'Clocked in',  sub: fmtFullDate(), time: todayAtt.clock_in,  sortKey: todayAtt.clock_in });
+    events.push({ id: 'att-in',  iconType: 'clockIn',  text: t('myWork_clockedIn'),  sub: fmtFullDate(), time: todayAtt.clock_in,  sortKey: todayAtt.clock_in });
   }
   if (todayAtt?.clock_out) {
-    events.push({ id: 'att-out', iconType: 'clockOut', text: 'Clocked out', sub: `${todayAtt.hours_worked ?? '—'} hrs worked`, time: todayAtt.clock_out, sortKey: todayAtt.clock_out });
+    events.push({ id: 'att-out', iconType: 'clockOut', text: t('myWork_clockedOut_evt'), sub: t('myWork_hrsWorked', { hrs: todayAtt.hours_worked ?? '—' }), time: todayAtt.clock_out, sortKey: todayAtt.clock_out });
   }
   recentActs.slice(0, 3).forEach(a => {
     events.push({ id: 'act-' + a.id, iconType: 'activity', text: `${a.activity_type || 'Activity'} · ${a.status || '—'}`, sub: [a.site_id, a.project].filter(Boolean).join(' · '), time: a.created_at || a.date, sortKey: a.created_at || a.date });
   });
   recentExps.slice(0, 2).forEach(e => {
-    const lbl = e.status === 'approved' ? 'approved' : e.status === 'rejected' ? 'rejected' : 'submitted';
-    events.push({ id: 'exp-' + e.id, iconType: 'expense', text: `Expense ${lbl}`, sub: `${e.project_name || '—'} · ${e.total_amount ? fmtIQD(e.total_amount) : '—'}`, time: e.submitted_at || e.activity_date, sortKey: e.submitted_at || e.activity_date });
+    const expText = e.status === 'approved' ? t('myWork_expenseApproved') : e.status === 'rejected' ? t('myWork_expenseRejected') : t('myWork_expenseSubmitted');
+    events.push({ id: 'exp-' + e.id, iconType: 'expense', text: expText, sub: `${e.project_name || '—'} · ${e.total_amount ? fmtIQD(e.total_amount) : '—'}`, time: e.submitted_at || e.activity_date, sortKey: e.submitted_at || e.activity_date });
   });
   events.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
   const shownEvents = events.slice(0, 6);
 
   // Attendance label + pill
-  const attLabel = !todayAtt ? 'Not Clocked In' : todayAtt.clock_out ? 'Clocked Out' : 'Clocked In';
-  const attCls   = attLabel === 'Clocked In' ? styles.valGreen : attLabel === 'Clocked Out' ? styles.valSlate : styles.valAmber;
-  const attPill  = attLabel === 'Clocked In'
-    ? { text: 'Active',         cls: styles.pillGreen }
-    : attLabel === 'Clocked Out'
-    ? { text: 'Clocked Out',    cls: styles.pillSlate }
-    : { text: 'Not Clocked In', cls: styles.pillAmber };
+  const attStatus = !todayAtt ? 'not_clocked_in' : todayAtt.clock_out ? 'clocked_out' : 'clocked_in';
+  const attLabel = attStatus === 'clocked_in' ? t('myWork_clockedIn') : attStatus === 'clocked_out' ? t('myWork_clockedOut_evt') : t('myWork_notClockedIn');
+  const attCls   = attStatus === 'clocked_in' ? styles.valGreen : attStatus === 'clocked_out' ? styles.valSlate : styles.valAmber;
+  const attPill  = attStatus === 'clocked_in'
+    ? { text: t('myWork_active'),        cls: styles.pillGreen }
+    : attStatus === 'clocked_out'
+    ? { text: t('myWork_clockedOut_evt'), cls: styles.pillSlate }
+    : { text: t('myWork_notClockedIn'),  cls: styles.pillAmber };
 
   // Activity pill
   const actPillCls  = actToPillCls(activeAct?.status ?? null);
@@ -434,12 +436,12 @@ export default function MyWork() {
 
   // Trip pill
   const tripPill = !activeTrip
-    ? { text: '—',        cls: styles.pillSlate }
+    ? { text: '—',                    cls: styles.pillSlate }
     : activeTrip.status === 'active'
-    ? { text: 'Live',     cls: styles.pillAmber }
+    ? { text: t('myWork_live'),       cls: styles.pillAmber }
     : activeTrip.status === 'departed'
-    ? { text: 'Departed', cls: styles.pillSlate }
-    : { text: 'Pending',  cls: styles.pillSlate };
+    ? { text: t('myWork_departed'),   cls: styles.pillSlate }
+    : { text: t('trips_pending'),  cls: styles.pillSlate };
 
   // Trip participants progress
   const joinedCount = tripParticipants.filter(p => p.joined_at !== null).length;
@@ -465,11 +467,11 @@ export default function MyWork() {
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <h1 className={styles.greeting}>{t(getGreetingKey())} 👋, {displayName}</h1>
-          <p className={styles.greetingSub}>Here is your work overview for {today === todayISO() ? 'today' : fmtDate(today)}.</p>
+          <p className={styles.greetingSub}>{t('myWork_greetingOverview')}</p>
           <p className={styles.greetingDate}>{fmtFullDate()}</p>
         </div>
         <div className={styles.headerRight}>
-          {lastSynced && <span className={styles.syncLabel}>{t('myWork_lastSynced')} {fmtSynced(lastSynced)}</span>}
+          {lastSynced && <span className={styles.syncLabel}>{t('myWork_lastSynced')} {fmtSynced(lastSynced, t)}</span>}
           <button className={styles.refreshBtn} onClick={loadAll} aria-label="Refresh">
             <RefreshIcon /> {t('myWork_refresh')}
           </button>
@@ -484,7 +486,7 @@ export default function MyWork() {
         <button className={`${styles.statusCard} ${styles.scAttendance}`} onClick={() => navigate('/attendance')}>
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconBlue}`}><ClockSIcon /></span>
-            <span className={styles.scLabel}>Attendance</span>
+            <span className={styles.scLabel}>{t('myWork_attendance')}</span>
             <span className={`${styles.pill} ${attPill.cls}`}>{attPill.text}</span>
           </div>
           <div className={`${styles.scValue} ${attCls}`}>{attLabel}</div>
@@ -499,7 +501,7 @@ export default function MyWork() {
         <button className={`${styles.statusCard} ${styles.scActivity}`} onClick={() => navigate('/daily-activities')}>
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconGreen}`}><ActivitySIcon /></span>
-            <span className={styles.scLabel}>Active Activity</span>
+            <span className={styles.scLabel}>{t('myWork_activeActivity')}</span>
             <span className={`${styles.pill} ${actPillCls}`}>{actPillText}</span>
           </div>
           {activeAct ? (
@@ -508,45 +510,45 @@ export default function MyWork() {
               <div className={styles.scSub}>{activeAct.site_id ? `Site ${activeAct.site_id}` : activeAct.project || '—'}</div>
             </>
           ) : (
-            <div className={`${styles.scValue} ${styles.valSlate}`}>No active activity</div>
+            <div className={`${styles.scValue} ${styles.valSlate}`}>{t('myWork_noActiveActivity')}</div>
           )}
         </button>
 
         <button className={`${styles.statusCard} ${styles.scTrip}`} onClick={() => navigate('/my-trips')}>
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconPurple}`}><TripSIcon /></span>
-            <span className={styles.scLabel}>Current Trip</span>
+            <span className={styles.scLabel}>{t('myWork_currentTrip')}</span>
             <span className={`${styles.pill} ${tripPill.cls}`}>{tripPill.text}</span>
           </div>
           {activeTrip ? (
             <>
               <div className={`${styles.scValue} ${styles.valGreen}`}>
-                {activeTrip.status === 'active' ? 'In Progress' : activeTrip.status === 'departed' ? 'Departed' : 'Pending'}
+                {activeTrip.status === 'active' ? t('myWork_tripInProgress') : activeTrip.status === 'departed' ? t('myWork_departed') : t('trips_pending')}
               </div>
               <div className={styles.scSub}>
-                {(activeTrip.team_member_names ?? []).length} member{(activeTrip.team_member_names ?? []).length !== 1 ? 's' : ''}
+                {t('myWork_members', { count: (activeTrip.team_member_names ?? []).length })}
               </div>
             </>
           ) : (
-            <div className={`${styles.scValue} ${styles.valSlate}`}>No active trip</div>
+            <div className={`${styles.scValue} ${styles.valSlate}`}>{t('myWork_noActiveTripStatus')}</div>
           )}
         </button>
 
         <button className={`${styles.statusCard} ${styles.scExpense}`} onClick={() => navigate('/my-expenses')}>
           <div className={styles.scTop}>
             <span className={`${styles.scIcon} ${styles.scIconAmber}`}><ExpenseSIcon /></span>
-            <span className={styles.scLabel}>Pending Expenses</span>
-            <span className={`${styles.pill} ${styles.pillPurple}`}>View Claims</span>
+            <span className={styles.scLabel}>{t('myWork_pendingExpenses')}</span>
+            <span className={`${styles.pill} ${styles.pillPurple}`}>{t('myWork_viewClaims')}</span>
           </div>
           {pendingExp.count > 0 ? (
             <>
               <div className={`${styles.scValue} ${styles.valAmber}`}>
-                {pendingExp.count} claim{pendingExp.count !== 1 ? 's' : ''}
+                {t('myWork_claims', { count: pendingExp.count })}
               </div>
               <div className={styles.scSub}>{fmtIQD(pendingExp.total)}</div>
             </>
           ) : (
-            <div className={`${styles.scValue} ${styles.valGreen}`}>No pending claims</div>
+            <div className={`${styles.scValue} ${styles.valGreen}`}>{t('myWork_noPendingClaims')}</div>
           )}
         </button>
 
@@ -560,8 +562,8 @@ export default function MyWork() {
           <button className={`${styles.qaCard} ${styles.qaBlue}`} onClick={() => navigate('/attendance')}>
             <span className={styles.qaIcon}><ClockQIcon /></span>
             <span className={styles.qaLabelWrap}>
-              <span className={styles.qaLabel}>{attLabel === 'Clocked In' ? 'Clock Out' : 'Clock In'}</span>
-              <span className={styles.qaLabelSub}>{attLabel === 'Clocked In' ? 'End your shift' : 'Begin your shift'}</span>
+              <span className={styles.qaLabel}>{attStatus === 'clocked_in' ? t('myWork_clockOut') : t('myWork_clockIn_btn')}</span>
+              <span className={styles.qaLabelSub}>{attStatus === 'clocked_in' ? t('myWork_endShift') : t('myWork_beginShift')}</span>
             </span>
             <ChevronRightSmIcon />
           </button>
@@ -569,8 +571,8 @@ export default function MyWork() {
           <button className={`${styles.qaCard} ${styles.qaGreen}`} onClick={() => navigate('/daily-activities')}>
             <span className={styles.qaIcon}><ActivityQIcon /></span>
             <span className={styles.qaLabelWrap}>
-              <span className={styles.qaLabel}>{activeAct ? 'Open Activity' : 'Start Activity'}</span>
-              <span className={styles.qaLabelSub}>{activeAct ? 'Continue current activity' : 'Begin new activity'}</span>
+              <span className={styles.qaLabel}>{activeAct ? t('myWork_openActivity') : t('myWork_startActivity')}</span>
+              <span className={styles.qaLabelSub}>{activeAct ? t('myWork_continueActivity') : t('myWork_beginActivity')}</span>
             </span>
             <ChevronRightSmIcon />
           </button>
@@ -578,8 +580,8 @@ export default function MyWork() {
           <button className={`${styles.qaCard} ${styles.qaPurple}`} onClick={() => navigate('/my-trips')}>
             <span className={styles.qaIcon}><TripQIcon /></span>
             <span className={styles.qaLabelWrap}>
-              <span className={styles.qaLabel}>{activeTrip ? 'Open Trip' : 'Start a Trip'}</span>
-              <span className={styles.qaLabelSub}>Start or join a trip</span>
+              <span className={styles.qaLabel}>{activeTrip ? t('myWork_openTrip') : t('myWork_startATrip')}</span>
+              <span className={styles.qaLabelSub}>{t('myWork_startOrJoin')}</span>
             </span>
             <ChevronRightSmIcon />
           </button>
@@ -587,8 +589,8 @@ export default function MyWork() {
           <button className={`${styles.qaCard} ${styles.qaAmber}`} onClick={() => navigate('/my-expenses')}>
             <span className={styles.qaIcon}><ExpenseQIcon /></span>
             <span className={styles.qaLabelWrap}>
-              <span className={styles.qaLabel}>New Expense</span>
-              <span className={styles.qaLabelSub}>Create a claim</span>
+              <span className={styles.qaLabel}>{t('myWork_newExpense')}</span>
+              <span className={styles.qaLabelSub}>{t('myWork_createClaim')}</span>
             </span>
             <ChevronRightSmIcon />
           </button>
@@ -627,7 +629,7 @@ export default function MyWork() {
                       {(a.team_member_names ?? []).length > 0 && (
                         <div className={styles.workTeam}>
                           <UsersSmIcon />
-                          {(a.team_member_names ?? []).length} member{(a.team_member_names ?? []).length !== 1 ? 's' : ''}
+                          {t('myWork_members', { count: (a.team_member_names ?? []).length })}
                         </div>
                       )}
                     </div>
@@ -638,7 +640,7 @@ export default function MyWork() {
                 ))}
               </div>
               <button className={styles.viewAllBtn} onClick={() => navigate('/daily-activities')}>
-                View all activities <ChevronRightSmIcon />
+                {t('myWork_viewAllActivities')} <ChevronRightSmIcon />
               </button>
             </>
           )}
@@ -650,7 +652,7 @@ export default function MyWork() {
             <h2 className={styles.scardTitle} id="ct-title">{t('myWork_currentTrip')}</h2>
             {activeTrip && (
               <span className={`${styles.countBadge} ${styles.badgeGreenBg}`}>
-                {activeTrip.status === 'active' ? 'Active' : activeTrip.status === 'departed' ? 'Departed' : 'Pending'}
+                {activeTrip.status === 'active' ? t('myWork_active') : activeTrip.status === 'departed' ? t('myWork_departed') : t('trips_pending')}
               </span>
             )}
           </div>
@@ -668,27 +670,27 @@ export default function MyWork() {
               <div className={styles.tripHdr}>
                 <div className={styles.tripIconCircle}><TripDetailIcon /></div>
                 <div>
-                  <div className={styles.tripName}>{activeTrip.project || 'Field Trip'}</div>
+                  <div className={styles.tripName}>{activeTrip.project || t('myWork_fieldTrip')}</div>
                   {activeTrip.site_id && <div className={styles.tripSite}>Site {activeTrip.site_id}</div>}
                 </div>
               </div>
 
               {activeTrip.started_at && (
                 <div className={styles.tripTimeLine}>
-                  <ClockSmIcon /> Started at {fmtTime(activeTrip.started_at)}
+                  <ClockSmIcon /> {t('myWork_startedAt', { time: fmtTime(activeTrip.started_at) })}
                 </div>
               )}
 
               <div className={styles.tripMemberRow}>
                 <UsersSmIcon />
-                <span>{(activeTrip.team_member_names ?? []).length} member{(activeTrip.team_member_names ?? []).length !== 1 ? 's' : ''} on team</span>
+                <span>{t('myWork_membersOnTeam', { count: (activeTrip.team_member_names ?? []).length })}</span>
               </div>
 
               {/* Member join progress bar */}
               {totalCount > 0 && (
                 <div className={styles.progressWrap}>
                   <div className={styles.progressLabelRow}>
-                    <span>{joinedCount} of {totalCount} joined</span>
+                    <span>{t('myWork_joinedOf', { joined: joinedCount, total: totalCount })}</span>
                     <span>{joinedPct}%</span>
                   </div>
                   <div className={styles.progressTrack}>
@@ -702,13 +704,13 @@ export default function MyWork() {
                 {activeTrip.site_id && (
                   <div className={styles.checklistItem}>
                     <span className={styles.checklistCheck}><CheckSmIcon /></span>
-                    <span>Meeting point confirmed</span>
+                    <span>{t('myWork_meetingConfirmed')}</span>
                   </div>
                 )}
                 {activeTrip.status === 'active' && (
                   <div className={styles.checklistItem}>
                     <span className={styles.pulseDot} aria-hidden="true" />
-                    <span>Live location active</span>
+                    <span>{t('myWork_liveLocation')}</span>
                   </div>
                 )}
               </div>
@@ -725,7 +727,7 @@ export default function MyWork() {
               )}
 
               <button className={styles.openTripBtn} onClick={() => navigate('/my-trips')}>
-                Open Trip <ChevronRightSmIcon />
+                {t('myWork_openTrip')} <ChevronRightSmIcon />
               </button>
             </div>
           )}
@@ -740,7 +742,7 @@ export default function MyWork() {
         <section className={styles.sectionCard} aria-labelledby="as-title">
           <div className={styles.scardHeader}>
             <h2 className={styles.scardTitle} id="as-title">{t('myWork_assignedSites')}</h2>
-            <button className={styles.viewAllLink} onClick={() => navigate('/my-sites')}>View all</button>
+            <button className={styles.viewAllLink} onClick={() => navigate('/my-sites')}>{t('myWork_viewAll')}</button>
           </div>
 
           {assignedSites.length === 0 ? (
@@ -824,7 +826,7 @@ export default function MyWork() {
                   <div className={styles.tlText}>{e.text}</div>
                   <div className={styles.tlSub}>{e.sub}</div>
                 </div>
-                <div className={styles.tlTime}>{fmtRelative(e.sortKey)}</div>
+                <div className={styles.tlTime}>{fmtRelative(e.sortKey, t)}</div>
               </div>
             ))}
           </div>
@@ -840,7 +842,7 @@ export default function MyWork() {
             </div>
             <div className={styles.weatherMain}>
               <div className={styles.weatherTemp}>{Math.round(weather.temp)}°C</div>
-              <div className={styles.weatherCond}>{weather.condition}</div>
+              <div className={styles.weatherCond}>{t(weather.condition)}</div>
             </div>
             <div className={styles.weatherRight}>
               <div className={styles.weatherCity}>{t('myWork_weather')}</div>

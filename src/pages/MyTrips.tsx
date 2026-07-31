@@ -27,6 +27,15 @@ const PHASES = [
   'Completed',
 ] as const;
 
+const PHASE_KEYS = [
+  'trips_phase_meeting',
+  'trips_phase_joining',
+  'trips_phase_travelling',
+  'trips_phase_arrival',
+  'trips_phase_wip',
+  'trips_phase_completed',
+] as const;
+
 function phaseIndex(status: string): number {
   if (status === 'pending')   return 0;
   if (status === 'active')    return 1;
@@ -54,14 +63,16 @@ function fmtDuration(startIso: string | null, endIso?: string | null): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function fmtTimeAgo(isoStr: string | null): string {
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
+
+function fmtTimeAgo(isoStr: string | null, t: TFn): string {
   if (!isoStr) return '';
   const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
-  if (secs < 5)   return 'just now';
-  if (secs < 60)  return `${secs}s ago`;
+  if (secs < 5)   return t('trips_justNow');
+  if (secs < 60)  return t('trips_secAgo', { n: secs });
   const mins = Math.floor(secs / 60);
-  if (mins < 60)  return `${mins}m ago`;
-  return `${Math.floor(mins / 60)}h ago`;
+  if (mins < 60)  return t('trips_minAgo', { n: mins });
+  return t('trips_hrAgo', { n: Math.floor(mins / 60) });
 }
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────
@@ -82,12 +93,18 @@ const IcDotsH     = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="
 // ── Status Badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const cls =
     status === 'active'    ? styles.badgeActive    :
     status === 'departed'  ? styles.badgeDeparted  :
     status === 'completed' ? styles.badgeCompleted :
     styles.badgePending;
-  return <span className={`${styles.badge} ${cls}`}>{status}</span>;
+  const label =
+    status === 'active'    ? t('trips_statusActive')    :
+    status === 'departed'  ? t('trips_statusDeparted')  :
+    status === 'completed' ? t('trips_statusCompleted') :
+    t('trips_statusPending');
+  return <span className={`${styles.badge} ${cls}`}>{label}</span>;
 }
 
 // ── Summary Card ──────────────────────────────────────────────────────────────
@@ -108,6 +125,7 @@ function SummaryCard({ icon, label, value, sub, iconCls }: {
 // ── Phase Progress (compact) ──────────────────────────────────────────────────
 
 function PhaseProgress({ currentIndex }: { currentIndex: number }) {
+  const { t } = useTranslation();
   return (
     <div className={styles.phaseProgress} role="list" aria-label="Trip progress phases">
       {PHASES.map((phase, i) => {
@@ -123,7 +141,7 @@ function PhaseProgress({ currentIndex }: { currentIndex: number }) {
               <div className={`${styles.phaseConn} ${i < currentIndex ? styles.phaseConnFilled : ''} ${i === PHASES.length - 1 ? styles.phaseConnHide : ''}`} />
             </div>
             <div className={`${styles.phaseLabel} ${active ? styles.phaseLabelActive : done ? styles.phaseLabelDone : ''}`}>
-              {phase}
+              {t(PHASE_KEYS[i])}
             </div>
           </div>
         );
@@ -162,11 +180,11 @@ function ActiveTripHero({
   const { t } = useTranslation();
   const liveActive     = !!latestLocAt && (Date.now() - new Date(latestLocAt).getTime()) < 120_000;
   const locationLabel  = liveActive ? t('trips_locationActive') : latestLocAt ? t('trips_locationLast') : t('trips_locationNA');
-  const locationSubtxt = latestLocAt ? fmtTimeAgo(latestLocAt) : '';
+  const locationSubtxt = latestLocAt ? fmtTimeAgo(latestLocAt, t) : '';
 
   // init map once
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (!mapDivRef.current || mapRef.current) return;
       const map = L.map(mapDivRef.current, { zoomControl: false, attributionControl: false }).setView([33.3, 44.4], 7);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
@@ -174,7 +192,7 @@ function ActiveTripHero({
       setTimeout(() => map.invalidateSize(), 200);
     }, 150);
     return () => {
-      clearTimeout(t);
+      clearTimeout(timer);
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
     };
   }, []);
@@ -233,7 +251,7 @@ function ActiveTripHero({
           <div className={styles.heroMeta}>
             {trip.date ? fmtDateLong(trip.date) : '—'}
             {trip.governate && ` · ${trip.governate}`}
-            {trip.started_at && ` · Started ${fmtTime(trip.started_at)}`}
+            {trip.started_at && t('trips_startedInfo', { time: fmtTime(trip.started_at) })}
           </div>
         </div>
         <StatusBadge status={trip.status} />
@@ -249,7 +267,7 @@ function ActiveTripHero({
           <div className={styles.heroMetrics}>
             <div className={styles.heroMetric}>
               <div className={styles.heroMetricLabel}>{t('trips_currentPhase')}</div>
-              <div className={styles.heroMetricValue}>{PHASES[phase]}</div>
+              <div className={styles.heroMetricValue}>{t(PHASE_KEYS[phase])}</div>
             </div>
             <div className={styles.heroMetricSep} />
             <div className={styles.heroMetric}>
@@ -294,7 +312,7 @@ function ActiveTripHero({
                       <div className={styles.heroMemberName}>{p.member_name || p.member_id}</div>
                       <div className={styles.heroMemberSub}>
                         {p.status === 'joined'
-                          ? `Joined${p.joined_at ? ` ${fmtTime(p.joined_at)}` : ''}`
+                          ? t('trips_joinedAt', { time: p.joined_at ? fmtTime(p.joined_at) : '' })
                           : (p.status ?? 'pending')}
                         {(p.delay_minutes ?? 0) > 0 && (
                           <span className={styles.delayTag}> +{p.delay_minutes}min</span>
@@ -302,7 +320,7 @@ function ActiveTripHero({
                       </div>
                     </div>
                     {p.last_lat && p.last_lng && (
-                      <span className={styles.liveTag}>Live</span>
+                      <span className={styles.liveTag}>{t('trips_live')}</span>
                     )}
                   </div>
                 ))}
@@ -356,7 +374,7 @@ function PendingCard({
           {trip.governate && ` · ${trip.governate}`}
         </div>
         <div className={styles.pendingTeam}>
-          <IcUsers size={11} /> {teamCount} member{teamCount !== 1 ? 's' : ''}
+          <IcUsers size={11} /> {t('trips_teamCount', { count: teamCount })}
         </div>
       </div>
       <div className={styles.pendingCardActions}>
@@ -374,6 +392,7 @@ function PendingCard({
 // ── Mobile Completed Card ─────────────────────────────────────────────────────
 
 function MobileCard({ trip, onView }: { trip: FieldTrip; onView: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className={styles.mobileCard} onClick={onView} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && onView()}>
       <div className={styles.mobileCardTop}>
@@ -387,9 +406,9 @@ function MobileCard({ trip, onView }: { trip: FieldTrip; onView: () => void }) {
         {trip.date ? fmtDateLong(trip.date) : '—'}{trip.governate && ` · ${trip.governate}`}
       </div>
       <div className={styles.mobileCardMeta}>
-        <IcUsers size={11} /> {trip.team_member_ids?.length ?? 0} team members
+        <IcUsers size={11} /> {t('trips_teamCount', { count: trip.team_member_ids?.length ?? 0 })}
       </div>
-      <button className={styles.mobileCardBtn}>View Details</button>
+      <button className={styles.mobileCardBtn}>{t('trips_viewDetails')}</button>
     </div>
   );
 }
@@ -397,16 +416,15 @@ function MobileCard({ trip, onView }: { trip: FieldTrip; onView: () => void }) {
 // ── Empty State ───────────────────────────────────────────────────────────────
 
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
+  const { t } = useTranslation();
   return (
     <div className={styles.emptyState}>
       <div className={styles.emptyIcon}><IcBriefcase /></div>
       <div className={styles.emptyTitle}>
-        {hasFilter ? 'No trips match your filters' : 'No field trips yet'}
+        {hasFilter ? t('trips_noTripsMatch') : t('trips_noTripsYet')}
       </div>
       <div className={styles.emptySub}>
-        {hasFilter
-          ? 'Try adjusting your search or filters to find trips.'
-          : 'Field trips appear automatically when a Daily Activity is saved.'}
+        {hasFilter ? t('trips_noTripsMatchDesc') : t('trips_noTripsYetDesc')}
       </div>
     </div>
   );
@@ -446,7 +464,7 @@ function TripDetailDrawer({
             {[1, 2, 3, 4].map(i => <div key={i} className={styles.drawerSkeleton} />)}
           </div>
         ) : !trip ? (
-          <div className={styles.drawerEmpty}>Unable to load trip details. Please try again.</div>
+          <div className={styles.drawerEmpty}>{t('trips_unableLoad')}</div>
         ) : (
           <>
             <div className={styles.drawerTripTitle}>
@@ -482,14 +500,14 @@ function TripDetailDrawer({
                       <div className={styles.drawerMemberName}>{p.member_name || p.member_id}</div>
                       <div className={styles.drawerMemberSub}>
                         {p.status === 'joined'
-                          ? `Joined${p.joined_at ? ` · ${fmtTime(p.joined_at)}` : ''}`
+                          ? t('trips_joinedAt', { time: p.joined_at ? fmtTime(p.joined_at) : '' })
                           : (p.status ?? 'pending')}
                         {(p.delay_minutes ?? 0) > 0 && (
                           <span className={styles.delayBadge}> +{p.delay_minutes}min</span>
                         )}
                       </div>
                     </div>
-                    {p.last_lat && p.last_lng && <span className={styles.liveBadge}>Live</span>}
+                    {p.last_lat && p.last_lng && <span className={styles.liveBadge}>{t('trips_live')}</span>}
                   </div>
                 ))}
               </div>
@@ -691,7 +709,7 @@ export default function MyTrips() {
   if (!hasPerm('view_my_trips')) {
     return (
       <div className={styles.page}>
-        <p className={styles.denied}>You do not have permission to view this page.</p>
+        <p className={styles.denied}>{t('trips_noPermission')}</p>
       </div>
     );
   }
@@ -710,9 +728,9 @@ export default function MyTrips() {
         {isAdmin && (
           <button
             className={styles.newTripBtn}
-            onClick={() => showToast('Trips are created automatically from Daily Activities.', true)}
+            onClick={() => showToast(t('trips_autoFromDA'), true)}
           >
-            <IcPlus /> New Trip
+            <IcPlus /> {t('trips_newTrip')}
           </button>
         )}
       </div>
@@ -774,7 +792,7 @@ export default function MyTrips() {
             </button>
           )}
           <span className={styles.resultCount}>
-            {filteredTrips.length} result{filteredTrips.length !== 1 ? 's' : ''}
+            {t('trips_results', { count: filteredTrips.length })}
           </span>
         </div>
       )}
@@ -813,13 +831,13 @@ export default function MyTrips() {
                   <span className={styles.sectionCount}>{pendingTrips.length}</span>
                 </div>
                 <div className={styles.pendingList}>
-                  {pendingTrips.map(t => (
+                  {pendingTrips.map(pt => (
                     <PendingCard
-                      key={t.id}
-                      trip={t}
-                      canStart={isAdmin || !!(memberId && (t.team_member_ids ?? []).includes(memberId))}
-                      onDetails={() => openDrawer(t.id)}
-                      onStart={() => setDetailTripId(t.id)}
+                      key={pt.id}
+                      trip={pt}
+                      canStart={isAdmin || !!(memberId && (pt.team_member_ids ?? []).includes(memberId))}
+                      onDetails={() => openDrawer(pt.id)}
+                      onStart={() => setDetailTripId(pt.id)}
                     />
                   ))}
                 </div>
@@ -837,36 +855,36 @@ export default function MyTrips() {
                   <table className={styles.table}>
                     <thead>
                       <tr>
-                        <th>Date</th>
-                        <th>Project</th>
-                        <th>Site</th>
-                        <th>Governorate</th>
-                        <th>Team</th>
-                        <th>Start</th>
-                        <th>End</th>
-                        <th>Duration</th>
-                        <th>Status</th>
+                        <th>{t('trips_dateCol')}</th>
+                        <th>{t('trips_projectCol')}</th>
+                        <th>{t('trips_siteCol')}</th>
+                        <th>{t('trips_govCol')}</th>
+                        <th>{t('trips_teamCol')}</th>
+                        <th>{t('trips_startCol')}</th>
+                        <th>{t('trips_endCol')}</th>
+                        <th>{t('trips_durationCol')}</th>
+                        <th>{t('trips_statusCol')}</th>
                         <th></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {completedTrips.map(t => (
-                        <tr key={t.id} className={styles.tableRow} onClick={() => openDrawer(t.id)}>
-                          <td>{t.date ? fmtDate(t.date) : '—'}</td>
-                          <td>{t.project || '—'}</td>
-                          <td>{t.site_id || '—'}</td>
-                          <td>{t.governate || '—'}</td>
-                          <td>{t.team_member_ids?.length ?? 0}</td>
-                          <td>{fmtTime(t.started_at)}</td>
-                          <td>{fmtTime(t.completed_at)}</td>
-                          <td>{fmtDuration(t.started_at, t.completed_at)}</td>
-                          <td><StatusBadge status={t.status} /></td>
+                      {completedTrips.map(ct => (
+                        <tr key={ct.id} className={styles.tableRow} onClick={() => openDrawer(ct.id)}>
+                          <td>{ct.date ? fmtDate(ct.date) : '—'}</td>
+                          <td>{ct.project || '—'}</td>
+                          <td>{ct.site_id || '—'}</td>
+                          <td>{ct.governate || '—'}</td>
+                          <td>{ct.team_member_ids?.length ?? 0}</td>
+                          <td>{fmtTime(ct.started_at)}</td>
+                          <td>{fmtTime(ct.completed_at)}</td>
+                          <td>{fmtDuration(ct.started_at, ct.completed_at)}</td>
+                          <td><StatusBadge status={ct.status} /></td>
                           <td>
                             <button
                               className={styles.tableViewBtn}
-                              onClick={e => { e.stopPropagation(); openDrawer(t.id); }}
+                              onClick={e => { e.stopPropagation(); openDrawer(ct.id); }}
                             >
-                              Details
+                              {t('trips_detailsBtn')}
                             </button>
                           </td>
                         </tr>
@@ -875,8 +893,8 @@ export default function MyTrips() {
                   </table>
                 </div>
                 <div className={styles.mobileCards}>
-                  {completedTrips.map(t => (
-                    <MobileCard key={t.id} trip={t} onView={() => openDrawer(t.id)} />
+                  {completedTrips.map(ct => (
+                    <MobileCard key={ct.id} trip={ct} onView={() => openDrawer(ct.id)} />
                   ))}
                 </div>
               </section>
