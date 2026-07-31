@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabase';
 import { haversineKm } from '../lib/sitesNearest';
+import { getRoadRoute } from '../lib/orsRouting';
 import {
   type FieldTrip,
   type TripParticipant,
@@ -24,7 +25,22 @@ interface Props {
   onTripUpdated?: () => void;
 }
 
-const REFRESH_MS = 14000;
+const REFRESH_MS = 10000;
+// Only re-request a road route if the driver has moved at least this far
+// since the last route we drew — keeps ORS calls sane on a 10s poll.
+const ROUTE_REDRAW_KM = 0.2;
+
+// Best-known live position to route from: most recently updated joined/departed participant.
+function pickPrimaryPosition(pp: TripParticipant[]): { lat: number; lng: number } | null {
+  const candidates = pp.filter(p => p.last_lat != null && p.last_lng != null && ['joined', 'departed'].includes(p.status));
+  if (!candidates.length) return null;
+  const best = candidates.reduce((a, b) => {
+    const at = a.last_location_at ? new Date(a.last_location_at).getTime() : 0;
+    const bt = b.last_location_at ? new Date(b.last_location_at).getTime() : 0;
+    return bt > at ? b : a;
+  });
+  return { lat: best.last_lat as number, lng: best.last_lng as number };
+}
 
 export default function TripDetailModal({ tripId, memberId, currentUser, onClose, onTripUpdated }: Props) {
   const [detailTrip, setDetailTrip] = useState<FieldTrip | null>(null);
@@ -41,6 +57,15 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
   const memberIdRef = useRef<string | null>(memberId);
   useEffect(() => { memberIdRef.current = memberId; }, [memberId]);
 
+  // ── road route to site ──
+  const siteCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const routeLineRef = useRef<L.Polyline | null>(null);
+  const routeOriginRef = useRef<{ lat: number; lng: number } | null>(null);
+  const tripStatusRef = useRef<string>('');
+
+  // ── screen wake lock (keep display on while an active/departed trip is open) ──
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
   const isAdmin = currentUser?.role === 'admin';
 
   // ── fetch ──
@@ -51,6 +76,7 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
       supabase.from('trip_participants').select('*').eq('trip_id', tripId).order('member_name'),
     ]);
     if (error || !trip) { setLoading(false); return; }
+    tripStatusRef.current = (trip as FieldTrip).status;
     setDetailTrip(trip as FieldTrip);
     setParticipants((pp as TripParticipant[]) ?? []);
     setLoading(false);
@@ -90,6 +116,7 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
         const { data: siteRow } = await supabase
           .from('sites').select('latitude, longitude').eq('site_code', detailTrip.site_id).single();
         if (siteRow?.latitude && siteRow?.longitude) {
+          siteCoordsRef.current = { lat: siteRow.latitude, lng: siteRow.longitude };
           const siteIcon = L.divIcon({
             className: '',
             html: `<div style="background:#16a34a;color:#fff;border-radius:6px;padding:2px 6px;font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap">${detailTrip.site_id}</div>`,
@@ -98,12 +125,20 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
           siteMarkerRef.current = L.marker([siteRow.latitude, siteRow.longitude], { icon: siteIcon })
             .bindPopup(`Site: ${detailTrip.site_id}`).addTo(map);
           bounds.push([siteRow.latitude, siteRow.longitude]);
+        } else {
+          siteCoordsRef.current = null;
         }
       }
 
       if (bounds.length > 1) map.fitBounds(bounds, { padding: [30, 30] });
       else if (bounds.length === 1) map.setView(bounds[0], 13);
       setTimeout(() => mapRef.current?.invalidateSize(), 200);
+
+      // Draw an initial road route to the site if the trip is already under way.
+      if (['active', 'departed'].includes(detailTrip.status)) {
+        const primary = pickPrimaryPosition(participants);
+        if (primary) void drawRouteToSite(primary.lat, primary.lng);
+      }
     }, 100);
     return () => clearTimeout(t);
   }, [detailTrip]);
@@ -113,6 +148,41 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    };
+  }, []);
+
+  // ── keep the screen awake while an active/departed trip is being viewed ──
+  // Wake locks auto-release when the tab is hidden, so we re-acquire on visibilitychange.
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return; // unsupported browser — fail silently, no background tracking either way
+
+    const shouldHold = !!detailTrip && ['active', 'departed'].includes(detailTrip.status);
+
+    async function acquire() {
+      if (!shouldHold || wakeLockRef.current) return;
+      try {
+        const sentinel = await navigator.wakeLock.request('screen');
+        wakeLockRef.current = sentinel;
+        sentinel.addEventListener('release', () => { wakeLockRef.current = null; });
+      } catch { /* denied, battery saver, etc. — degrade silently */ }
+    }
+    function release() {
+      if (wakeLockRef.current && !wakeLockRef.current.released) wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
+    }
+    function onVisibility() {
+      if (document.visibilityState === 'visible' && shouldHold) void acquire();
+    }
+
+    if (shouldHold) void acquire(); else release();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [detailTrip?.status]);
+
+  useEffect(() => {
+    return () => {
+      if (wakeLockRef.current && !wakeLockRef.current.released) wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
     };
   }, []);
 
@@ -135,7 +205,24 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
     });
   }
 
-  // ── 14-second participant refresh ──
+  // ── road route: (re)draw the driving path from a live position to the site ──
+  async function drawRouteToSite(lat: number, lng: number) {
+    if (!mapRef.current || !siteCoordsRef.current) return;
+    const prev = routeOriginRef.current;
+    if (prev && haversineKm(prev.lat, prev.lng, lat, lng) < ROUTE_REDRAW_KM) return;
+    const route = await getRoadRoute([
+      { latitude: lat, longitude: lng },
+      { latitude: siteCoordsRef.current.lat, longitude: siteCoordsRef.current.lng },
+    ]);
+    if (!route || !mapRef.current) return;
+    routeOriginRef.current = { lat, lng };
+    if (routeLineRef.current) { mapRef.current.removeLayer(routeLineRef.current); routeLineRef.current = null; }
+    routeLineRef.current = L.polyline(route.geometry, {
+      color: '#2563eb', weight: 4, opacity: 0.75, dashArray: '1,8', lineCap: 'round',
+    }).addTo(mapRef.current);
+  }
+
+  // ── 10-second participant + live-location refresh ──
   const refreshParticipants = useCallback(async () => {
     const { data: pp } = await supabase
       .from('trip_participants').select('*').eq('trip_id', tripId).order('member_name');
@@ -143,15 +230,23 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
     const fresh = pp as TripParticipant[];
     setParticipants(fresh);
     refreshMapMarkers(fresh);
+
+    if (['active', 'departed'].includes(tripStatusRef.current)) {
+      const primary = pickPrimaryPosition(fresh);
+      if (primary) void drawRouteToSite(primary.lat, primary.lng);
+    }
+
     const mid = memberIdRef.current;
     if (!mid) return;
     const myPp = fresh.find(p => p.member_id === mid);
     if (myPp && ['joined', 'departed'].includes(myPp.status)) {
       navigator.geolocation?.getCurrentPosition(
         pos => {
+          const { latitude, longitude } = pos.coords;
           supabase.from('trip_participants').update({
-            last_lat: pos.coords.latitude, last_lng: pos.coords.longitude, last_location_at: new Date().toISOString(),
+            last_lat: latitude, last_lng: longitude, last_location_at: new Date().toISOString(),
           }).eq('id', myPp.id).then(() => {});
+          void drawRouteToSite(latitude, longitude);
         },
         () => {},
         { timeout: 8000, enableHighAccuracy: true },
