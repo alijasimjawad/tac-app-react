@@ -365,7 +365,7 @@ export default function MyExpenses() {
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>{t('exp_title')}</h1>
-          <p className={styles.pageSubtitle}>Submit and track your expense claims.</p>
+          <p className={styles.pageSubtitle}>{t('exp_subtitle')}</p>
         </div>
         {memberResolved && memberId && hasPerm('mywork_expenses_add') && (
           <button className={styles.newBtn} onClick={openNew}><PlusIcon /> {t('exp_newClaim')}</button>
@@ -384,10 +384,10 @@ export default function MyExpenses() {
         <>
           {/* ── Summary cards ── */}
           <div className={styles.summaryGrid}>
-            <SummaryCard label="Total Claimed" amount={summary.totalAmt} count={summary.totalCount} color="blue" icon={<WalletIcon />} />
-            <SummaryCard label="Approved" amount={summary.approvedAmt} count={summary.approvedCount} color="green" icon={<CheckCircleIcon />} />
-            <SummaryCard label="Pending" amount={summary.pendingAmt} count={summary.pendingCount} color="amber" icon={<ClockCircleIcon />} />
-            <SummaryCard label="Rejected" amount={summary.rejectedAmt} count={summary.rejectedCount} color="red" icon={<XCircleIcon />} />
+            <SummaryCard label={t('exp_statTotalClaimed')} amount={summary.totalAmt} count={summary.totalCount} color="blue" icon={<WalletIcon />} />
+            <SummaryCard label={t('exp_statApproved')} amount={summary.approvedAmt} count={summary.approvedCount} color="green" icon={<CheckCircleIcon />} />
+            <SummaryCard label={t('exp_statPending')} amount={summary.pendingAmt} count={summary.pendingCount} color="amber" icon={<ClockCircleIcon />} />
+            <SummaryCard label={t('exp_statRejected')} amount={summary.rejectedAmt} count={summary.rejectedCount} color="red" icon={<XCircleIcon />} />
           </div>
 
           {/* ── Content row ── */}
@@ -400,37 +400,37 @@ export default function MyExpenses() {
                     <SearchIcon />
                     <input
                       className={styles.filterInput}
-                      placeholder="Search by site, project, or description…"
+                      placeholder={t('exp_searchPlaceholder')}
                       value={searchQ}
                       onChange={e => { setSearchQ(e.target.value); setPage(0); }}
                     />
                   </div>
                   <select className={styles.filterSelect} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(0); }}>
-                    <option value="">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
+                    <option value="">{t('exp_allStatuses')}</option>
+                    <option value="pending">{t('exp_optPending')}</option>
+                    <option value="approved">{t('exp_optApproved')}</option>
+                    <option value="rejected">{t('exp_optRejected')}</option>
                   </select>
                   <select className={styles.filterSelect} value={filterProject} onChange={e => { setFilterProject(e.target.value); setPage(0); }}>
-                    <option value="">All Projects</option>
+                    <option value="">{t('exp_allProjects')}</option>
                     {projectNames.map(p => <option key={p}>{p}</option>)}
                   </select>
                   <select className={styles.filterSelect} value={filterMonth} onChange={e => { setFilterMonth(e.target.value); setPage(0); }}>
-                    <option value="">All Months</option>
+                    <option value="">{t('exp_allMonths')}</option>
                     {availableMonths.map(m => <option key={m} value={m}>{formatMonth(m)}</option>)}
                   </select>
                   {filtersActive && (
-                    <button className={styles.clearFiltersBtn} onClick={clearFilters}>Clear Filters</button>
+                    <button className={styles.clearFiltersBtn} onClick={clearFilters}>{t('exp_clearFilters')}</button>
                   )}
                 </div>
-                <div className={styles.filterCount}>{filteredClaims.length} claim{filteredClaims.length !== 1 ? 's' : ''}</div>
+                <div className={styles.filterCount}>{t('exp_filterCount', { count: filteredClaims.length })}</div>
               </div>
 
               {/* Claims card */}
               <div className={styles.claimsCard}>
                 <div className={styles.claimsCardHeader}>
-                  <div className={styles.claimsCardTitle}>Expense Claims</div>
-                  <div className={styles.claimsCardSub}>Review submitted claims and approval status.</div>
+                  <div className={styles.claimsCardTitle}>{t('exp_claimsTitle')}</div>
+                  <div className={styles.claimsCardSub}>{t('exp_claimsSubtitle')}</div>
                 </div>
 
                 {loading ? (
@@ -443,16 +443,16 @@ export default function MyExpenses() {
                     <div className={styles.emptyTitle}>{t('exp_noExpenses')}</div>
                     <div className={styles.emptySub}>{t('exp_startFirst')}</div>
                     {hasPerm('mywork_expenses_add') && (
-                      <button className={styles.newBtn} onClick={openNew} style={{ marginTop: 18 }}><PlusIcon /> New Claim</button>
+                      <button className={styles.newBtn} onClick={openNew} style={{ marginTop: 18 }}><PlusIcon /> {t('exp_newClaim')}</button>
                     )}
                   </div>
                 ) : filteredClaims.length === 0 ? (
                   <div className={styles.emptyState}>
                     <div className={styles.emptyIcon}><SearchEmptyIcon /></div>
-                    <div className={styles.emptyTitle}>No claims match your filters</div>
-                    <div className={styles.emptySub}>Try adjusting your search or filters.</div>
+                    <div className={styles.emptyTitle}>{t('exp_noFilterMatch')}</div>
+                    <div className={styles.emptySub}>{t('exp_filterAdjust')}</div>
                     <div className={styles.emptyActions}>
-                      <button className={styles.outlineBtn} onClick={clearFilters}>Clear Filters</button>
+                      <button className={styles.outlineBtn} onClick={clearFilters}>{t('exp_clearFilters')}</button>
                       {hasPerm('mywork_expenses_add') && (
                         <button className={styles.newBtn} onClick={openNew}><PlusIcon /> {t('exp_newClaim')}</button>
                       )}
@@ -465,15 +465,15 @@ export default function MyExpenses() {
                       <table className={styles.table}>
                         <thead>
                           <tr>
-                            <th>Activity Date</th>
-                            <th>Claim ID</th>
-                            <th>Site ID</th>
-                            <th>Project</th>
-                            <th>Section</th>
-                            <th>Description</th>
-                            <th className={styles.thRight}>Amount (IQD)</th>
-                            <th>Status</th>
-                            <th>Submitted</th>
+                            <th>{t('exp_date')}</th>
+                            <th>{t('exp_colClaimId')}</th>
+                            <th>{t('exp_siteId')}</th>
+                            <th>{t('exp_project')}</th>
+                            <th>{t('exp_section')}</th>
+                            <th>{t('exp_colDesc')}</th>
+                            <th className={styles.thRight}>{t('exp_colAmount')}</th>
+                            <th>{t('exp_status')}</th>
+                            <th>{t('exp_colSubmitted')}</th>
                             <th></th>
                           </tr>
                         </thead>
@@ -515,10 +515,10 @@ export default function MyExpenses() {
                     {/* Pagination */}
                     <div className={styles.pagination}>
                       <span className={styles.pgInfo}>
-                        Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filteredClaims.length)} of {filteredClaims.length} claim{filteredClaims.length !== 1 ? 's' : ''}
+                        {t('exp_showing', { from: page * pageSize + 1, to: Math.min((page + 1) * pageSize, filteredClaims.length), total: filteredClaims.length })}
                       </span>
                       <div className={styles.pgControls}>
-                        <span className={styles.pgLabel}>Rows per page</span>
+                        <span className={styles.pgLabel}>{t('exp_rowsPerPage')}</span>
                         <select className={styles.pgSelect} value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(0); }}>
                           {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
@@ -535,11 +535,11 @@ export default function MyExpenses() {
             {detailClaim && (
               <>
                 <div className={styles.drawerOverlay} onClick={() => setDetailClaim(null)} />
-                <div className={styles.drawer} role="dialog" aria-label="Claim Details">
+                <div className={styles.drawer} role="dialog" aria-label={t('exp_claimDetails')}>
                   <div className={styles.drawerHeader}>
                     <div>
                       <div className={styles.drawerClaimId}>{claimRef(claims, detailClaim)}</div>
-                      <div className={styles.drawerTitle}>Claim Details</div>
+                      <div className={styles.drawerTitle}>{t('exp_claimDetails')}</div>
                     </div>
                     <div className={styles.drawerHeaderRight}>
                       <StatusBadge status={detailClaim.status} />
@@ -548,34 +548,34 @@ export default function MyExpenses() {
                   </div>
                   <div className={styles.drawerBody}>
                     <div className={styles.drawerSection}>
-                      <div className={styles.drawerSectionTitle}>Claim Information</div>
+                      <div className={styles.drawerSectionTitle}>{t('exp_claimInformation')}</div>
                       <div className={styles.detailGrid}>
-                        <div className={styles.detailItem}><span className={styles.detailKey}>Activity Date</span><span className={styles.detailVal}>{fmtDate(detailClaim.activity_date)}</span></div>
-                        <div className={styles.detailItem}><span className={styles.detailKey}>Submitted</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.submitted_at)}</span></div>
-                        <div className={styles.detailItem}><span className={styles.detailKey}>Project</span><span className={styles.detailVal}>{detailClaim.project_name ?? '—'}</span></div>
-                        <div className={styles.detailItem}><span className={styles.detailKey}>Section</span><span className={styles.detailVal}>{detailClaim.section_label ?? '—'}</span></div>
-                        <div className={styles.detailItem}><span className={styles.detailKey}>Site ID</span><span className={`${styles.detailVal} ${styles.siteCode}`}>{detailClaim.site_id ?? '—'}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_date')}</span><span className={styles.detailVal}>{fmtDate(detailClaim.activity_date)}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_colSubmitted')}</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.submitted_at)}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_project')}</span><span className={styles.detailVal}>{detailClaim.project_name ?? '—'}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_section')}</span><span className={styles.detailVal}>{detailClaim.section_label ?? '—'}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_siteId')}</span><span className={`${styles.detailVal} ${styles.siteCode}`}>{detailClaim.site_id ?? '—'}</span></div>
                       </div>
-                      <div className={styles.detailItemFull}><span className={styles.detailKey}>Description</span><span className={styles.detailVal}>{detailClaim.description ?? '—'}</span></div>
+                      <div className={styles.detailItemFull}><span className={styles.detailKey}>{t('exp_colDesc')}</span><span className={styles.detailVal}>{detailClaim.description ?? '—'}</span></div>
                     </div>
 
                     <div className={styles.drawerSection}>
-                      <div className={styles.drawerSectionTitle}>Amount</div>
+                      <div className={styles.drawerSectionTitle}>{t('exp_amount')}</div>
                       {(detailClaim.transport_amount ?? 0) > 0 && (
-                        <div className={styles.amtRow}><span>Transport</span><span>{fmtAmt(detailClaim.transport_amount)} IQD</span></div>
+                        <div className={styles.amtRow}><span>{t('exp_transport')}</span><span>{fmtAmt(detailClaim.transport_amount)} IQD</span></div>
                       )}
                       {(detailClaim.food_amount ?? 0) > 0 && (
-                        <div className={styles.amtRow}><span>Food &amp; Meals</span><span>{fmtAmt(detailClaim.food_amount)} IQD</span></div>
+                        <div className={styles.amtRow}><span>{t('exp_foodMeals')}</span><span>{fmtAmt(detailClaim.food_amount)} IQD</span></div>
                       )}
                       {parseExtra(detailClaim.extra_categories).map((r, i) => (
                         <div key={i} className={styles.amtRow}><span>{r.category}</span><span>{fmtAmt(parseFloat(r.amount as string) || 0)} IQD</span></div>
                       ))}
-                      <div className={styles.amtTotal}><span>Total Amount</span><span>{fmtAmt(detailClaim.total_amount)} IQD</span></div>
+                      <div className={styles.amtTotal}><span>{t('exp_drawerTotal')}</span><span>{fmtAmt(detailClaim.total_amount)} IQD</span></div>
                     </div>
 
                     {parseEmployeeIds(detailClaim.employee_ids).length > 0 && (
                       <div className={styles.drawerSection}>
-                        <div className={styles.drawerSectionTitle}>Team Members</div>
+                        <div className={styles.drawerSectionTitle}>{t('exp_teamMembersSection')}</div>
                         <div className={styles.empTags}>
                           {parseEmployeeIds(detailClaim.employee_ids).map(id => (
                             <span key={id} className={styles.empTag}>{getEmpName(id)}</span>
@@ -586,25 +586,25 @@ export default function MyExpenses() {
 
                     {detailClaim.notes && (
                       <div className={styles.drawerSection}>
-                        <div className={styles.drawerSectionTitle}>Notes</div>
+                        <div className={styles.drawerSectionTitle}>{t('exp_notes')}</div>
                         <p className={styles.notesText}>{detailClaim.notes}</p>
                       </div>
                     )}
 
                     <div className={styles.drawerSection}>
-                      <div className={styles.drawerSectionTitle}>Status Information</div>
+                      <div className={styles.drawerSectionTitle}>{t('exp_statusInformation')}</div>
                       <div className={styles.statusInfo}>
-                        <div className={styles.statusInfoRow}><span className={styles.detailKey}>Status</span><StatusBadge status={detailClaim.status} /></div>
-                        <div className={styles.statusInfoRow}><span className={styles.detailKey}>Submitted</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.submitted_at)}</span></div>
+                        <div className={styles.statusInfoRow}><span className={styles.detailKey}>{t('exp_status')}</span><StatusBadge status={detailClaim.status} /></div>
+                        <div className={styles.statusInfoRow}><span className={styles.detailKey}>{t('exp_colSubmitted')}</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.submitted_at)}</span></div>
                         {detailClaim.reviewed_at && (
-                          <div className={styles.statusInfoRow}><span className={styles.detailKey}>Reviewed</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.reviewed_at)}</span></div>
+                          <div className={styles.statusInfoRow}><span className={styles.detailKey}>{t('exp_detailReviewed')}</span><span className={styles.detailVal}>{fmtDateTime(detailClaim.reviewed_at)}</span></div>
                         )}
                         {detailClaim.reviewed_by && (
-                          <div className={styles.statusInfoRow}><span className={styles.detailKey}>Reviewed by</span><span className={styles.detailVal}>{detailClaim.reviewed_by}</span></div>
+                          <div className={styles.statusInfoRow}><span className={styles.detailKey}>{t('exp_detailReviewedBy')}</span><span className={styles.detailVal}>{detailClaim.reviewed_by}</span></div>
                         )}
                         {detailClaim.rejection_reason && (
                           <div className={styles.rejBlock}>
-                            <span className={styles.detailKey}>Rejection Reason</span>
+                            <span className={styles.detailKey}>{t('exp_detailRejectionReason')}</span>
                             <span className={styles.rejText}>{detailClaim.rejection_reason}</span>
                           </div>
                         )}
@@ -613,12 +613,12 @@ export default function MyExpenses() {
                   </div>
                   <div className={styles.drawerFooter}>
                     {detailClaim.status === 'rejected' && hasPerm('mywork_expenses_edit') && (
-                      <button className={styles.editClaimBtn} onClick={() => openEdit(detailClaim)}><EditIcon /> Edit Claim</button>
+                      <button className={styles.editClaimBtn} onClick={() => openEdit(detailClaim)}><EditIcon /> {t('exp_editClaim')}</button>
                     )}
                     {detailClaim.status === 'rejected' && hasPerm('mywork_expenses_delete') && (
-                      <button className={styles.cancelClaimBtn} onClick={() => { setDeleteId(detailClaim.id); setDetailClaim(null); }}>Cancel Claim</button>
+                      <button className={styles.cancelClaimBtn} onClick={() => { setDeleteId(detailClaim.id); setDetailClaim(null); }}>{t('exp_cancelClaim')}</button>
                     )}
-                    <button className={styles.closeDrawerBtn} onClick={() => setDetailClaim(null)}>Close</button>
+                    <button className={styles.closeDrawerBtn} onClick={() => setDetailClaim(null)}>{t('exp_close')}</button>
                   </div>
                 </div>
               </>
@@ -634,7 +634,7 @@ export default function MyExpenses() {
                     <button className={styles.drawerClose} onClick={() => setFormOpen(false)} aria-label="Close">✕</button>
                   </div>
                   <div className={styles.drawerBody}>
-                    <div className={styles.formSection}>Activity Info</div>
+                    <div className={styles.formSection}>{t('exp_activityInfo')}</div>
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
                         <label className={styles.fieldLabel}>{t('exp_project')} <span className={styles.req}>*</span></label>
@@ -643,7 +643,7 @@ export default function MyExpenses() {
                           value={fProject}
                           onChange={e => { setFProject(e.target.value); setFieldErrs(p => ({ ...p, project: '' })); }}
                         >
-                          <option value="">Select project…</option>
+                          <option value="">{t('exp_selectProject')}</option>
                           {projectNames.map(p => <option key={p}>{p}</option>)}
                         </select>
                         {fieldErrs.project && <span className={styles.fieldErrMsg}>{fieldErrs.project}</span>}
@@ -670,7 +670,7 @@ export default function MyExpenses() {
                           setFieldErrs(p => ({ ...p, section: '' }));
                         }}
                       >
-                        <option value="">{!fProject || !nameToKey[fProject] ? 'Select project first' : sections.length === 0 ? 'Loading…' : 'Select section…'}</option>
+                        <option value="">{!fProject || !nameToKey[fProject] ? t('exp_selectProjectFirst') : sections.length === 0 ? t('exp_loading') : t('exp_selectSection')}</option>
                         {sections.map(s => {
                           const lbl = s.section_label || s.section_name || '';
                           return <option key={s.id} value={s.id}>{lbl}</option>;
@@ -683,7 +683,7 @@ export default function MyExpenses() {
                         <label className={styles.fieldLabel}>{t('exp_siteId')} <span className={styles.req}>*</span></label>
                         <input
                           className={`${styles.input} ${fieldErrs.siteId ? styles.inputErr : ''}`}
-                          placeholder="e.g. ZN-BGH-001"
+                          placeholder={t('exp_siteIdPlaceholder')}
                           value={fSiteId}
                           onChange={e => { setFSiteId(e.target.value); setFieldErrs(p => ({ ...p, siteId: '' })); }}
                         />
@@ -696,8 +696,8 @@ export default function MyExpenses() {
                           value={fActivityType}
                           onChange={e => { setFActivityType(e.target.value); setFieldErrs(p => ({ ...p, activityType: '', otherDesc: '' })); }}
                         >
-                          <option value="">Select type…</option>
-                          {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          <option value="">{t('exp_selectType')}</option>
+                          {ACTIVITY_TYPES.map(atype => <option key={atype} value={atype}>{atype}</option>)}
                         </select>
                         {fieldErrs.activityType && <span className={styles.fieldErrMsg}>{fieldErrs.activityType}</span>}
                       </div>
@@ -718,11 +718,11 @@ export default function MyExpenses() {
                     <div className={styles.formSection}>{t('exp_addlCosts')}</div>
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Transport</label>
+                        <label className={styles.fieldLabel}>{t('exp_transport')}</label>
                         <input type="number" min="0" inputMode="numeric" className={styles.input} placeholder="0" value={fTransport} onChange={e => setFTransport(e.target.value)} />
                       </div>
                       <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Food &amp; Meals</label>
+                        <label className={styles.fieldLabel}>{t('exp_foodMeals')}</label>
                         <input type="number" min="0" inputMode="numeric" className={styles.input} placeholder="0" value={fFood} onChange={e => setFFood(e.target.value)} />
                       </div>
                     </div>
@@ -732,11 +732,11 @@ export default function MyExpenses() {
                         {fExtra.map((row, i) => (
                           <div key={i} className={styles.extraCard}>
                             <div className={styles.fieldGroup}>
-                              <label className={styles.fieldLabel}>Category</label>
+                              <label className={styles.fieldLabel}>{t('exp_category')}</label>
                               <input className={styles.input} placeholder="e.g. Accommodation" value={row.category} onChange={e => updateExtraRow(i, 'category', e.target.value)} />
                             </div>
                             <div className={styles.fieldGroup}>
-                              <label className={styles.fieldLabel}>Amount (IQD)</label>
+                              <label className={styles.fieldLabel}>{t('exp_colAmount')}</label>
                               <input type="number" min="0" inputMode="numeric" className={styles.input} placeholder="0" value={row.amount} onChange={e => updateExtraRow(i, 'amount', e.target.value)} />
                             </div>
                             <button className={styles.removeRowBtn} onClick={() => removeExtraRow(i)} title="Remove">✕</button>
@@ -746,13 +746,13 @@ export default function MyExpenses() {
                     )}
 
                     <div className={styles.extraRowActions}>
-                      <button className={styles.addRowBtn} onClick={addExtraRow}>+ Add Category</button>
-                      <button className={styles.addRowBtn} onClick={() => setQuickOpen(q => !q)}>⚡ Quick Add</button>
+                      <button className={styles.addRowBtn} onClick={addExtraRow}>{t('exp_addCategory')}</button>
+                      <button className={styles.addRowBtn} onClick={() => setQuickOpen(q => !q)}>{t('exp_quickAdd')}</button>
                     </div>
 
                     {quickOpen && (
                       <div className={styles.quickPanel}>
-                        <div className={styles.quickTitle}>Quick Add Category</div>
+                        <div className={styles.quickTitle}>{t('exp_quickAddCategory')}</div>
                         <div className={styles.quickGrid}>
                           {QUICK_CATEGORIES.map(cat => (
                             <button key={cat} className={styles.quickChip} onClick={() => applyQuickAdd(cat)}>{cat}</button>
@@ -762,14 +762,14 @@ export default function MyExpenses() {
                     )}
 
                     <div className={styles.totalBox}>
-                      <span className={styles.totalLabel}>Estimated Total</span>
+                      <span className={styles.totalLabel}>{t('exp_estimatedTotal')}</span>
                       <span className={styles.totalAmount}>{calcTotal().toLocaleString('en-US')} IQD</span>
                     </div>
 
-                    <div className={styles.formSection}>Team Members <span className={styles.optional}>(optional)</span></div>
+                    <div className={styles.formSection}>{t('exp_teamMembersSection')} <span className={styles.optional}>{t('exp_optional')}</span></div>
                     <div className={styles.empWrap} ref={empDropRef}>
                       <div className={styles.empSelect} onClick={() => setEmpDropOpen(o => !o)}>
-                        {fEmployeeIds.length === 0 && <span className={styles.empPlaceholder}>Select team members…</span>}
+                        {fEmployeeIds.length === 0 && <span className={styles.empPlaceholder}>{t('exp_selectTeamMembers')}</span>}
                         {fEmployeeIds.map(id => (
                           <span key={id} className={styles.empPill}>
                             {getEmpName(id)}
@@ -794,8 +794,8 @@ export default function MyExpenses() {
                       )}
                     </div>
 
-                    <div className={styles.formSection}>Notes <span className={styles.optional}>(optional)</span></div>
-                    <textarea className={styles.textarea} rows={3} placeholder="Any additional notes…" value={fNotes} onChange={e => setFNotes(e.target.value)} />
+                    <div className={styles.formSection}>{t('exp_notes')} <span className={styles.optional}>{t('exp_optional')}</span></div>
+                    <textarea className={styles.textarea} rows={3} placeholder={t('exp_notesPlaceholder')} value={fNotes} onChange={e => setFNotes(e.target.value)} />
 
                     {formErr && <div className={styles.formErr} role="alert">{formErr}</div>}
                   </div>
@@ -816,11 +816,11 @@ export default function MyExpenses() {
       {deleteId && (
         <div className={styles.overlay} onClick={e => { if (e.target === e.currentTarget) setDeleteId(null); }}>
           <div className={styles.confirmModal}>
-            <h3 className={styles.confirmTitle}>Delete Claim?</h3>
-            <p className={styles.confirmText}>This action cannot be undone.</p>
+            <h3 className={styles.confirmTitle}>{t('exp_deleteTitle')}</h3>
+            <p className={styles.confirmText}>{t('exp_deleteText')}</p>
             <div className={styles.confirmActions}>
-              <button className={styles.cancelBtn} onClick={() => setDeleteId(null)}>Cancel</button>
-              <button className={styles.dangerBtn} onClick={confirmDelete}>Delete</button>
+              <button className={styles.cancelBtn} onClick={() => setDeleteId(null)}>{t('exp_cancel')}</button>
+              <button className={styles.dangerBtn} onClick={confirmDelete}>{t('exp_delete')}</button>
             </div>
           </div>
         </div>
@@ -842,13 +842,14 @@ function SummaryCard({ label, amount, count, color, icon }: {
   label: string; amount: number; count: number;
   color: 'blue' | 'green' | 'amber' | 'red'; icon: ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={styles.summaryCard}>
       <div className={`${styles.summaryIcon} ${styles[`summaryIcon_${color}` as keyof typeof styles]}`}>{icon}</div>
       <div className={styles.summaryContent}>
         <div className={styles.summaryLabel}>{label}</div>
         <div className={styles.summaryAmount}>{fmtAmt(amount)} IQD</div>
-        <div className={styles.summaryCount}>{count} claim{count !== 1 ? 's' : ''}</div>
+        <div className={styles.summaryCount}>{t('exp_summaryCount', { count })}</div>
       </div>
     </div>
   );
@@ -858,6 +859,7 @@ function MobileClaimCard({ claim, claimId, onView, onEdit }: {
   claim: ExpenseClaim; claimId: string;
   onView: () => void; onEdit?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={styles.mobileCard}>
       <div className={styles.mobileCardTop}>
@@ -871,22 +873,24 @@ function MobileClaimCard({ claim, claimId, onView, onEdit }: {
       <div className={styles.mobileCardProject}>{claim.project_name}{claim.section_label ? ` · ${claim.section_label}` : ''}</div>
       <div className={styles.mobileCardDesc}>{claim.description}</div>
       <div className={styles.mobileCardDates}>
-        <span>Activity: {fmtDate(claim.activity_date)}</span>
-        <span>Submitted: {fmtDateTime(claim.submitted_at)}</span>
+        <span>{t('exp_activityLabel')} {fmtDate(claim.activity_date)}</span>
+        <span>{t('exp_submittedLabel')} {fmtDateTime(claim.submitted_at)}</span>
       </div>
       <div className={styles.mobileCardActions}>
-        <button className={styles.mobileViewBtn} onClick={onView}>View Details →</button>
-        {onEdit && <button className={styles.mobileEditBtn} onClick={onEdit}>Edit &amp; Resubmit</button>}
+        <button className={styles.mobileViewBtn} onClick={onView}>{t('exp_viewDetails')}</button>
+        {onEdit && <button className={styles.mobileEditBtn} onClick={onEdit}>{t('exp_editResubmit')}</button>}
       </div>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const s = status?.toLowerCase();
   const cls = s === 'approved' ? styles.badgeApproved : s === 'rejected' ? styles.badgeRejected : styles.badgePending;
   const icon = s === 'approved' ? <CheckIcon /> : s === 'rejected' ? <AlertIcon /> : <ClockIcon />;
-  return <span className={`${styles.badge} ${cls}`}>{icon}{status}</span>;
+  const label = s === 'approved' ? t('exp_statusApproved') : s === 'rejected' ? t('exp_statusRejected') : t('exp_statusPending');
+  return <span className={`${styles.badge} ${cls}`}>{icon}{label}</span>;
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
