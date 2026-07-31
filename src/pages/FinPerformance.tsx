@@ -64,6 +64,13 @@ interface ActivityRow {
   team_member_ids: string[] | null;
 }
 
+interface FieldTripRow {
+  id: string;
+  date: string;
+  project: string | null;
+  team_member_ids: string[] | null;
+}
+
 interface ProjAttrib {
   project: string;
   days: number;
@@ -364,17 +371,47 @@ export default function FinPerformance() {
         .select('date,project,team_member_ids')
         .gte('date', first).lte('date', last),
       supabase.from('field_trips')
-        .select('date,project,team_member_ids')
+        .select('id,date,project,team_member_ids')
         .gte('date', first).lte('date', last),
     ]);
 
     if (adjRes.error || attRes.error || daRes.error || ftRes.error) {
       setError('Failed to load period data.');
-    } else {
-      setAdjs(adjRes.data || []);
-      setAttendance(attRes.data || []);
-      setActivities([...(daRes.data || []), ...(ftRes.data || [])]);
+      setPeriodLoading(false);
+      return;
     }
+
+    // Resolve actual field-trip participants (status = 'joined' only).
+    // Planned/assigned members in team_member_ids who never checked in must
+    // not receive day credit — only people with a joined trip_participants row.
+    const trips: FieldTripRow[] = ftRes.data || [];
+    const tripIds = trips.map(t => t.id);
+
+    const joinedByTrip = new Map<string, string[]>();
+    if (tripIds.length > 0) {
+      const ppRes = await supabase
+        .from('trip_participants')
+        .select('trip_id,member_id')
+        .in('trip_id', tripIds)
+        .eq('status', 'joined');
+      for (const pp of (ppRes.data || [])) {
+        const arr = joinedByTrip.get(pp.trip_id) || [];
+        arr.push(pp.member_id);
+        joinedByTrip.set(pp.trip_id, arr);
+      }
+    }
+
+    // Replace each trip's team_member_ids with the joined-only list.
+    // Trips where nobody has joined yet get an empty array → 0 days attributed.
+    const tripActivities: ActivityRow[] = trips.map(t => ({
+      date: t.date,
+      project: t.project,
+      team_member_ids: joinedByTrip.get(t.id) ?? [],
+    }));
+
+    setAdjs(adjRes.data || []);
+    setAttendance(attRes.data || []);
+    setActivities([...(daRes.data || []), ...tripActivities]);
     setPeriodLoading(false);
   }, []);
 
