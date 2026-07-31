@@ -57,6 +57,26 @@ function getGps(): Promise<{ lat: number; lng: number } | null> {
   });
 }
 
+/** Strict variant that rejects on failure — used to hard-gate clock-in on a GPS fix. */
+function getGpsRequired(): Promise<{ lat: number; lng: number }> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('unavailable')); return; }
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      err => reject(err),
+      { timeout: 8000, enableHighAccuracy: true },
+    );
+  });
+}
+
+function gpsErrorMessage(err: unknown): string {
+  const code = (err as { code?: number } | null)?.code;
+  if (code === 1) return 'Location permission denied. Please enable location access and try again.';
+  if (code === 2) return 'Could not determine your location. Please check GPS/network and try again.';
+  if (code === 3) return 'Location request timed out. Please try again.';
+  return 'Could not verify your location. Please enable location services and try again.';
+}
+
 function useLiveElapsed(clockInIso: string | null, active: boolean): string {
   const [display, setDisplay] = useState('');
   useEffect(() => {
@@ -145,12 +165,22 @@ export default function MyAttendance() {
     if (!memberId) { showToast('Could not find your team member record.', false); return; }
     setClocking(true);
     setGpsPhase('locating');
-    const gps = await getGps();
+    let gps: { lat: number; lng: number };
+    try {
+      gps = await getGpsRequired();
+    } catch (err) {
+      setGpsPhase('idle');
+      setClocking(false);
+      showToast(gpsErrorMessage(err), false);
+      return;
+    }
     setGpsPhase('saving');
     const now = new Date().toISOString();
     const status = new Date().getHours() >= LATE_CUTOFF_HOUR ? 'Late' : 'Present';
-    const payload: Record<string, unknown> = { member_id: memberId, date: today, clock_in: now, status };
-    if (gps) { payload.clock_in_lat = gps.lat; payload.clock_in_lng = gps.lng; }
+    const payload: Record<string, unknown> = {
+      member_id: memberId, date: today, clock_in: now, status,
+      clock_in_lat: gps.lat, clock_in_lng: gps.lng,
+    };
     const { error } = await supabase
       .from('attendance')
       .upsert(payload, { onConflict: 'member_id,date' });
