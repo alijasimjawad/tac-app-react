@@ -218,13 +218,28 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
     if (!mapRef.current || !siteCoordsRef.current) return;
     const prev = routeOriginRef.current;
     if (prev && haversineKm(prev.lat, prev.lng, lat, lng) < ROUTE_REDRAW_KM) return;
+    const site = siteCoordsRef.current;
+    routeOriginRef.current = { lat, lng };
+
     const route = await getRoadRoute([
       { latitude: lat, longitude: lng },
-      { latitude: siteCoordsRef.current.lat, longitude: siteCoordsRef.current.lng },
+      { latitude: site.lat, longitude: site.lng },
     ]);
-    if (!route || !mapRef.current) return;
-    routeOriginRef.current = { lat, lng };
+    if (!mapRef.current) return;
     if (routeLineRef.current) { mapRef.current.removeLayer(routeLineRef.current); routeLineRef.current = null; }
+
+    if (!route) {
+      // ORS road route unavailable (no token configured in this environment, the
+      // request failed, or the response couldn't be parsed — getRoadRoute() never
+      // throws, it just returns null). Fall back to a plain straight-line so the
+      // user still sees a directional indicator instead of nothing.
+      console.warn('[TripDetailModal] getRoadRoute() returned null — falling back to straight line. Check VITE_ORS_TOKEN is set for this environment.');
+      routeLineRef.current = L.polyline([[lat, lng], [site.lat, site.lng]], {
+        color: '#94a3b8', weight: 3, opacity: 0.7, dashArray: '4,8', lineCap: 'round',
+      }).addTo(mapRef.current);
+      return;
+    }
+
     routeLineRef.current = L.polyline(route.geometry, {
       color: '#2563eb', weight: 4, opacity: 0.75, dashArray: '1,8', lineCap: 'round',
     }).addTo(mapRef.current);
@@ -402,8 +417,10 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
                 btns.push({ label: 'Mark Departure', action: 'depart', cls: styles.btnOrange });
               if (iAmStarter && detailTrip.status === 'departed')
                 btns.push({ label: 'Mark Reached', action: 'reached', cls: styles.btnBlue });
-              if (isAdmin && (detailTrip.status === 'active' || detailTrip.status === 'departed'))
-                btns.push({ label: 'Mark Complete', action: 'complete', cls: styles.btnSlate });
+              // Admin override for finishing someone else's trip (starter unreachable, etc.) —
+              // hidden for the starter themselves so they never see two buttons doing the same thing.
+              if (isAdmin && !iAmStarter && (detailTrip.status === 'active' || detailTrip.status === 'departed'))
+                btns.push({ label: 'Mark Complete (admin)', action: 'complete', cls: styles.btnSlate });
               return btns.length > 0 ? (
                 <div className={styles.actions}>
                   {btns.map(b => (
