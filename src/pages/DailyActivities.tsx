@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
+import { FIN_MONTHS, getYears } from '../lib/finHelpers';
 import styles from './DailyActivities.module.css';
 
 const ACTIVITY_TYPES = ['Installation', 'Maintenance', 'Survey', 'Testing', 'Commissioning', 'Integration', 'Clearance'];
@@ -213,6 +214,12 @@ export default function DailyActivities() {
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Team Report modal
+  const [showTeamReport, setShowTeamReport] = useState(false);
+  const [trMonth, setTrMonth] = useState(() => new Date().getMonth() + 1);
+  const [trYear,  setTrYear]  = useState(() => new Date().getFullYear());
+  const [trExporting, setTrExporting] = useState(false);
 
   // Modals / UI
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -794,6 +801,101 @@ export default function DailyActivities() {
     }
   }
 
+  // ── Team Report: 2-sheet workbook for the selected month/year ──
+  async function exportTeamReport() {
+    setTrExporting(true);
+    const dLast = new Date(trYear, trMonth, 0);
+    const first = `${trYear}-${String(trMonth).padStart(2, '0')}-01`;
+    const last  = `${trYear}-${String(trMonth).padStart(2, '0')}-${String(dLast.getDate()).padStart(2, '0')}`;
+
+    const { data: acts, error } = await supabase
+      .from('daily_activities')
+      .select('date,project,site_id,activity_type,status,team_member_ids')
+      .gte('date', first)
+      .lte('date', last);
+
+    setTrExporting(false);
+    if (error || !acts) return;
+
+    const nameById = Object.fromEntries(teamMembers.map(m => [m.id, m.full_name]));
+
+    // Sheet 1 — Summary: one row per team member, including zero-activity members
+    const summaryRows = teamMembers.map(member => {
+      const memberActs = acts.filter(
+        (a: { team_member_ids?: string[] | null }) =>
+          Array.isArray(a.team_member_ids) && a.team_member_ids.includes(member.id),
+      );
+      const distinctDates = new Set(memberActs.map((a: { date: string }) => a.date));
+      const typeCounts = Object.fromEntries(
+        ACTIVITY_TYPES.map(atype => [
+          atype,
+          memberActs.filter((a: { activity_type?: string | null }) => a.activity_type === atype).length,
+        ]),
+      );
+      const projects = [
+        ...new Set(
+          memberActs
+            .map((a: { project?: string | null }) => a.project)
+            .filter((p: string | null | undefined): p is string => !!p),
+        ),
+      ];
+      return {
+        'Employee Name': member.full_name,
+        'Role': member.role ?? '',
+        'Days With Activity': distinctDates.size,
+        ...typeCounts,
+        'Projects Touched': projects.join(', '),
+      };
+    });
+
+    const ws1 = XLSX.utils.json_to_sheet(summaryRows);
+    ws1['!cols'] = [
+      { wch: 22 }, { wch: 14 }, { wch: 20 },
+      ...ACTIVITY_TYPES.map(() => ({ wch: 14 })),
+      { wch: 40 },
+    ];
+
+    // Sheet 2 — Detail: one row per (employee × activity), sorted by name then date
+    interface DetailEntry {
+      name: string; rawDate: string; project: string; site_id: string;
+      activity_type: string; status: string;
+    }
+    const detailEntries: DetailEntry[] = acts.flatMap(
+      (a: { date: string; project?: string | null; site_id?: string | null; activity_type?: string | null; status?: string | null; team_member_ids?: string[] | null }) =>
+        (Array.isArray(a.team_member_ids) ? a.team_member_ids : []).map((id: string) => ({
+          name: nameById[id] || id,
+          rawDate: a.date,
+          project: a.project ?? '',
+          site_id: a.site_id ?? '',
+          activity_type: a.activity_type ?? '',
+          status: a.status ?? '',
+        })),
+    );
+    detailEntries.sort((a, b) =>
+      a.name.localeCompare(b.name) || a.rawDate.localeCompare(b.rawDate),
+    );
+
+    const ws2 = XLSX.utils.json_to_sheet(
+      detailEntries.map(e => ({
+        'Employee Name': e.name,
+        'Date': e.rawDate ? fmtDate(e.rawDate) : '',
+        'Project': e.project,
+        'Site ID': e.site_id,
+        'Activity Type': e.activity_type,
+        'Status': e.status,
+      })),
+    );
+    ws2['!cols'] = [
+      { wch: 22 }, { wch: 12 }, { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 14 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Detail');
+    XLSX.writeFile(wb, `Team_Report_${FIN_MONTHS[trMonth - 1]}_${trYear}.xlsx`);
+    setShowTeamReport(false);
+  }
+
   // ── Excel export of the currently filtered/sorted results ──
   function exportCsv() {
     const data = sortedActivities.map(a => ({
@@ -1307,6 +1409,13 @@ export default function DailyActivities() {
               </svg>
               {t('da_export')}
             </button>
+            <button type="button" className={styles.exportBtn} title="Team Report" onClick={() => setShowTeamReport(true)}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              Team Report
+            </button>
             {hasActiveFilters && (
               <button type="button" className={styles.clearFiltersBtn} onClick={clearFilters}>
                 {t('da_clearFilters')}
@@ -1507,6 +1616,38 @@ export default function DailyActivities() {
             <div className={styles.modalActions}>
               <button className={styles.btnGhost} onClick={cancelReason}>{t('sidebar_cancel')}</button>
               <button className={styles.btnPrimary} onClick={confirmReason}>{t('da_confirmUpdate')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Team Report Modal ── */}
+      {showTeamReport && (
+        <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setShowTeamReport(false); }}>
+          <div className={styles.modal} style={{ width: 360 }}>
+            <p className={styles.modalTitle}>Team Report</p>
+            <p className={styles.modalSub}>Select a month and year to export a full-team activity summary.</p>
+            <div style={{ display: 'flex', gap: 10, margin: '16px 0' }}>
+              <select
+                style={{ flex: 1, height: 36, border: '1px solid #cbd5e1', borderRadius: 6, padding: '0 10px', fontSize: 13 }}
+                value={trMonth}
+                onChange={e => setTrMonth(+e.target.value)}
+              >
+                {FIN_MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
+              </select>
+              <select
+                style={{ width: 90, height: 36, border: '1px solid #cbd5e1', borderRadius: 6, padding: '0 10px', fontSize: 13 }}
+                value={trYear}
+                onChange={e => setTrYear(+e.target.value)}
+              >
+                {getYears().map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <div className={styles.modalActions}>
+              <button className={styles.btnGhost} onClick={() => setShowTeamReport(false)}>Cancel</button>
+              <button className={styles.btnPrimary} onClick={exportTeamReport} disabled={trExporting}>
+                {trExporting ? 'Generating…' : 'Generate'}
+              </button>
             </div>
           </div>
         </div>
