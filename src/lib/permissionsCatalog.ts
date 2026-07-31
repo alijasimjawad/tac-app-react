@@ -198,6 +198,13 @@ export const ACTION_SCOPES: ActionScope[] = [
     ],
   },
   {
+    id: 'fin_performance',
+    label: 'Team Performance',
+    actions: [
+      { key: 'fin_performance_export', label: 'Export CSV' },
+    ],
+  },
+  {
     id: 'fin_genexp',
     label: 'General Expenses',
     actions: [
@@ -338,6 +345,8 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
   fin_report_export: 'view_fin_report',
 
   fin_payslips_download_pdf: 'view_fin_payslips',
+
+  fin_performance_export: 'view_fin_performance',
 
   fin_genexp_add: 'view_fin_genexp',
   fin_genexp_edit: 'view_fin_genexp',

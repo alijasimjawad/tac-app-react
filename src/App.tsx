@@ -26,6 +26,7 @@ import FinClients from './pages/FinClients';
 import FinInvoices from './pages/FinInvoices';
 import FinExpClaims from './pages/FinExpClaims';
 import FinPayslips from './pages/FinPayslips';
+import FinPerformance from './pages/FinPerformance';
 import ActivityLog from './pages/ActivityLog';
 import UserManagement from './pages/UserManagement';
 import BackupRestore from './pages/BackupRestore';
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/finance/invoices"           element={<FinInvoices />} />
             <Route path="/finance/expense-claims"     element={<FinExpClaims />} />
             <Route path="/finance/payslips"           element={<FinPayslips />} />
+            <Route path="/finance/performance"        element={<FinPerformance />} />
             <Route path="/activity-log"              element={<ActivityLog />} />
             <Route path="/user-management"           element={<UserManagement />} />
             <Route path="/backup-restore"            element={<BackupRestore />} />
