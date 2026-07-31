@@ -23,6 +23,10 @@ import styles from './MyTrips.module.css';
 // since the last route we drew for the hero card map — same throttle used
 // by the full trip detail modal, to keep ORS calls sane on a live poll.
 const HERO_ROUTE_REDRAW_KM = 0.2;
+// Hard floor between ORS network calls, independent of movement — protects
+// the free-tier quota/rate-limit from being hammered by frequent polling
+// across multiple open trip cards/modals at once.
+const HERO_ROUTE_MIN_INTERVAL_MS = 30000;
 
 // ── Trip phases ───────────────────────────────────────────────────────────────
 
@@ -180,6 +184,7 @@ function ActiveTripHero({
   const siteCoordsRef   = useRef<{ lat: number; lng: number } | null>(null);
   const routeLineRef    = useRef<L.Polyline | null>(null);
   const routeOriginRef  = useRef<{ lat: number; lng: number } | null>(null);
+  const lastRouteFetchAtRef = useRef<number>(0);
 
   const phase       = phaseIndex(trip.status);
   const joinedCount = participants.filter(p => p.status === 'joined').length;
@@ -230,8 +235,10 @@ function ActiveTripHero({
     if (!mapRef.current || !siteCoordsRef.current) return;
     const prev = routeOriginRef.current;
     if (prev && haversineKm(prev.lat, prev.lng, lat, lng) < HERO_ROUTE_REDRAW_KM) return;
+    if (Date.now() - lastRouteFetchAtRef.current < HERO_ROUTE_MIN_INTERVAL_MS) return;
     const site = siteCoordsRef.current;
     routeOriginRef.current = { lat, lng };
+    lastRouteFetchAtRef.current = Date.now();
 
     const route = await getRoadRoute([
       { latitude: lat, longitude: lng },

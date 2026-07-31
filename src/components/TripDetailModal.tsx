@@ -30,6 +30,10 @@ const REFRESH_MS = 10000;
 // Only re-request a road route if the driver has moved at least this far
 // since the last route we drew — keeps ORS calls sane on a 10s poll.
 const ROUTE_REDRAW_KM = 0.2;
+// Hard floor between ORS network calls, independent of movement — protects
+// the free-tier quota/rate-limit from being hammered by frequent polling
+// across multiple open trip cards/modals at once.
+const ROUTE_MIN_INTERVAL_MS = 30000;
 
 function gpsErrorMessage(err: unknown): string {
   const code = (err as GeolocationPositionError | undefined)?.code;
@@ -58,6 +62,7 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
   const siteCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
   const routeOriginRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastRouteFetchAtRef = useRef<number>(0);
   const tripStatusRef = useRef<string>('');
 
   // ── screen wake lock (keep display on while an active/departed trip is open) ──
@@ -207,8 +212,10 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
     if (!mapRef.current || !siteCoordsRef.current) return;
     const prev = routeOriginRef.current;
     if (prev && haversineKm(prev.lat, prev.lng, lat, lng) < ROUTE_REDRAW_KM) return;
+    if (Date.now() - lastRouteFetchAtRef.current < ROUTE_MIN_INTERVAL_MS) return;
     const site = siteCoordsRef.current;
     routeOriginRef.current = { lat, lng };
+    lastRouteFetchAtRef.current = Date.now();
 
     const route = await getRoadRoute([
       { latitude: lat, longitude: lng },
