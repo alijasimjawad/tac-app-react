@@ -191,6 +191,13 @@ export const ACTION_SCOPES: ActionScope[] = [
     ],
   },
   {
+    id: 'fin_payslips',
+    label: 'Payslips',
+    actions: [
+      { key: 'fin_payslips_download_pdf', label: 'Download PDF' },
+    ],
+  },
+  {
     id: 'fin_genexp',
     label: 'General Expenses',
     actions: [
@@ -329,6 +336,8 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
   fin_report_adjust_salary: 'view_fin_report',
   fin_report_adjust_all: 'view_fin_report',
   fin_report_export: 'view_fin_report',
+
+  fin_payslips_download_pdf: 'view_fin_payslips',
 
   fin_genexp_add: 'view_fin_genexp',
   fin_genexp_edit: 'view_fin_genexp',
