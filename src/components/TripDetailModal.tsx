@@ -12,6 +12,7 @@ import {
   initials,
   getGps,
   buildTimeline,
+  pickPrimaryPosition,
 } from '../lib/tripTypes';
 import type { UserProfile } from '../context/AuthContext';
 import { sendPushToUser, getMemberUserId } from '../lib/pushNotify';
@@ -36,18 +37,6 @@ function gpsErrorMessage(err: unknown): string {
   if (code === 3) return 'Location request timed out — check your GPS signal and try again.';
   if (code === 2) return 'Location unavailable — check your GPS signal and try again.';
   return 'Could not get your location — please enable GPS and retry.';
-}
-
-// Best-known live position to route from: most recently updated joined/departed participant.
-function pickPrimaryPosition(pp: TripParticipant[]): { lat: number; lng: number } | null {
-  const candidates = pp.filter(p => p.last_lat != null && p.last_lng != null && ['joined', 'departed'].includes(p.status));
-  if (!candidates.length) return null;
-  const best = candidates.reduce((a, b) => {
-    const at = a.last_location_at ? new Date(a.last_location_at).getTime() : 0;
-    const bt = b.last_location_at ? new Date(b.last_location_at).getTime() : 0;
-    return bt > at ? b : a;
-  });
-  return { lat: best.last_lat as number, lng: best.last_lng as number };
 }
 
 export default function TripDetailModal({ tripId, memberId, currentUser, onClose, onTripUpdated }: Props) {

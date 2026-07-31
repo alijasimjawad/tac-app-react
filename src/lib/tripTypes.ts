@@ -58,6 +58,18 @@ export function getGps(): Promise<GeolocationPosition> {
   );
 }
 
+/** Picks the most-recently-updated joined/departed participant's live position. */
+export function pickPrimaryPosition(pp: TripParticipant[]): { lat: number; lng: number } | null {
+  const candidates = pp.filter(p => p.last_lat != null && p.last_lng != null && ['joined', 'departed'].includes(p.status));
+  if (!candidates.length) return null;
+  const best = candidates.reduce((a, b) => {
+    const at = a.last_location_at ? new Date(a.last_location_at).getTime() : 0;
+    const bt = b.last_location_at ? new Date(b.last_location_at).getTime() : 0;
+    return bt > at ? b : a;
+  });
+  return { lat: best.last_lat as number, lng: best.last_lng as number };
+}
+
 export function buildTimeline(trip: FieldTrip, pp: TripParticipant[]): TimelineEvent[] {
   const events: TimelineEvent[] = [];
   if (trip.started_at) {

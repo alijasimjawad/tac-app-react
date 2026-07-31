@@ -12,9 +12,17 @@ import {
   fmtTime,
   initials,
   buildTimeline,
+  pickPrimaryPosition,
 } from '../lib/tripTypes';
+import { haversineKm } from '../lib/sitesNearest';
+import { getRoadRoute } from '../lib/orsRouting';
 import TripDetailModal from '../components/TripDetailModal';
 import styles from './MyTrips.module.css';
+
+// Only re-request a road route if the driver has moved at least this far
+// since the last route we drew for the hero card map — same throttle used
+// by the full trip detail modal, to keep ORS calls sane on a live poll.
+const HERO_ROUTE_REDRAW_KM = 0.2;
 
 // ── Trip phases ───────────────────────────────────────────────────────────────
 
@@ -165,9 +173,13 @@ function ActiveTripHero({
   onFullModal: () => void;
   onLive: () => void;
 }) {
-  const mapDivRef  = useRef<HTMLDivElement>(null);
-  const mapRef     = useRef<L.Map | null>(null);
-  const markersRef = useRef<L.Marker[]>([]);
+  const mapDivRef       = useRef<HTMLDivElement>(null);
+  const mapRef          = useRef<L.Map | null>(null);
+  const markersRef      = useRef<L.Marker[]>([]);
+  const siteMarkerRef   = useRef<L.Marker | null>(null);
+  const siteCoordsRef   = useRef<{ lat: number; lng: number } | null>(null);
+  const routeLineRef    = useRef<L.Polyline | null>(null);
+  const routeOriginRef  = useRef<{ lat: number; lng: number } | null>(null);
 
   const phase       = phaseIndex(trip.status);
   const joinedCount = participants.filter(p => p.status === 'joined').length;
@@ -197,7 +209,51 @@ function ActiveTripHero({
     };
   }, []);
 
-  // update markers when participants change
+  // fetch the site's coordinates once (or whenever the site changes)
+  useEffect(() => {
+    if (!trip.site_id) { siteCoordsRef.current = null; return; }
+    let cancelled = false;
+    supabase
+      .from('sites').select('latitude, longitude').eq('site_code', trip.site_id).single()
+      .then(({ data }) => {
+        if (cancelled) return;
+        siteCoordsRef.current = data?.latitude && data?.longitude ? { lat: data.latitude, lng: data.longitude } : null;
+      });
+    return () => { cancelled = true; };
+  }, [trip.site_id]);
+
+  // (re)draw the driving route from a live position to the site — mirrors the
+  // logic in TripDetailModal.tsx so both maps behave the same way. Falls back
+  // to a plain straight line if the real road route can't be fetched (e.g. no
+  // ORS token configured), so a directional indicator is always shown.
+  async function drawRouteToSite(lat: number, lng: number) {
+    if (!mapRef.current || !siteCoordsRef.current) return;
+    const prev = routeOriginRef.current;
+    if (prev && haversineKm(prev.lat, prev.lng, lat, lng) < HERO_ROUTE_REDRAW_KM) return;
+    const site = siteCoordsRef.current;
+    routeOriginRef.current = { lat, lng };
+
+    const route = await getRoadRoute([
+      { latitude: lat, longitude: lng },
+      { latitude: site.lat, longitude: site.lng },
+    ]);
+    if (!mapRef.current) return;
+    if (routeLineRef.current) { mapRef.current.removeLayer(routeLineRef.current); routeLineRef.current = null; }
+
+    if (!route) {
+      console.warn('[ActiveTripHero] getRoadRoute() returned null — falling back to straight line. Check VITE_ORS_TOKEN is set for this environment.');
+      routeLineRef.current = L.polyline([[lat, lng], [site.lat, site.lng]], {
+        color: '#94a3b8', weight: 3, opacity: 0.7, dashArray: '4,8', lineCap: 'round',
+      }).addTo(mapRef.current);
+      return;
+    }
+
+    routeLineRef.current = L.polyline(route.geometry, {
+      color: '#2563eb', weight: 4, opacity: 0.75, dashArray: '1,8', lineCap: 'round',
+    }).addTo(mapRef.current);
+  }
+
+  // update markers (+ site marker + route) when participants change
   useEffect(() => {
     if (!mapRef.current) return;
     markersRef.current.forEach(m => m.remove());
@@ -216,9 +272,27 @@ function ActiveTripHero({
       bounds.push([p.last_lat, p.last_lng]);
     });
 
+    if (siteCoordsRef.current && mapRef.current) {
+      const site = siteCoordsRef.current;
+      if (siteMarkerRef.current) { mapRef.current.removeLayer(siteMarkerRef.current); siteMarkerRef.current = null; }
+      const siteIcon = L.divIcon({
+        className: '',
+        html: `<div style="background:#16a34a;color:#fff;border-radius:6px;padding:2px 6px;font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);white-space:nowrap">${trip.site_id || 'Site'}</div>`,
+        iconSize: undefined, iconAnchor: [0, 0],
+      });
+      siteMarkerRef.current = L.marker([site.lat, site.lng], { icon: siteIcon })
+        .bindPopup(`Site: ${trip.site_id || ''}`).addTo(mapRef.current);
+      bounds.push([site.lat, site.lng]);
+    }
+
     if (bounds.length > 1) mapRef.current.fitBounds(bounds, { padding: [20, 20] });
     else if (bounds.length === 1) mapRef.current.setView(bounds[0], 13);
-  }, [participants]);
+
+    if (['active', 'departed'].includes(trip.status)) {
+      const primary = pickPrimaryPosition(participants);
+      if (primary) void drawRouteToSite(primary.lat, primary.lng);
+    }
+  }, [participants, trip.status, trip.site_id]);
 
   return (
     <div className={styles.heroCard}>
