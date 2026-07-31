@@ -46,18 +46,7 @@ function fmtHours(h: number | null): string {
   return `${hrs}h ${mins}m`;
 }
 
-function getGps(): Promise<{ lat: number; lng: number } | null> {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) { resolve(null); return; }
-    navigator.geolocation.getCurrentPosition(
-      p => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      () => resolve(null),
-      { timeout: 8000 },
-    );
-  });
-}
-
-/** Strict variant that rejects on failure — used to hard-gate clock-in on a GPS fix. */
+/** Rejects on failure — used to hard-gate clock-in/out on a successful GPS fix. */
 function getGpsRequired(): Promise<{ lat: number; lng: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error('unavailable')); return; }
@@ -195,12 +184,22 @@ export default function MyAttendance() {
     if (!todayRow?.id || !todayRow.clock_in) return;
     setClocking(true);
     setGpsPhase('locating');
-    const gps = await getGps();
+    let gps: { lat: number; lng: number };
+    try {
+      gps = await getGpsRequired();
+    } catch (err) {
+      setGpsPhase('idle');
+      setClocking(false);
+      showToast(gpsErrorMessage(err), false);
+      return;
+    }
     setGpsPhase('saving');
     const now = new Date().toISOString();
     const hours = Math.round((+new Date(now) - +new Date(todayRow.clock_in)) / 3600000 * 100) / 100;
-    const payload: Record<string, unknown> = { clock_out: now, hours_worked: hours };
-    if (gps) { payload.clock_out_lat = gps.lat; payload.clock_out_lng = gps.lng; }
+    const payload: Record<string, unknown> = {
+      clock_out: now, hours_worked: hours,
+      clock_out_lat: gps.lat, clock_out_lng: gps.lng,
+    };
     const { error } = await supabase.from('attendance').update(payload).eq('id', todayRow.id);
     setGpsPhase('idle');
     setClocking(false);
