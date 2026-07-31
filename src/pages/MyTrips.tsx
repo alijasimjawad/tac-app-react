@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -727,17 +727,41 @@ export default function MyTrips() {
   );
   const displayTrips = isAdmin ? trips : myTrips;
 
-  // ── fetch participants for the first active/departed trip ──
+  // ── fetch participants for the first active/departed trip, on a 10s poll,
+  // plus push this viewer's own live GPS while they're joined/departed ──
   const activeTripId = displayTrips.find(t => ['active', 'departed'].includes(t.status))?.id ?? null;
-  useEffect(() => {
+  const refreshActivePp = useCallback(async () => {
     if (!activeTripId) { setActivePp([]); return; }
-    supabase
-      .from('trip_participants')
-      .select('*')
-      .eq('trip_id', activeTripId)
-      .order('member_name')
-      .then(({ data }) => setActivePp((data as TripParticipant[]) ?? []));
-  }, [activeTripId]);
+    const { data } = await supabase
+      .from('trip_participants').select('*').eq('trip_id', activeTripId).order('member_name');
+    const fresh = (data as TripParticipant[]) ?? [];
+    setActivePp(fresh);
+
+    // Keep the "meeting point" used by the 100m join-proximity check fresh
+    // even when only the hero card (not the full trip detail modal) is open —
+    // mirrors the same self-ping TripDetailModal already does.
+    if (!memberId) return;
+    const myPp = fresh.find(p => p.member_id === memberId);
+    if (myPp && ['joined', 'departed'].includes(myPp.status)) {
+      navigator.geolocation?.getCurrentPosition(
+        pos => {
+          const { latitude, longitude } = pos.coords;
+          void supabase.from('trip_participants').update({
+            last_lat: latitude, last_lng: longitude, last_location_at: new Date().toISOString(),
+          }).eq('id', myPp.id);
+        },
+        () => {},
+        { timeout: 8000, enableHighAccuracy: true },
+      );
+    }
+  }, [activeTripId, memberId]);
+
+  useEffect(() => {
+    void refreshActivePp();
+    if (!activeTripId) return;
+    const id = setInterval(refreshActivePp, 10000);
+    return () => clearInterval(id);
+  }, [activeTripId, refreshActivePp]);
 
   // ── filters ──
   const filteredTrips = displayTrips.filter(t => {
