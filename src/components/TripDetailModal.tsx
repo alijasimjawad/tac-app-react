@@ -30,6 +30,14 @@ const REFRESH_MS = 10000;
 // since the last route we drew — keeps ORS calls sane on a 10s poll.
 const ROUTE_REDRAW_KM = 0.2;
 
+function gpsErrorMessage(err: unknown): string {
+  const code = (err as GeolocationPositionError | undefined)?.code;
+  if (code === 1) return 'Location permission denied — enable GPS / location sharing for this app before starting the trip.';
+  if (code === 3) return 'Location request timed out — check your GPS signal and try again.';
+  if (code === 2) return 'Location unavailable — check your GPS signal and try again.';
+  return 'Could not get your location — please enable GPS and retry.';
+}
+
 // Best-known live position to route from: most recently updated joined/departed participant.
 function pickPrimaryPosition(pp: TripParticipant[]): { lat: number; lng: number } | null {
   const candidates = pp.filter(p => p.last_lat != null && p.last_lng != null && ['joined', 'departed'].includes(p.status));
@@ -271,15 +279,23 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
           setActionErr(freshTrip?.started_by_name ? `Already started by ${freshTrip.started_by_name}` : 'Trip already started');
           await fetchDetail(); return;
         }
-        let lat: number | null = null, lng: number | null = null;
-        try { const pos = await getGps(); lat = pos.coords.latitude; lng = pos.coords.longitude; } catch {}
+        let lat: number, lng: number;
+        try {
+          const pos = await getGps();
+          lat = pos.coords.latitude; lng = pos.coords.longitude;
+        } catch (err) {
+          setActionErr(gpsErrorMessage(err));
+          return;
+        }
         const nowIso = new Date().toISOString();
         const myName = currentUser?.full_name || currentUser?.username || '';
         await supabase.from('field_trips').update({ status: 'active', started_at: nowIso, started_by: memberId, started_by_name: myName }).eq('id', tripId);
         const myPp = participants.find(p => p.member_id === memberId);
         if (myPp) {
-          const locFields = lat !== null ? { last_lat: lat, last_lng: lng, last_location_at: nowIso } : {};
-          await supabase.from('trip_participants').update({ status: 'joined', joined_at: nowIso, delay_minutes: 0, ...locFields }).eq('id', myPp.id);
+          await supabase.from('trip_participants').update({
+            status: 'joined', joined_at: nowIso, delay_minutes: 0,
+            last_lat: lat, last_lng: lng, last_location_at: nowIso,
+          }).eq('id', myPp.id);
         }
         ((freshTrip.team_member_names as string[] | null) || []).forEach((name: string) => {
           void getMemberUserId(name).then(uid => {
@@ -290,7 +306,7 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
       } else if (action === 'join') {
         let myLat: number, myLng: number;
         try { const pos = await getGps(); myLat = pos.coords.latitude; myLng = pos.coords.longitude; }
-        catch { setActionErr('Could not get your location — please enable GPS and retry.'); return; }
+        catch (err) { setActionErr(gpsErrorMessage(err)); return; }
         const { data: trip } = await supabase.from('field_trips').select('*').eq('id', tripId).single();
         const starterPp = trip?.started_by ? participants.find(p => p.member_id === trip.started_by) : null;
         if (starterPp?.last_lat && starterPp?.last_lng) {
