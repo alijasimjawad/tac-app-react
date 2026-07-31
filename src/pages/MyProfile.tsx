@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { logActivity } from '../lib/activityLog';
 import styles from './MyProfile.module.css';
 
@@ -83,6 +84,7 @@ function Field({ label, value }: { label: string; value: string | null | undefin
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MyProfile() {
+  const { t } = useTranslation();
   const { currentUser, refreshProfile } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditForm>(() => formFromUser());
@@ -380,11 +382,11 @@ export default function MyProfile() {
         </div>
         <div className={styles.bannerActions}>
           <button className={styles.editBtnSecondary} onClick={openPwModal}>
-            Change Password
+            {t('prof_changePassword')}
           </button>
           {hrChecked && !isHrLinked && (
             <button className={styles.editBtn} onClick={() => { setEditForm(formFromUser()); setEditErr(''); setEditOpen(true); }}>
-              Edit Profile
+              {t('prof_editProfile')}
             </button>
           )}
         </div>
@@ -392,21 +394,21 @@ export default function MyProfile() {
 
       {/* Body */}
       <div className={styles.tabBody}>
-        <div className={styles.sectionTitle}>Personal Information</div>
+        <div className={styles.sectionTitle}>{t('prof_personalInfo')}</div>
         <div className={styles.fields}>
-          <Field label="Full Name" value={currentUser.full_name} />
-          <Field label="Phone" value={disp.phone} />
-          <Field label="National ID" value={disp.national_id} />
-          <Field label="Date of Birth" value={fmtDate(disp.date_of_birth) || null} />
-          <Field label="Address" value={disp.address} />
-          <Field label="Emergency Contact Name" value={disp.emergency_contact_name} />
-          <Field label="Emergency Contact Phone" value={disp.emergency_contact_phone} />
+          <Field label={t('prof_fullName')} value={currentUser.full_name} />
+          <Field label={t('prof_phone')} value={disp.phone} />
+          <Field label={t('prof_nationalId')} value={disp.national_id} />
+          <Field label={t('prof_dob')} value={fmtDate(disp.date_of_birth) || null} />
+          <Field label={t('prof_address')} value={disp.address} />
+          <Field label={t('prof_emergencyName')} value={disp.emergency_contact_name} />
+          <Field label={t('prof_emergencyPhone')} value={disp.emergency_contact_phone} />
         </div>
 
-        <div className={styles.sectionTitleSpaced}>Additional Information</div>
+        <div className={styles.sectionTitleSpaced}>{t('prof_additionalInfo')}</div>
         <div className={styles.fields}>
-          <Field label="Start Date" value={fmtDate(disp.start_date) || null} />
-          <Field label="Notes" value={disp.notes} />
+          <Field label={t('prof_startDate')} value={fmtDate(disp.start_date) || null} />
+          <Field label={t('prof_notes')} value={disp.notes} />
         </div>
       </div>
 
@@ -415,51 +417,51 @@ export default function MyProfile() {
         <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setEditOpen(false); }}>
           <div className={styles.modal}>
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>Edit My Profile</div>
+              <div className={styles.modalTitle}>{t('prof_editProfile')}</div>
               <button className={styles.modalClose} onClick={() => setEditOpen(false)}>×</button>
             </div>
             <div className={styles.modalBody}>
-              <div className={styles.modalSection}>Personal Information</div>
+              <div className={styles.modalSection}>{t('prof_personalInfo')}</div>
               <div className={styles.modalGrid}>
                 <div className={styles.modalField}>
-                  <label>Phone</label>
+                  <label>{t('prof_phone')}</label>
                   <input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
                 </div>
                 <div className={styles.modalField}>
-                  <label>National ID</label>
+                  <label>{t('prof_nationalId')}</label>
                   <input value={editForm.national_id} onChange={e => setEditForm(f => ({ ...f, national_id: e.target.value }))} />
                 </div>
                 <div className={styles.modalField}>
-                  <label>Date of Birth</label>
+                  <label>{t('prof_dob')}</label>
                   <input type="date" value={editForm.date_of_birth} onChange={e => setEditForm(f => ({ ...f, date_of_birth: e.target.value }))} />
                 </div>
                 <div className={styles.modalField}>
-                  <label>Start Date</label>
+                  <label>{t('prof_startDate')}</label>
                   <input type="date" value={editForm.start_date} onChange={e => setEditForm(f => ({ ...f, start_date: e.target.value }))} />
                 </div>
                 <div className={`${styles.modalField} ${styles.modalFieldFull}`}>
-                  <label>Address</label>
+                  <label>{t('prof_address')}</label>
                   <input value={editForm.address} onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))} />
                 </div>
                 <div className={styles.modalField}>
-                  <label>Emergency Contact Name</label>
+                  <label>{t('prof_emergencyName')}</label>
                   <input value={editForm.emergency_contact_name} onChange={e => setEditForm(f => ({ ...f, emergency_contact_name: e.target.value }))} />
                 </div>
                 <div className={styles.modalField}>
-                  <label>Emergency Contact Phone</label>
+                  <label>{t('prof_emergencyPhone')}</label>
                   <input value={editForm.emergency_contact_phone} onChange={e => setEditForm(f => ({ ...f, emergency_contact_phone: e.target.value }))} />
                 </div>
                 <div className={`${styles.modalField} ${styles.modalFieldFull}`}>
-                  <label>Notes</label>
+                  <label>{t('prof_notes')}</label>
                   <textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} />
                 </div>
               </div>
               {editErr && <div className={styles.modalErr}>{editErr}</div>}
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.modalCancelBtn} onClick={() => setEditOpen(false)}>Cancel</button>
+              <button className={styles.modalCancelBtn} onClick={() => setEditOpen(false)}>{t('prof_cancel')}</button>
               <button className={styles.modalSaveBtn} onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : 'Save Profile'}
+                {saving ? t('prof_saving') : t('prof_saveProfile')}
               </button>
             </div>
           </div>
@@ -471,30 +473,30 @@ export default function MyProfile() {
         <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) closePwModal(); }}>
           <div className={styles.modal} style={{ maxWidth: 420 }}>
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>Change Password</div>
+              <div className={styles.modalTitle}>{t('prof_changePassword')}</div>
               <button className={styles.modalClose} onClick={closePwModal} disabled={pwSaving}>×</button>
             </div>
             <div className={styles.modalBody}>
               <div className={styles.modalGrid} style={{ gridTemplateColumns: '1fr' }}>
                 <div className={styles.modalField}>
-                  <label>Current Password</label>
+                  <label>{t('prof_currentPw')}</label>
                   <input type="password" value={pwCurrent} onChange={e => setPwCurrent(e.target.value)} autoComplete="current-password" />
                 </div>
                 <div className={styles.modalField}>
-                  <label>New Password</label>
+                  <label>{t('prof_newPw')}</label>
                   <input type="password" value={pwNew} onChange={e => setPwNew(e.target.value)} autoComplete="new-password" />
                 </div>
                 <div className={styles.modalField}>
-                  <label>Confirm New Password</label>
+                  <label>{t('prof_confirmPw')}</label>
                   <input type="password" value={pwConfirm} onChange={e => setPwConfirm(e.target.value)} autoComplete="new-password" />
                 </div>
               </div>
               {pwErr && <div className={styles.modalErr}>{pwErr}</div>}
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.modalCancelBtn} onClick={closePwModal} disabled={pwSaving}>Cancel</button>
+              <button className={styles.modalCancelBtn} onClick={closePwModal} disabled={pwSaving}>{t('prof_cancel')}</button>
               <button className={styles.modalSaveBtn} onClick={handleChangePassword} disabled={pwSaving}>
-                {pwSaving ? 'Saving…' : 'Change Password'}
+                {pwSaving ? t('prof_updating') : t('prof_updatePw')}
               </button>
             </div>
           </div>
@@ -506,7 +508,7 @@ export default function MyProfile() {
         <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) closeCropModal(); }}>
           <div className={styles.cropModal}>
             <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>Adjust Photo</div>
+              <div className={styles.modalTitle}>{t('prof_adjustPhoto')}</div>
               <button className={styles.modalClose} onClick={closeCropModal} disabled={photoUploading}>×</button>
             </div>
             <div className={styles.cropBody}>
@@ -551,7 +553,7 @@ export default function MyProfile() {
               <div className={styles.cropHint}>Drag the photo to reposition, use the slider to zoom</div>
             </div>
             <div className={styles.modalFooter}>
-              <button className={styles.modalCancelBtn} onClick={closeCropModal} disabled={photoUploading}>Cancel</button>
+              <button className={styles.modalCancelBtn} onClick={closeCropModal} disabled={photoUploading}>{t('prof_cancel')}</button>
               <button className={styles.modalSaveBtn} onClick={handleCropSave} disabled={photoUploading}>
                 {photoUploading ? 'Saving…' : 'Save Photo'}
               </button>

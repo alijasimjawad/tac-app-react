@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import { ensureProjectsLoaded, getProjectKeyToNameMap } from '../lib/projectsCache';
 import { logActivity } from '../lib/activityLog';
@@ -119,6 +120,7 @@ function parseToDateInput(v: string): string {
 export default function NetworkScopes() {
   const { proj, sec } = useParams<{ proj: string; sec: string }>();
   const { hasPerm, currentUser } = useAuth();
+  const { t } = useTranslation();
 
   // Grid data
   const [columns, setColumns] = useState<string[]>([]);
@@ -821,7 +823,7 @@ export default function NetworkScopes() {
   if (proj && !hasPerm(`view_${proj}`)) {
     return (
       <div className={styles.page}>
-        <div className={styles.placeholder}>You don't have permission to view this project.</div>
+        <div className={styles.placeholder}>{t('ns_noPermission')}</div>
       </div>
     );
   }
@@ -829,7 +831,7 @@ export default function NetworkScopes() {
   if (!proj || !sec) {
     return (
       <div className={styles.page}>
-        <div className={styles.placeholder}>Select a project section from the sidebar to begin.</div>
+        <div className={styles.placeholder}>{t('ns_selectSection')}</div>
       </div>
     );
   }
@@ -968,14 +970,14 @@ export default function NetworkScopes() {
 
       {/* Breadcrumb */}
       <div className={styles.breadcrumb}>
-        <span className={styles.bc}>Network Scopes</span>
+        <span className={styles.bc}>{t('ns_breadcrumb')}</span>
         <span className={styles.bcSep}>›</span>
         <span className={styles.bc}>{projName}</span>
         <span className={styles.bcSep}>›</span>
         <span className={styles.bcCur}>{secLabel}</span>
       </div>
 
-      {loading && <div className={styles.loadingBar}>Loading…</div>}
+      {loading && <div className={styles.loadingBar}>{t('ns_loading')}</div>}
       {error   && <div className={styles.errorMsg}>Error: {error}</div>}
 
       {!loading && !error && columns.length === 0 && (
@@ -987,14 +989,14 @@ export default function NetworkScopes() {
               <line x1="9" y1="21" x2="9" y2="9"/>
             </svg>
           </div>
-          <div className={styles.emptyTitle}>No data yet</div>
+          <div className={styles.emptyTitle}>{t('ns_noData')}</div>
           <div className={styles.emptyDesc}>
-            This section is empty.
-            {hasPerm('sdb_add_rows') && ' Import an Excel file or use Add Site to get started.'}
+            {t('ns_noDataDesc')}
+            {hasPerm('sdb_add_rows') && (' ' + t('ns_noDataImport'))}
           </div>
           {hasPerm('sdb_add_rows') && (
             <label className={styles.addSiteBtn} style={{ cursor: 'pointer', marginTop: 8 }}>
-              <UploadIcon /> Import Excel
+              <UploadIcon /> {t('ns_importExcel')}
               <input
                 ref={importInputRef}
                 type="file"
@@ -1012,11 +1014,11 @@ export default function NetworkScopes() {
           {/* Stat cards */}
           <div className={styles.statsBar}>
             {[
-              { val: rows.length, label: 'Total Sites',   color: '#2563eb', key: 'all'          },
-              { val: implemented, label: 'Implemented',   color: '#16a34a', key: 'implemented'  },
-              { val: atpAccepted, label: 'ATP Accepted',  color: '#16a34a', key: 'atp:Accepted' },
-              { val: atpPending,  label: 'ATP Pending',   color: '#d97706', key: 'atp:Pending'  },
-              { val: atpRejected, label: 'ATP Rejected',  color: '#dc2626', key: 'atp:Rejected' },
+              { val: rows.length, label: t('ns_totalSites'),   color: '#2563eb', key: 'all'          },
+              { val: implemented, label: t('ns_implemented'),   color: '#16a34a', key: 'implemented'  },
+              { val: atpAccepted, label: t('ns_atpAccepted'),  color: '#16a34a', key: 'atp:Accepted' },
+              { val: atpPending,  label: t('ns_atpPending'),   color: '#d97706', key: 'atp:Pending'  },
+              { val: atpRejected, label: t('ns_atpRejected'),  color: '#dc2626', key: 'atp:Rejected' },
             ].map(({ val, label, color, key }) => {
               const isActive = secStatFilter === key;
               return (
@@ -1033,7 +1035,7 @@ export default function NetworkScopes() {
             })}
             {secStatFilter && secStatFilter !== 'all' && (
               <button className={styles.statClearBtn} onClick={() => { setSecStatFilter(null); setPage(1); }}>
-                ✕ Clear Filter
+                {t('ns_clearFilter')}
               </button>
             )}
           </div>
@@ -1073,12 +1075,12 @@ export default function NetworkScopes() {
               <div className={styles.toolbarRight}>
                 {hasPerm('sdb_add_rows') && (
                   <button className={styles.addSiteBtn} onClick={openAddModal}>
-                    <PlusIcon /> Add Site
+                    <PlusIcon /> {t('ns_addSite')}
                   </button>
                 )}
                 {hasPerm('sdb_add_rows') && (
                   <label className={styles.importBtn} title="Import Excel file">
-                    <UploadIcon /> Import
+                    <UploadIcon /> {t('ns_import')}
                     <input
                       ref={importInputRef}
                       type="file"
@@ -1090,12 +1092,12 @@ export default function NetworkScopes() {
                 )}
                 {hasPerm('sdb_export_excel') && (
                   <button className={styles.exportBtn} onClick={exportSection} title="Export to Excel">
-                    <DownloadIcon /> Export
+                    <DownloadIcon /> {t('ns_export')}
                   </button>
                 )}
                 {hasPerm('sdb_add_columns') && (
                   <button className={styles.addColBtn} onClick={() => { setAddColName(''); setAddColModal(true); }}>
-                    <PlusIcon /> Add Column
+                    <PlusIcon /> {t('ns_addColumn')}
                   </button>
                 )}
                 {hasPerm('sdb_edit_rows') && rows.length > 0 && (
@@ -1108,7 +1110,7 @@ export default function NetworkScopes() {
                     setBulkDiffData('');
                     setBulkModal(true);
                   }}>
-                    <BulkIcon /> Bulk Update
+                    <BulkIcon /> {t('ns_bulkUpdate')}
                   </button>
                 )}
                 <div className={styles.searchWrap}>
@@ -1116,7 +1118,7 @@ export default function NetworkScopes() {
                   <input
                     className={styles.searchInput}
                     type="search"
-                    placeholder="Search all columns…"
+                    placeholder={t('ns_searchPh')}
                     value={searchQuery}
                     onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
                   />
@@ -1128,7 +1130,7 @@ export default function NetworkScopes() {
                 )}
                 {hasActiveFilters && (
                   <button className={styles.clearFiltersBtn} onClick={clearAllFilters}>
-                    <XIcon /> Clear
+                    <XIcon /> {t('ns_clear')}
                   </button>
                 )}
                 <button className={styles.refreshBtn} onClick={loadSection} title="Refresh">
@@ -1171,7 +1173,7 @@ export default function NetworkScopes() {
                   {visibleRows.length === 0 ? (
                     <tr>
                       <td colSpan={columns.length} className={styles.tdEmpty}>
-                        {rows.length === 0 ? 'No data yet.' : 'No rows match the current filters.'}
+                        {rows.length === 0 ? t('ns_noRows') : t('ns_noMatch')}
                       </td>
                     </tr>
                   ) : visibleRows.map(row => {
@@ -1198,7 +1200,7 @@ export default function NetworkScopes() {
             {/* Pagination */}
             <div className={styles.paginationBar}>
               <div className={styles.pagLeft}>
-                <span className={styles.pagSizeLabel}>Rows per page</span>
+                <span className={styles.pagSizeLabel}>{t('ns_rowsPerPage')}</span>
                 <select
                   className={styles.pagSizeSelect}
                   value={String(pageSize)}
@@ -1208,7 +1210,7 @@ export default function NetworkScopes() {
                   <option value="25">25</option>
                   <option value="50">50</option>
                   <option value="100">100</option>
-                  <option value="all">All</option>
+                  <option value="all">{t('ns_selectAll')}</option>
                 </select>
                 <span className={styles.pagInfo}>
                   {totalFiltered === 0
@@ -1220,10 +1222,10 @@ export default function NetworkScopes() {
               </div>
               <div className={styles.pagRight}>
                 <button className={styles.pagBtn} onClick={() => setPage(p => Math.max(1, p - 1))} disabled={clampedPage <= 1}>
-                  <ChevLeftIcon /> Previous
+                  <ChevLeftIcon /> {t('ns_previous')}
                 </button>
                 <button className={styles.pagBtn} onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={clampedPage >= totalPages}>
-                  Next <ChevRightIcon />
+                  {t('ns_next')} <ChevRightIcon />
                 </button>
               </div>
             </div>
@@ -1257,7 +1259,7 @@ export default function NetworkScopes() {
             <label className={`${styles.ddItem} ${styles.ddItemAll}`}>
               <input type="checkbox" checked={!dropFilters[ddState.colIdx]}
                 onChange={e => ddToggleAll(ddState.colIdx, e.target.checked)} />
-              <span className={styles.ddItemLabel}>Select All</span>
+              <span className={styles.ddItemLabel}>{t('ns_selectAll')}</span>
             </label>
             {ddState.allValues
               .filter(v => !ddState.search || v.toLowerCase().includes(ddState.search.toLowerCase()))
@@ -1281,7 +1283,7 @@ export default function NetworkScopes() {
               {!dropFilters[ddState.colIdx] ? ddState.allValues.length : dropFilters[ddState.colIdx].size}
               {' '}of {ddState.allValues.length}
             </span>
-            <button className={styles.ddOkBtn} onClick={() => setDdState(null)}>Done</button>
+            <button className={styles.ddOkBtn} onClick={() => setDdState(null)}>{t('ns_done')}</button>
           </div>
         </div>
       )}
@@ -1298,13 +1300,13 @@ export default function NetworkScopes() {
             setRenameColModal({ colIdx: colMenu.colIdx, name: columns[colMenu.colIdx] });
             setColMenu(null);
           }}>
-            Rename Column
+            {t('ns_renameColumn')}
           </button>
           <button className={`${styles.colMenuItem} ${styles.colMenuItemDanger}`} onClick={() => {
             setDeleteColModal({ colIdx: colMenu.colIdx });
             setColMenu(null);
           }}>
-            Delete Column
+            {t('ns_deleteColumn')}
           </button>
         </div>
       )}
@@ -1325,11 +1327,11 @@ export default function NetworkScopes() {
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <polyline points="15 18 9 12 15 6"/>
                 </svg>
-                Back
+                {t('ns_back')}
               </button>
               <div>
                 <div className={styles.detailTitle}>
-                  {modal.rowId === null ? 'New Site' : (`Site ${modal.cells[0] || ''}`).trim() || 'Edit Site'}
+                  {modal.rowId === null ? t('ns_newSite') : (`Site ${modal.cells[0] || ''}`).trim() || t('ns_newSite')}
                 </div>
                 <div className={styles.detailSubtitle}>{projName} · {secLabel}</div>
               </div>
@@ -1392,12 +1394,12 @@ export default function NetworkScopes() {
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                     <polyline points="20 6 9 17 4 12"/>
                   </svg>
-                  {modalSaving ? 'Saving…' : modal.rowId === null ? 'Add Site' : 'Save Changes'}
+                  {modalSaving ? t('ns_saving') : modal.rowId === null ? t('ns_addSite') : t('ns_saveChanges')}
                 </button>
               )}
               <button className={styles.btnGhost} disabled={modalSaving}
                 onClick={() => { setModal(null); setDeleteConfirm(false); }}>
-                Cancel
+                {t('ns_cancel')}
               </button>
               {modal.rowId !== null && hasPerm('sdb_delete_rows') && (
                 <>
@@ -1408,7 +1410,7 @@ export default function NetworkScopes() {
                       <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
                       <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
                     </svg>
-                    Delete
+                    {t('ns_delete')}
                   </button>
                 </>
               )}
@@ -1422,16 +1424,16 @@ export default function NetworkScopes() {
         <div className={styles.detailOverlay} style={{ zIndex: 1100 }}
           onClick={() => { if (!modalSaving) setDeleteConfirm(false); }}>
           <div className={styles.deleteConfirmModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.deleteConfirmTitle}>Delete this site?</div>
+            <div className={styles.deleteConfirmTitle}>{t('ns_deleteTitle')}</div>
             <div className={styles.deleteConfirmDesc}>
-              This will permanently remove the row from the database. This action cannot be undone.
+              {t('ns_deleteDesc')}
             </div>
             <div className={styles.deleteConfirmActions}>
               <button className={styles.btnDanger} disabled={modalSaving} onClick={confirmDelete}>
-                {modalSaving ? 'Deleting…' : 'Delete'}
+                {modalSaving ? t('ns_deleting') : t('ns_delete')}
               </button>
               <button className={styles.btnGhost} disabled={modalSaving} onClick={() => setDeleteConfirm(false)}>
-                Cancel
+                {t('ns_cancel')}
               </button>
             </div>
           </div>
@@ -1443,9 +1445,9 @@ export default function NetworkScopes() {
         <div className={styles.detailOverlay} style={{ zIndex: 1300 }}
           onClick={() => !colOpSaving && setAddColModal(false)}>
           <div className={styles.deleteConfirmModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.deleteConfirmTitle}>Add Column</div>
+            <div className={styles.deleteConfirmTitle}>{t('ns_addColTitle')}</div>
             <div className={styles.deleteConfirmDesc}>
-              The new column will be appended to the right of the grid.
+              {t('ns_addColDesc')}
             </div>
             <input
               className={styles.detailInput}
@@ -1457,10 +1459,10 @@ export default function NetworkScopes() {
             />
             <div className={styles.deleteConfirmActions} style={{ marginTop: 20 }}>
               <button className={styles.btnGreen} disabled={colOpSaving} onClick={confirmAddCol}>
-                {colOpSaving ? 'Adding…' : 'Add Column'}
+                {colOpSaving ? t('ns_adding') : t('ns_addColTitle')}
               </button>
               <button className={styles.btnGhost} disabled={colOpSaving} onClick={() => setAddColModal(false)}>
-                Cancel
+                {t('ns_cancel')}
               </button>
             </div>
           </div>
@@ -1472,7 +1474,7 @@ export default function NetworkScopes() {
         <div className={styles.detailOverlay} style={{ zIndex: 1300 }}
           onClick={() => !colOpSaving && setRenameColModal(null)}>
           <div className={styles.deleteConfirmModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.deleteConfirmTitle}>Rename Column</div>
+            <div className={styles.deleteConfirmTitle}>{t('ns_renameColTitle')}</div>
             <div className={styles.deleteConfirmDesc}>
               Renaming <strong>"{columns[renameColModal.colIdx]}"</strong> will also update the key in every existing row.
             </div>
@@ -1486,10 +1488,10 @@ export default function NetworkScopes() {
             />
             <div className={styles.deleteConfirmActions} style={{ marginTop: 20 }}>
               <button className={styles.btnGreen} disabled={colOpSaving} onClick={confirmRenameCol}>
-                {colOpSaving ? 'Saving…' : 'Rename'}
+                {colOpSaving ? t('ns_saving') : t('ns_rename')}
               </button>
               <button className={styles.btnGhost} disabled={colOpSaving} onClick={() => setRenameColModal(null)}>
-                Cancel
+                {t('ns_cancel')}
               </button>
             </div>
           </div>
@@ -1501,17 +1503,17 @@ export default function NetworkScopes() {
         <div className={styles.detailOverlay} style={{ zIndex: 1300 }}
           onClick={() => !colOpSaving && setDeleteColModal(null)}>
           <div className={styles.deleteConfirmModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.deleteConfirmTitle}>Delete Column</div>
+            <div className={styles.deleteConfirmTitle}>{t('ns_deleteColTitle')}</div>
             <div className={styles.deleteConfirmDesc}>
               Delete column <strong>"{columns[deleteColModal.colIdx]}"</strong>?
               This removes it from all {rows.length} row{rows.length !== 1 ? 's' : ''} and cannot be undone.
             </div>
             <div className={styles.deleteConfirmActions}>
               <button className={styles.btnDanger} disabled={colOpSaving} onClick={confirmDeleteCol}>
-                {colOpSaving ? 'Deleting…' : 'Delete Column'}
+                {colOpSaving ? t('ns_deleting') : t('ns_deleteColTitle')}
               </button>
               <button className={styles.btnGhost} disabled={colOpSaving} onClick={() => setDeleteColModal(null)}>
-                Cancel
+                {t('ns_cancel')}
               </button>
             </div>
           </div>
@@ -1528,10 +1530,10 @@ export default function NetworkScopes() {
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <polyline points="15 18 9 12 15 6"/>
                 </svg>
-                Back
+                {t('ns_back')}
               </button>
               <div>
-                <div className={styles.detailTitle}>Bulk Update</div>
+                <div className={styles.detailTitle}>{t('ns_bulkUpdate')}</div>
                 <div className={styles.detailSubtitle}>{projName} · {secLabel} · {rows.length} rows</div>
               </div>
             </div>
@@ -1540,29 +1542,29 @@ export default function NetworkScopes() {
               <button
                 className={`${styles.bulkTab} ${bulkTab === 'same' ? styles.bulkTabActive : ''}`}
                 onClick={() => setBulkTab('same')}
-              >Apply Same Value</button>
+              >{t('ns_applySame')}</button>
               <button
                 className={`${styles.bulkTab} ${bulkTab === 'diff' ? styles.bulkTabActive : ''}`}
                 onClick={() => setBulkTab('diff')}
-              >Apply Different Values</button>
+              >{t('ns_applyDiff')}</button>
             </div>
 
             {bulkTab === 'same' ? (
               <div className={styles.bulkForm}>
                 <div className={styles.bulkField}>
-                  <label className={styles.bulkLabel}>Column to update</label>
+                  <label className={styles.bulkLabel}>{t('ns_colToUpdate')}</label>
                   <select className={styles.detailSelect} value={bulkColIdx}
                     onChange={e => { setBulkColIdx(+e.target.value); setBulkValue(''); }}>
                     {columns.map((h, i) => <option key={i} value={i}>{h}</option>)}
                   </select>
                 </div>
                 <div className={styles.bulkField}>
-                  <label className={styles.bulkLabel}>New value</label>
+                  <label className={styles.bulkLabel}>{t('ns_newValue')}</label>
                   {renderBulkValueInput(bulkColIdx, bulkValue, setBulkValue)}
                 </div>
                 <div className={styles.bulkField}>
                   <label className={styles.bulkLabel}>
-                    Site IDs — one per line, or comma / tab / space separated
+                    {t('ns_siteIds')}
                   </label>
                   <textarea
                     className={styles.bulkTextarea}
@@ -1574,10 +1576,10 @@ export default function NetworkScopes() {
                 </div>
                 <div className={styles.detailActions}>
                   <button className={styles.btnGreen} disabled={bulkSaving} onClick={confirmBulkSame}>
-                    {bulkSaving ? 'Updating…' : 'Apply Update'}
+                    {bulkSaving ? t('ns_updating') : t('ns_applyUpdate')}
                   </button>
                   <button className={styles.btnGhost} disabled={bulkSaving} onClick={() => setBulkModal(false)}>
-                    Cancel
+                    {t('ns_cancel')}
                   </button>
                 </div>
               </div>
@@ -1623,10 +1625,10 @@ export default function NetworkScopes() {
                 </div>
                 <div className={styles.detailActions}>
                   <button className={styles.btnGreen} disabled={bulkSaving} onClick={confirmBulkDiff}>
-                    {bulkSaving ? 'Updating…' : 'Apply Update'}
+                    {bulkSaving ? t('ns_updating') : t('ns_applyUpdate')}
                   </button>
                   <button className={styles.btnGhost} disabled={bulkSaving} onClick={() => setBulkModal(false)}>
-                    Cancel
+                    {t('ns_cancel')}
                   </button>
                 </div>
               </div>
@@ -1640,7 +1642,7 @@ export default function NetworkScopes() {
         <div className={styles.detailOverlay} style={{ zIndex: 1200 }}
           onClick={() => setImportPending(null)}>
           <div className={styles.importConfirmModal} onClick={e => e.stopPropagation()}>
-            <div className={styles.importConfirmTitle}>Import Excel</div>
+            <div className={styles.importConfirmTitle}>{t('ns_importTitle')}</div>
             <div className={styles.importConfirmSub}>
               <strong>This will affect your existing data!</strong>
               <br /><br />
@@ -1655,16 +1657,16 @@ export default function NetworkScopes() {
                 className={styles.btnDanger}
                 onClick={() => doImportWith(importPending, 'replace')}
               >
-                Replace — wipe &amp; replace all data
+                {t('ns_replace')}
               </button>
               <button
                 className={styles.btnGreen}
                 onClick={() => doImportWith(importPending, 'append')}
               >
-                Append — merge columns &amp; add rows
+                {t('ns_append')}
               </button>
               <button className={styles.btnGhost} onClick={() => setImportPending(null)}>
-                Cancel
+                {t('ns_cancel')}
               </button>
             </div>
           </div>
@@ -1678,7 +1680,7 @@ export default function NetworkScopes() {
             style={{ animation: 'nsSpinAnim 1s linear infinite' }}>
             <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
           </svg>
-          <div className={styles.importingText}>Saving to database…</div>
+          <div className={styles.importingText}>{t('ns_savingDb')}</div>
         </div>
       )}
 

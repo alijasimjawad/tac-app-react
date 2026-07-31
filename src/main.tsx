@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/tokens.css'
 import './index.css'
+import './lib/i18n'
 import App from './App.tsx'
 
 // One-time cleanup: this domain previously served the old single-HTML TAC app,

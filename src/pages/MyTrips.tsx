@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
@@ -158,8 +159,9 @@ function ActiveTripHero({
     if (!p.last_location_at) return best;
     return !best || new Date(p.last_location_at) > new Date(best) ? p.last_location_at : best;
   }, null);
+  const { t } = useTranslation();
   const liveActive     = !!latestLocAt && (Date.now() - new Date(latestLocAt).getTime()) < 120_000;
-  const locationLabel  = liveActive ? 'Active' : latestLocAt ? 'Last known' : 'Unavailable';
+  const locationLabel  = liveActive ? t('trips_locationActive') : latestLocAt ? t('trips_locationLast') : t('trips_locationNA');
   const locationSubtxt = latestLocAt ? fmtTimeAgo(latestLocAt) : '';
 
   // init map once
@@ -210,10 +212,10 @@ function ActiveTripHero({
         </div>
         <div className={styles.heroTopActions}>
           <button className={styles.heroBtnPrimary} onClick={onLive}>
-            <IcExternal /> Open Live Trip
+            <IcExternal /> {t('trips_openLive')}
           </button>
           <button className={styles.heroBtnSecondary} onClick={onFullModal}>
-            <IcMap /> View Map
+            <IcMap /> {t('trips_viewMapOnly')}
           </button>
           <button className={styles.heroMoreBtn} onClick={onDetails} title="Trip details" aria-label="Trip details">
             <IcDotsH />
@@ -246,12 +248,12 @@ function ActiveTripHero({
           {/* 4 metric blocks */}
           <div className={styles.heroMetrics}>
             <div className={styles.heroMetric}>
-              <div className={styles.heroMetricLabel}>Current Phase</div>
+              <div className={styles.heroMetricLabel}>{t('trips_currentPhase')}</div>
               <div className={styles.heroMetricValue}>{PHASES[phase]}</div>
             </div>
             <div className={styles.heroMetricSep} />
             <div className={styles.heroMetric}>
-              <div className={styles.heroMetricLabel}>Team Joined</div>
+              <div className={styles.heroMetricLabel}>{t('trips_teamJoined')}</div>
               <div className={styles.heroMetricValue}>
                 {ppCount > 0 ? `${joinedCount} of ${ppCount}` : '—'}
               </div>
@@ -263,14 +265,14 @@ function ActiveTripHero({
             </div>
             <div className={styles.heroMetricSep} />
             <div className={styles.heroMetric}>
-              <div className={styles.heroMetricLabel}>Meeting Point</div>
+              <div className={styles.heroMetricLabel}>{t('trips_meetingPoint')}</div>
               <div className={styles.heroMetricValue}>
-                {trip.started_at ? 'Confirmed' : 'Pending'}
+                {trip.started_at ? t('trips_confirmed') : t('trips_pending')}
               </div>
             </div>
             <div className={styles.heroMetricSep} />
             <div className={styles.heroMetric}>
-              <div className={styles.heroMetricLabel}>Live Location</div>
+              <div className={styles.heroMetricLabel}>{t('trips_liveLocation')}</div>
               <div className={`${styles.heroMetricValue} ${liveActive ? styles.heroMetricGreen : ''}`}>
                 {locationLabel}
               </div>
@@ -283,7 +285,7 @@ function ActiveTripHero({
           {/* Team members */}
           {participants.length > 0 && (
             <div className={styles.heroTeamSection}>
-              <div className={styles.heroTeamLabel}>Team Members</div>
+              <div className={styles.heroTeamLabel}>{t('trips_teamMembers')}</div>
               <div className={styles.heroTeamList}>
                 {participants.map(p => (
                   <div key={p.id} className={styles.heroMember}>
@@ -313,7 +315,7 @@ function ActiveTripHero({
         <div className={styles.heroRight}>
           <div ref={mapDivRef} className={styles.heroMap} />
           <button className={styles.detailsDrawerBtn} onClick={onDetails}>
-            <IcActivity /> Trip Details
+            <IcActivity /> {t('trips_tripDetails')}
           </button>
         </div>
       </div>
@@ -339,11 +341,12 @@ function PendingCard({
   onDetails: () => void;
   onStart: () => void;
 }) {
+  const { t } = useTranslation();
   const teamCount = trip.team_member_ids?.length ?? 0;
   return (
     <div className={styles.pendingCard}>
       <div className={styles.pendingCardBody}>
-        <div className={styles.pendingBadge}><IcClock size={10} /> Pending</div>
+        <div className={styles.pendingBadge}><IcClock size={10} /> {t('trips_pending')}</div>
         <div className={styles.pendingTitle}>
           {trip.project || '—'}
           {trip.site_id && <span className={styles.pendingSite}> · {trip.site_id}</span>}
@@ -359,10 +362,10 @@ function PendingCard({
       <div className={styles.pendingCardActions}>
         {canStart && (
           <button className={styles.startBtn} onClick={onStart}>
-            <IcActivity size={12} /> Start Trip
+            <IcActivity size={12} /> {t('trips_startTrip')}
           </button>
         )}
-        <button className={styles.detailsLink} onClick={onDetails}>View Details</button>
+        <button className={styles.detailsLink} onClick={onDetails}>{t('trips_viewDetails')}</button>
       </div>
     </div>
   );
@@ -422,6 +425,7 @@ function TripDetailDrawer({
   onClose: () => void;
   onFullModal: () => void;
 }) {
+  const { t }    = useTranslation();
   const trip     = data?.trip ?? null;
   const pp       = data?.participants ?? [];
   const timeline = trip ? buildTimeline(trip, pp) : [];
@@ -430,7 +434,7 @@ function TripDetailDrawer({
   return (
     <aside className={styles.drawer} aria-label="Trip details" role="complementary">
       <div className={styles.drawerHeader}>
-        <div className={styles.drawerTitle}>Trip Details</div>
+        <div className={styles.drawerTitle}>{t('trips_tripDetails')}</div>
         <button className={styles.drawerClose} onClick={onClose} aria-label="Close drawer">
           <IcX />
         </button>
@@ -452,7 +456,7 @@ function TripDetailDrawer({
             <StatusBadge status={trip.status} />
 
             <div className={styles.drawerSection}>
-              <div className={styles.drawerSectionTitle}>Trip Overview</div>
+              <div className={styles.drawerSectionTitle}>{t('trips_tripOverview')}</div>
               <div className={styles.overviewGrid}>
                 {trip.project    && <OverviewRow label="Project"     value={trip.project} />}
                 {trip.site_id    && <OverviewRow label="Site ID"     value={trip.site_id} />}
@@ -470,7 +474,7 @@ function TripDetailDrawer({
 
             {pp.length > 0 && (
               <div className={styles.drawerSection}>
-                <div className={styles.drawerSectionTitle}>Team Members</div>
+                <div className={styles.drawerSectionTitle}>{t('trips_teamMembers')}</div>
                 {pp.map(p => (
                   <div key={p.id} className={styles.drawerMember}>
                     <div className={styles.drawerMemberAvatar}>{initials(p.member_name)}</div>
@@ -493,11 +497,11 @@ function TripDetailDrawer({
 
             {meetingPp && (
               <div className={styles.drawerSection}>
-                <div className={styles.drawerSectionTitle}>Meeting Point</div>
+                <div className={styles.drawerSectionTitle}>{t('trips_meetingPoint')}</div>
                 <div className={styles.meetingPoint}>
                   <IcPin size={16} />
                   <div>
-                    <div className={styles.meetingLabel}>Best Start Point</div>
+                    <div className={styles.meetingLabel}>{t('trips_bestStart')}</div>
                     <div className={styles.meetingCoords}>
                       {meetingPp.last_lat?.toFixed(5)}, {meetingPp.last_lng?.toFixed(5)}
                     </div>
@@ -511,7 +515,7 @@ function TripDetailDrawer({
 
             {timeline.length > 0 && (
               <div className={styles.drawerSection}>
-                <div className={styles.drawerSectionTitle}>Timeline</div>
+                <div className={styles.drawerSectionTitle}>{t('trips_timeline')}</div>
                 <div className={styles.drawerTimeline}>
                   {timeline.map((e, i) => (
                     <div key={i} className={styles.drawerTlItem}>
@@ -525,7 +529,7 @@ function TripDetailDrawer({
             )}
 
             <button className={styles.fullDetailBtn} onClick={onFullModal}>
-              <IcMap size={13} /> View Map &amp; Actions
+              <IcMap size={13} /> {t('trips_viewMap')}
             </button>
           </>
         )}
@@ -549,6 +553,7 @@ function OverviewRow({ label, value }: { label: string; value: string | null | u
 export default function MyTrips() {
   const { currentUser, hasPerm } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   // preserved state
   const [memberId, setMemberId]             = useState<string | null>(null);
@@ -699,8 +704,8 @@ export default function MyTrips() {
       {/* ── Page header ── */}
       <div className={styles.pageHeader}>
         <div>
-          <h2 className={styles.pageTitle}>Field Trips</h2>
-          <p className={styles.pageSub}>Track active, upcoming, and completed field trips.</p>
+          <h2 className={styles.pageTitle}>{t('trips_title')}</h2>
+          <p className={styles.pageSub}>{t('trips_subtitle')}</p>
         </div>
         {isAdmin && (
           <button
@@ -715,7 +720,7 @@ export default function MyTrips() {
       {/* ── Not linked ── */}
       {memberResolved && !memberId && !isAdmin && (
         <div className={styles.notLinked}>
-          <strong>Account not linked to a team member profile.</strong>
+          <strong>{t('trips_noTeamProfile')}</strong>
           <p>Field trip tracking is for field engineers and technicians.</p>
         </div>
       )}
@@ -723,12 +728,12 @@ export default function MyTrips() {
       {/* ── Summary cards ── */}
       {showContent && (
         <div className={summaryGridCls}>
-          <SummaryCard icon={<IcBriefcase />} label="Total Trips"  value={loading ? '—' : totalCount}    sub="all time"       iconCls={styles.summaryIconSlate}  />
-          <SummaryCard icon={<IcActivity />}  label="Active"       value={loading ? '—' : activeCount}   sub="in progress"    iconCls={styles.summaryIconGreen}  />
-          <SummaryCard icon={<IcClock />}     label="Pending"      value={loading ? '—' : pendingCount}  sub="upcoming"       iconCls={styles.summaryIconAmber}  />
-          <SummaryCard icon={<IcCheck />}     label="Completed"    value={loading ? '—' : completedCount} sub="finished"      iconCls={styles.summaryIconBlue}   />
+          <SummaryCard icon={<IcBriefcase />} label={t('trips_totalTrips')}  value={loading ? '—' : totalCount}    sub={t('trips_allTime')}       iconCls={styles.summaryIconSlate}  />
+          <SummaryCard icon={<IcActivity />}  label={t('trips_active')}       value={loading ? '—' : activeCount}   sub={t('trips_inProgress')}    iconCls={styles.summaryIconGreen}  />
+          <SummaryCard icon={<IcClock />}     label={t('trips_pending')}      value={loading ? '—' : pendingCount}  sub={t('trips_upcoming')}       iconCls={styles.summaryIconAmber}  />
+          <SummaryCard icon={<IcCheck />}     label={t('trips_completed')}    value={loading ? '—' : completedCount} sub={t('trips_finished')}      iconCls={styles.summaryIconBlue}   />
           {liveMemberCount > 0 && (
-            <SummaryCard icon={<IcUsers />}   label="Team Live"    value={liveMemberCount}                sub="members active" iconCls={styles.summaryIconTeal}   />
+            <SummaryCard icon={<IcUsers />}   label={t('trips_teamLive')}    value={liveMemberCount}                sub={t('trips_membersActive')} iconCls={styles.summaryIconTeal}   />
           )}
         </div>
       )}
@@ -740,7 +745,7 @@ export default function MyTrips() {
             <IcSearch />
             <input
               className={styles.searchInput}
-              placeholder="Search project, site, member…"
+              placeholder={t('trips_searchPh')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               aria-label="Search trips"
@@ -757,15 +762,15 @@ export default function MyTrips() {
             onChange={e => setFilterStatus(e.target.value)}
             aria-label="Filter by status"
           >
-            <option value="">All Statuses</option>
-            <option value="active">Active</option>
-            <option value="departed">Departed</option>
-            <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
+            <option value="">{t('trips_allStatuses')}</option>
+            <option value="active">{t('trips_filterActive')}</option>
+            <option value="departed">{t('trips_filterDeparted')}</option>
+            <option value="pending">{t('trips_filterPending')}</option>
+            <option value="completed">{t('trips_filterCompleted')}</option>
           </select>
           {hasFilters && (
             <button className={styles.clearBtn} onClick={() => { setSearch(''); setFilterStatus(''); }}>
-              Clear
+              {t('trips_clear')}
             </button>
           )}
           <span className={styles.resultCount}>
@@ -804,7 +809,7 @@ export default function MyTrips() {
             {pendingTrips.length > 0 && (
               <section>
                 <div className={styles.sectionHdr}>
-                  <span className={styles.sectionTitle}>Pending Trips</span>
+                  <span className={styles.sectionTitle}>{t('trips_pendingSection')}</span>
                   <span className={styles.sectionCount}>{pendingTrips.length}</span>
                 </div>
                 <div className={styles.pendingList}>
@@ -825,7 +830,7 @@ export default function MyTrips() {
             {completedTrips.length > 0 && (
               <section>
                 <div className={styles.sectionHdr}>
-                  <span className={styles.sectionTitle}>Completed Trips</span>
+                  <span className={styles.sectionTitle}>{t('trips_completedSection')}</span>
                   <span className={styles.sectionCount}>{completedTrips.length}</span>
                 </div>
                 <div className={styles.tableWrap}>

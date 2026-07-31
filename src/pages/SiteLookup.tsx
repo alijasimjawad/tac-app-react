@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ensureSectionsLoaded, getSections, type SectionMeta } from '../lib/sectionsCache';
@@ -247,8 +248,9 @@ function StatMini({ icon, label, value, cls }: { icon: React.ReactNode; label: s
 // ── Definition list (key/value grid) reused across tabs ──────────────────────
 
 function FieldGrid({ fields }: { fields: Array<{ h: string; val: string }> }) {
+  const { t } = useTranslation();
   if (fields.length === 0) {
-    return <div className={styles.tabEmpty}>No additional fields recorded for this site.</div>;
+    return <div className={styles.tabEmpty}>{t('sl_noAddlFields')}</div>;
   }
   return (
     <div className={styles.cardBody}>
@@ -278,6 +280,7 @@ function SiteSummary({
   onOpenProject: () => void;
 }) {
   const { hasPerm } = useAuth();
+  const { t } = useTranslation();
   const canViewExpenses = hasPerm('view_my_expenses');
 
   const [activeTab, setActiveTab]     = useState<TabKey>('overview');
@@ -305,11 +308,11 @@ function SiteSummary({
   const primaryStat = statFields[0];
 
   const TABS: Array<{ key: TabKey; label: string; show: boolean }> = [
-    { key: 'overview',   label: 'Overview',            show: true },
-    { key: 'activity',   label: 'Activity History',    show: activities.length > 0 },
-    { key: 'technical',  label: 'Technical Information', show: available.length > 0 },
-    { key: 'trips',      label: 'Trips',                show: trips.length > 0 },
-    { key: 'expenses',   label: 'Expenses',             show: canViewExpenses && expenses.length > 0 },
+    { key: 'overview',   label: t('sl_tabOverview'),   show: true },
+    { key: 'activity',   label: t('sl_tabActivity'),   show: activities.length > 0 },
+    { key: 'technical',  label: t('sl_tabTechnical'),  show: available.length > 0 },
+    { key: 'trips',      label: t('sl_tabTrips'),      show: trips.length > 0 },
+    { key: 'expenses',   label: t('sl_tabExpenses'),   show: canViewExpenses && expenses.length > 0 },
   ];
   const visibleTabs = TABS.filter(t => t.show);
 
@@ -343,7 +346,7 @@ function SiteSummary({
         </div>
         <div className={styles.summaryActions}>
           <button className={styles.primaryActBtn} onClick={onOpenProject}>
-            <ExternalLinkIcon /> Open Project
+            <ExternalLinkIcon /> {t('sl_openProject')}
           </button>
           <button className={styles.actBtn} title="Copy to clipboard" aria-label="Share site record" onClick={onShare}>
             <ShareIcon />
@@ -355,7 +358,7 @@ function SiteSummary({
       </div>
 
       <div className={styles.statRow}>
-        <StatMini icon={<PinIcon />} label="Governorate" value={gov} />
+        <StatMini icon={<PinIcon />} label={t('sl_governorate')} value={gov} />
         {statFields.slice(0, 2).map(f => (
           <StatMini
             key={f.h}
@@ -367,12 +370,12 @@ function SiteSummary({
         ))}
         <StatMini
           icon={<ClockIcon />}
-          label="Last Activity"
-          value={detailsLoading ? '…' : (lastActivity ? fmtDate(lastActivity.date) : 'No recorded activity')}
+          label={t('sl_lastActivity')}
+          value={detailsLoading ? '…' : (lastActivity ? fmtDate(lastActivity.date) : t('sl_noActivityVal'))}
         />
         <StatMini
           icon={<TeamIcon />}
-          label="Assigned Team"
+          label={t('sl_assignedTeam')}
           value={detailsLoading ? '…' : ((lastActivity?.team_member_names ?? []).join(', ') || '—')}
         />
       </div>
@@ -399,13 +402,13 @@ function SiteSummary({
         {activeTab === 'overview' && (
           <div className={styles.overviewGrid}>
             <div className={styles.overviewCol}>
-              <h3 className={styles.tabSectionTitle}>Site Details</h3>
+              <h3 className={styles.tabSectionTitle}>{t('sl_siteDetails')}</h3>
               <FieldGrid fields={plainFields} />
             </div>
             <div className={styles.overviewCol}>
-              <h3 className={styles.tabSectionTitle}>Delivery Status</h3>
+              <h3 className={styles.tabSectionTitle}>{t('sl_deliveryStatus')}</h3>
               {statFields.length === 0 ? (
-                <div className={styles.tabEmpty}>No status fields recorded for this site.</div>
+                <div className={styles.tabEmpty}>{t('sl_noStatusFields')}</div>
               ) : (
                 <div className={styles.badges}>
                   {statFields.map(f => (
@@ -415,30 +418,30 @@ function SiteSummary({
                   ))}
                 </div>
               )}
-              <h3 className={`${styles.tabSectionTitle} ${styles.tabSectionTitleSpaced}`}>Assignment</h3>
+              <h3 className={`${styles.tabSectionTitle} ${styles.tabSectionTitleSpaced}`}>{t('sl_assignment')}</h3>
               {detailsLoading ? (
-                <div className={styles.tabEmpty}>Loading…</div>
+                <div className={styles.tabEmpty}>{t('sl_loading')}</div>
               ) : lastActivity ? (
                 <div className={styles.cardBody}>
                   <div className={styles.field}>
-                    <span className={styles.fieldK}>Last Team</span>
+                    <span className={styles.fieldK}>{t('sl_lastTeam')}</span>
                     <span className={styles.fieldV}>{(lastActivity.team_member_names ?? []).join(', ') || '—'}</span>
                   </div>
                   <div className={styles.field}>
-                    <span className={styles.fieldK}>Last Activity</span>
+                    <span className={styles.fieldK}>{t('sl_lastActivityField')}</span>
                     <span className={styles.fieldV}>{lastActivity.activity_type || '—'}</span>
                   </div>
                   <div className={styles.field}>
-                    <span className={styles.fieldK}>Date</span>
+                    <span className={styles.fieldK}>{t('sl_date')}</span>
                     <span className={styles.fieldV}>{fmtDate(lastActivity.date)}</span>
                   </div>
                   <div className={styles.field}>
-                    <span className={styles.fieldK}>Issued By</span>
+                    <span className={styles.fieldK}>{t('sl_issuedBy')}</span>
                     <span className={styles.fieldV}>{lastActivity.created_by || '—'}</span>
                   </div>
                 </div>
               ) : (
-                <div className={styles.tabEmpty}>No recorded activity yet for this site.</div>
+                <div className={styles.tabEmpty}>{t('sl_noActivityYet')}</div>
               )}
             </div>
           </div>
@@ -449,7 +452,7 @@ function SiteSummary({
             <table className={styles.dataTable}>
               <thead>
                 <tr>
-                  <th>Date</th><th>Activity</th><th>Status</th><th>Team</th><th>Issued By</th><th>Notes</th>
+                  <th>{t('sl_date')}</th><th>{t('sl_activity')}</th><th>{t('sl_status')}</th><th>{t('sl_team')}</th><th>{t('sl_issuedBy')}</th><th>{t('sl_notes')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -474,7 +477,7 @@ function SiteSummary({
           <div className={styles.tableWrap}>
             <table className={styles.dataTable}>
               <thead>
-                <tr><th>Date</th><th>Status</th><th>Team</th><th>Issued By</th><th>Notes</th></tr>
+                <tr><th>{t('sl_date')}</th><th>{t('sl_status')}</th><th>{t('sl_team')}</th><th>{t('sl_issuedBy')}</th><th>{t('sl_notes')}</th></tr>
               </thead>
               <tbody>
                 {trips.map(t => (
@@ -495,7 +498,7 @@ function SiteSummary({
           <div className={styles.tableWrap}>
             <table className={styles.dataTable}>
               <thead>
-                <tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th></tr>
+                <tr><th>{t('sl_date')}</th><th>{t('sl_description')}</th><th>{t('sl_amount')}</th><th>{t('sl_status')}</th></tr>
               </thead>
               <tbody>
                 {expenses.map(e => (
@@ -518,12 +521,13 @@ function SiteSummary({
 // ── Multi-match results table ────────────────────────────────────────────────
 
 function ResultsTable({ results, onView }: { results: MatchResult[]; onView: (r: MatchResult) => void }) {
+  const { t } = useTranslation();
   return (
     <div className={styles.tableWrap}>
       <table className={styles.dataTable}>
         <thead>
           <tr>
-            <th>Site</th><th>Project</th><th>Section</th><th>Governorate</th><th>Status</th><th></th>
+            <th>{t('sl_site')}</th><th>{t('sl_project')}</th><th>{t('sl_sectionCol')}</th><th>{t('sl_governorate')}</th><th>{t('sl_status')}</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -542,7 +546,7 @@ function ResultsTable({ results, onView }: { results: MatchResult[]; onView: (r:
                   ) : '—'}
                 </td>
                 <td>
-                  <button className={styles.viewBtn} onClick={() => onView(r)}>View</button>
+                  <button className={styles.viewBtn} onClick={() => onView(r)}>{t('sl_view')}</button>
                 </td>
               </tr>
             );
@@ -558,6 +562,7 @@ function ResultsTable({ results, onView }: { results: MatchResult[]; onView: (r:
 export default function SiteLookup() {
   const { hasPerm } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [query,           setQuery]           = useState('');
@@ -717,10 +722,10 @@ export default function SiteLookup() {
     const text = slRecordText(result, lastQuery);
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text)
-        .then(() => showToast('Record copied to clipboard', true))
-        .catch(() => showToast('Could not copy to clipboard', false));
+        .then(() => showToast(t('sl_copied'), true))
+        .catch(() => showToast(t('sl_copyFailed'), false));
     } else {
-      showToast('Clipboard not available', false);
+      showToast(t('sl_clipboardNA'), false);
     }
   }
 
@@ -735,7 +740,7 @@ export default function SiteLookup() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    showToast('Record exported', true);
+    showToast(t('sl_exported'), true);
   }
 
   function openProject(result: MatchResult) {
@@ -752,7 +757,7 @@ export default function SiteLookup() {
   if (!hasPerm('view_site_lookup')) {
     return (
       <div className={styles.page}>
-        <div className={styles.placeholder}>You don't have permission to view this page.</div>
+        <div className={styles.placeholder}>{t('sl_noPermission')}</div>
       </div>
     );
   }
@@ -763,8 +768,8 @@ export default function SiteLookup() {
     <div className={styles.page}>
 
       <div className={styles.pageHead}>
-        <h1 className={styles.pageTitle}>Site Lookup</h1>
-        <p className={styles.pageSub}>Search site records across all projects by site ID, governorate, or project name.</p>
+        <h1 className={styles.pageTitle}>{t('sl_title')}</h1>
+        <p className={styles.pageSub}>{t('sl_subtitle')}</p>
       </div>
 
       {/* Search card */}
@@ -778,7 +783,7 @@ export default function SiteLookup() {
               ref={inputRef}
               className={styles.searchInput}
               type="text"
-              placeholder="Search by site ID, governorate, or project…"
+              placeholder={t('sl_searchPh')}
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } }}
@@ -797,7 +802,7 @@ export default function SiteLookup() {
             onChange={e => { setPreProj(e.target.value); setPreSec(''); }}
             aria-label="Filter by project"
           >
-            <option value="">All Projects</option>
+            <option value="">{t('sl_allProjects')}</option>
             {projectOptions.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
 
@@ -808,22 +813,22 @@ export default function SiteLookup() {
             aria-label="Filter by section"
             disabled={sectionOptions.length === 0}
           >
-            <option value="">All Sections</option>
+            <option value="">{t('sl_allSections')}</option>
             {sectionOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
 
           {filtersActive && (
-            <button className={styles.clearFiltersBtn} onClick={resetFilters}>Clear Filters</button>
+            <button className={styles.clearFiltersBtn} onClick={resetFilters}>{t('sl_clearFilters')}</button>
           )}
 
           <button className={styles.searchBtn} onClick={() => runSearch()} disabled={searching}>
-            {searching ? <><SpinnerIcon /> Searching…</> : 'Search'}
+            {searching ? <><SpinnerIcon /> {t('sl_searching')}</> : t('sl_search')}
           </button>
         </div>
 
         {showRecent && (
           <div className={styles.recentRow}>
-            <span className={styles.recentLabel}>Recent</span>
+            <span className={styles.recentLabel}>{t('sl_recent')}</span>
             <div className={styles.recentChips}>
               {recentSearches.map(r => (
                 <button key={r} className={styles.recentChip} onClick={() => runSearch(r)}>
@@ -832,7 +837,7 @@ export default function SiteLookup() {
                 </button>
               ))}
             </div>
-            <button className={styles.clearRecentBtn} onClick={clearRecent}>Clear</button>
+            <button className={styles.clearRecentBtn} onClick={clearRecent}>{t('sl_clear')}</button>
           </div>
         )}
       </div>
@@ -844,15 +849,15 @@ export default function SiteLookup() {
         ) : error ? (
           <div className={styles.stateBox}>
             <div className={styles.stateIcon}><ErrorIcon /></div>
-            <div className={`${styles.stateTitle} ${styles.stateTitleErr}`}>Search failed</div>
+            <div className={`${styles.stateTitle} ${styles.stateTitleErr}`}>{t('sl_searchFailed')}</div>
             <div className={styles.stateSub}>{error}</div>
-            <button className={styles.retryBtn} onClick={() => runSearch(lastQuery)}>Retry</button>
+            <button className={styles.retryBtn} onClick={() => runSearch(lastQuery)}>{t('sl_retry')}</button>
           </div>
         ) : results === null ? (
           <div className={styles.stateBox}>
             <div className={styles.stateIconLg}><SearchBigIcon /></div>
-            <div className={styles.stateTitleLg}>Find any network site</div>
-            <div className={styles.stateSub}>Search by site ID, governorate, or project name to view its full record, activity history, and status.</div>
+            <div className={styles.stateTitleLg}>{t('sl_findSite')}</div>
+            <div className={styles.stateSub}>{t('sl_findSiteDesc')}</div>
             {projectOptions.length > 0 && (
               <div className={styles.exampleChips}>
                 {projectOptions.slice(0, 4).map(p => (
@@ -864,14 +869,14 @@ export default function SiteLookup() {
         ) : results.length === 0 ? (
           <div className={styles.stateBox}>
             <div className={styles.stateIcon}><EmptyIcon /></div>
-            <div className={styles.stateTitle}>No results found</div>
+            <div className={styles.stateTitle}>{t('sl_noResults')}</div>
             <div className={styles.stateSub}>
               No site records matched <strong>"{lastQuery}"</strong>. Try a different search term.
             </div>
             <div className={styles.noResultsActions}>
-              <button className={styles.retryBtn} onClick={clearSearch}>Clear Search</button>
+              <button className={styles.retryBtn} onClick={clearSearch}>{t('sl_clearSearch')}</button>
               {filtersActive && (
-                <button className={styles.retryBtn} onClick={() => { resetFilters(); runSearch(lastQuery); }}>Reset Filters</button>
+                <button className={styles.retryBtn} onClick={() => { resetFilters(); runSearch(lastQuery); }}>{t('sl_resetFilters')}</button>
               )}
             </div>
           </div>
@@ -888,7 +893,7 @@ export default function SiteLookup() {
                     className={`${styles.filterChip} ${projFilter === null ? styles.filterChipActive : ''}`}
                     onClick={() => setProjFilter(null)}
                   >
-                    All
+                    {t('sl_all')}
                     <span className={styles.filterChipCount}>{results.length}</span>
                   </button>
                   {availableProjects.map(proj => {
@@ -912,7 +917,7 @@ export default function SiteLookup() {
               <>
                 {filteredResults.length > 1 && (
                   <button className={styles.backBtn} onClick={() => setSelected(null)}>
-                    <ArrowLeftIcon /> Back to results
+                    <ArrowLeftIcon /> {t('sl_backToResults')}
                   </button>
                 )}
                 <SiteSummary

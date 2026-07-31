@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
 import styles from './MyExpenses.module.css';
 
@@ -86,6 +87,7 @@ function formatMonth(ym: string) {
 }
 
 export default function MyExpenses() {
+  const { t } = useTranslation();
   const { currentUser, hasPerm } = useAuth();
   const [memberId, setMemberId] = useState<string | null>(null);
   const [memberResolved, setMemberResolved] = useState(false);
@@ -362,11 +364,11 @@ export default function MyExpenses() {
       {/* ── Header ── */}
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>My Expenses</h1>
+          <h1 className={styles.pageTitle}>{t('exp_title')}</h1>
           <p className={styles.pageSubtitle}>Submit and track your expense claims.</p>
         </div>
         {memberResolved && memberId && hasPerm('mywork_expenses_add') && (
-          <button className={styles.newBtn} onClick={openNew}><PlusIcon /> New Claim</button>
+          <button className={styles.newBtn} onClick={openNew}><PlusIcon /> {t('exp_newClaim')}</button>
         )}
       </div>
 
@@ -438,8 +440,8 @@ export default function MyExpenses() {
                 ) : claims.length === 0 ? (
                   <div className={styles.emptyState}>
                     <div className={styles.emptyIcon}><ReceiptEmptyIcon /></div>
-                    <div className={styles.emptyTitle}>No expense claims yet</div>
-                    <div className={styles.emptySub}>Submit your first expense claim for review and approval.</div>
+                    <div className={styles.emptyTitle}>{t('exp_noExpenses')}</div>
+                    <div className={styles.emptySub}>{t('exp_startFirst')}</div>
                     {hasPerm('mywork_expenses_add') && (
                       <button className={styles.newBtn} onClick={openNew} style={{ marginTop: 18 }}><PlusIcon /> New Claim</button>
                     )}
@@ -452,7 +454,7 @@ export default function MyExpenses() {
                     <div className={styles.emptyActions}>
                       <button className={styles.outlineBtn} onClick={clearFilters}>Clear Filters</button>
                       {hasPerm('mywork_expenses_add') && (
-                        <button className={styles.newBtn} onClick={openNew}><PlusIcon /> New Claim</button>
+                        <button className={styles.newBtn} onClick={openNew}><PlusIcon /> {t('exp_newClaim')}</button>
                       )}
                     </div>
                   </div>
@@ -628,14 +630,14 @@ export default function MyExpenses() {
                 <div className={styles.drawerOverlay} onClick={() => setFormOpen(false)} />
                 <div className={styles.drawer} role="dialog" aria-label={editId ? 'Edit Claim' : 'New Expense Claim'}>
                   <div className={styles.drawerHeader}>
-                    <div className={styles.drawerTitle}>{editId ? 'Edit & Resubmit Claim' : 'New Expense Claim'}</div>
+                    <div className={styles.drawerTitle}>{editId ? t('exp_resubmit') : t('exp_newClaim')}</div>
                     <button className={styles.drawerClose} onClick={() => setFormOpen(false)} aria-label="Close">✕</button>
                   </div>
                   <div className={styles.drawerBody}>
                     <div className={styles.formSection}>Activity Info</div>
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Project <span className={styles.req}>*</span></label>
+                        <label className={styles.fieldLabel}>{t('exp_project')} <span className={styles.req}>*</span></label>
                         <select
                           className={`${styles.select} ${fieldErrs.project ? styles.inputErr : ''}`}
                           value={fProject}
@@ -647,7 +649,7 @@ export default function MyExpenses() {
                         {fieldErrs.project && <span className={styles.fieldErrMsg}>{fieldErrs.project}</span>}
                       </div>
                       <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Activity Date <span className={styles.req}>*</span></label>
+                        <label className={styles.fieldLabel}>{t('exp_date')} <span className={styles.req}>*</span></label>
                         <input
                           type="date"
                           className={`${styles.input} ${fieldErrs.date ? styles.inputErr : ''}`}
@@ -658,7 +660,7 @@ export default function MyExpenses() {
                       </div>
                     </div>
                     <div className={styles.fieldGroup} style={{ marginBottom: 10 }}>
-                      <label className={styles.fieldLabel}>Section <span className={styles.req}>*</span></label>
+                      <label className={styles.fieldLabel}>{t('exp_section')} <span className={styles.req}>*</span></label>
                       <select
                         className={`${styles.select} ${fieldErrs.section ? styles.inputErr : ''}`}
                         value={fSectionId}
@@ -678,7 +680,7 @@ export default function MyExpenses() {
                     </div>
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Site ID <span className={styles.req}>*</span></label>
+                        <label className={styles.fieldLabel}>{t('exp_siteId')} <span className={styles.req}>*</span></label>
                         <input
                           className={`${styles.input} ${fieldErrs.siteId ? styles.inputErr : ''}`}
                           placeholder="e.g. ZN-BGH-001"
@@ -688,7 +690,7 @@ export default function MyExpenses() {
                         {fieldErrs.siteId && <span className={styles.fieldErrMsg}>{fieldErrs.siteId}</span>}
                       </div>
                       <div className={styles.fieldGroup}>
-                        <label className={styles.fieldLabel}>Activity Type <span className={styles.req}>*</span></label>
+                        <label className={styles.fieldLabel}>{t('exp_activityType')} <span className={styles.req}>*</span></label>
                         <select
                           className={`${styles.select} ${fieldErrs.activityType ? styles.inputErr : ''}`}
                           value={fActivityType}
@@ -702,10 +704,10 @@ export default function MyExpenses() {
                     </div>
                     {fActivityType === 'Other' && (
                       <div className={styles.fieldGroup} style={{ marginBottom: 10 }}>
-                        <label className={styles.fieldLabel}>Describe Activity <span className={styles.req}>*</span></label>
+                        <label className={styles.fieldLabel}>{t('exp_other')} <span className={styles.req}>*</span></label>
                         <input
                           className={`${styles.input} ${fieldErrs.otherDesc ? styles.inputErr : ''}`}
-                          placeholder="Describe the activity…"
+                          placeholder={t('exp_otherDesc')}
                           value={fOtherDesc}
                           onChange={e => { setFOtherDesc(e.target.value); setFieldErrs(p => ({ ...p, otherDesc: '' })); }}
                         />
@@ -713,7 +715,7 @@ export default function MyExpenses() {
                       </div>
                     )}
 
-                    <div className={styles.formSection}>Additional Costs (IQD)</div>
+                    <div className={styles.formSection}>{t('exp_addlCosts')}</div>
                     <div className={styles.formGrid2}>
                       <div className={styles.fieldGroup}>
                         <label className={styles.fieldLabel}>Transport</label>
@@ -798,9 +800,9 @@ export default function MyExpenses() {
                     {formErr && <div className={styles.formErr} role="alert">{formErr}</div>}
                   </div>
                   <div className={styles.drawerFooter}>
-                    <button className={styles.cancelBtn} onClick={() => setFormOpen(false)}>Cancel</button>
+                    <button className={styles.cancelBtn} onClick={() => setFormOpen(false)}>{t('exp_cancel')}</button>
                     <button className={styles.submitBtn} onClick={saveClaim} disabled={saving}>
-                      {saving ? 'Submitting…' : editId ? 'Resubmit Claim' : 'Submit Claim'}
+                      {saving ? t('exp_submitting') : editId ? t('exp_resubmit') : t('exp_submit')}
                     </button>
                   </div>
                 </div>

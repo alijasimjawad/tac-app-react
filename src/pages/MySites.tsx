@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import styles from './MySites.module.css';
 
 interface SiteRecord {
@@ -33,6 +34,7 @@ function statusCls(s: string | null, styles: Record<string, string>) {
 
 export default function MySites() {
   const { currentUser } = useAuth();
+  const { t } = useTranslation();
 
   const [sites,          setSites]          = useState<SiteRecord[]>([]);
   const [loading,        setLoading]        = useState(true);
@@ -125,8 +127,8 @@ export default function MySites() {
     <div className={styles.page}>
 
       <div className={styles.pageHead}>
-        <h1 className={styles.pageTitle}>My Sites</h1>
-        <p className={styles.pageSub}>Sites from your recent field activities.</p>
+        <h1 className={styles.pageTitle}>{t('mySites_title')}</h1>
+        <p className={styles.pageSub}>{t('mySites_subtitle')}</p>
       </div>
 
       {/* Search + filters */}
@@ -137,7 +139,7 @@ export default function MySites() {
             <input
               className={styles.searchInput}
               type="text"
-              placeholder="Search by site ID, project, governorate…"
+              placeholder={t('mySites_searchPh')}
               value={search}
               onChange={e => setSearch(e.target.value)}
               aria-label="Search sites"
@@ -180,14 +182,14 @@ export default function MySites() {
       ) : error ? (
         <div className={styles.stateBox}>
           <ErrorIcon />
-          <p className={styles.stateTitle}>Something went wrong</p>
+          <p className={styles.stateTitle}>{t('mySites_error')}</p>
           <p className={styles.stateSub}>{error}</p>
           <button className={styles.retryBtn} onClick={load}>Try again</button>
         </div>
       ) : sortedFiltered.length === 0 ? (
         <div className={styles.stateBox}>
           <EmptyIcon />
-          <p className={styles.stateTitle}>{search || projFilter !== 'All' ? 'No matching sites' : 'No sites found'}</p>
+          <p className={styles.stateTitle}>{search || projFilter !== 'All' ? t('mySites_noMatch') : t('mySites_noSites')}</p>
           <p className={styles.stateSub}>
             {search || projFilter !== 'All'
               ? 'Try adjusting your search or filters.'
@@ -211,18 +213,18 @@ export default function MySites() {
               <div className={styles.cardFields}>
                 {s.activity_type && (
                   <div className={styles.field}>
-                    <span className={styles.fieldK}>Last Activity</span>
+                    <span className={styles.fieldK}>{t('mySites_lastAct')}</span>
                     <span className={styles.fieldV}>{s.activity_type}</span>
                   </div>
                 )}
                 {s.governate && (
                   <div className={styles.field}>
-                    <span className={styles.fieldK}>Governorate</span>
+                    <span className={styles.fieldK}>{t('mySites_gov')}</span>
                     <span className={styles.fieldV}>{s.governate}</span>
                   </div>
                 )}
                 <div className={styles.field}>
-                  <span className={styles.fieldK}>Last Seen</span>
+                  <span className={styles.fieldK}>{t('mySites_lastSeen')}</span>
                   <span className={styles.fieldV}>{fmtDate(s.date)}</span>
                 </div>
               </div>

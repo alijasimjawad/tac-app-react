@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import styles from './MyWork.module.css';
@@ -100,11 +101,11 @@ function daysAgoISO(n: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function getGreeting() {
+function getGreetingKey(): 'myWork_greeting_morning' | 'myWork_greeting_afternoon' | 'myWork_greeting_evening' {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning 👋';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening 🌙';
+  if (h < 12) return 'myWork_greeting_morning';
+  if (h < 17) return 'myWork_greeting_afternoon';
+  return 'myWork_greeting_evening';
 }
 
 function fmtTime(iso: string | null) {
@@ -211,6 +212,7 @@ function Skeleton() {
 export default function MyWork() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [memberResolved, setMemberResolved] = useState(false);
   const [loading,        setLoading]        = useState(true);
@@ -462,14 +464,14 @@ export default function MyWork() {
       {/* ── Header ────────────────────────────────────────────────────────────── */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
-          <h1 className={styles.greeting}>{getGreeting()}, {displayName}</h1>
+          <h1 className={styles.greeting}>{t(getGreetingKey())} 👋, {displayName}</h1>
           <p className={styles.greetingSub}>Here is your work overview for {today === todayISO() ? 'today' : fmtDate(today)}.</p>
           <p className={styles.greetingDate}>{fmtFullDate()}</p>
         </div>
         <div className={styles.headerRight}>
-          {lastSynced && <span className={styles.syncLabel}>Last synced: {fmtSynced(lastSynced)}</span>}
+          {lastSynced && <span className={styles.syncLabel}>{t('myWork_lastSynced')} {fmtSynced(lastSynced)}</span>}
           <button className={styles.refreshBtn} onClick={loadAll} aria-label="Refresh">
-            <RefreshIcon /> Refresh
+            <RefreshIcon /> {t('myWork_refresh')}
           </button>
         </div>
       </div>
@@ -552,7 +554,7 @@ export default function MyWork() {
 
       {/* ── Quick Actions ──────────────────────────────────────────────────────── */}
       <section className={styles.qaSection}>
-        <h2 className={styles.sectionTitle}>Quick Actions</h2>
+        <h2 className={styles.sectionTitle}>{t('myWork_quickActions')}</h2>
         <div className={styles.qaGrid}>
 
           <button className={`${styles.qaCard} ${styles.qaBlue}`} onClick={() => navigate('/attendance')}>
@@ -600,14 +602,14 @@ export default function MyWork() {
         {/* My Work Today */}
         <section className={styles.sectionCard} aria-labelledby="wt-title">
           <div className={styles.scardHeader}>
-            <h2 className={styles.scardTitle} id="wt-title">My Work Today</h2>
+            <h2 className={styles.scardTitle} id="wt-title">{t('myWork_todaySection')}</h2>
             <span className={styles.countBadge}>{todayActs.length}</span>
           </div>
 
           {todayActs.length === 0 ? (
             <div className={styles.emptyState}>
               <EmptyWorkIcon />
-              <p>No work assigned for today.</p>
+              <p>{t('myWork_noWorkToday')}</p>
             </div>
           ) : (
             <>
@@ -645,7 +647,7 @@ export default function MyWork() {
         {/* Current Field Trip */}
         <section className={styles.sectionCard} aria-labelledby="ct-title">
           <div className={styles.scardHeader}>
-            <h2 className={styles.scardTitle} id="ct-title">Current Field Trip</h2>
+            <h2 className={styles.scardTitle} id="ct-title">{t('myWork_currentTrip')}</h2>
             {activeTrip && (
               <span className={`${styles.countBadge} ${styles.badgeGreenBg}`}>
                 {activeTrip.status === 'active' ? 'Active' : activeTrip.status === 'departed' ? 'Departed' : 'Pending'}
@@ -656,9 +658,9 @@ export default function MyWork() {
           {!activeTrip ? (
             <div className={styles.emptyState}>
               <EmptyTripIcon />
-              <p>No active field trip.</p>
+              <p>{t('myWork_noActiveTrip')}</p>
               <button className={styles.emptyActionBtn} onClick={() => navigate('/my-trips')}>
-                View trips
+                {t('myWork_viewTrips')}
               </button>
             </div>
           ) : (
@@ -737,14 +739,14 @@ export default function MyWork() {
         {/* My Assigned Sites */}
         <section className={styles.sectionCard} aria-labelledby="as-title">
           <div className={styles.scardHeader}>
-            <h2 className={styles.scardTitle} id="as-title">My Assigned Sites</h2>
+            <h2 className={styles.scardTitle} id="as-title">{t('myWork_assignedSites')}</h2>
             <button className={styles.viewAllLink} onClick={() => navigate('/my-sites')}>View all</button>
           </div>
 
           {assignedSites.length === 0 ? (
             <div className={styles.emptyState}>
               <EmptySiteIcon />
-              <p>No sites found in recent activities.</p>
+              <p>{t('myWork_noSites')}</p>
             </div>
           ) : (
             <div className={styles.siteList} role="list">
@@ -767,7 +769,7 @@ export default function MyWork() {
         {/* Attention Required */}
         <section className={styles.sectionCard} aria-labelledby="ar-title">
           <div className={styles.scardHeader}>
-            <h2 className={styles.scardTitle} id="ar-title">Attention Required</h2>
+            <h2 className={styles.scardTitle} id="ar-title">{t('myWork_attentionRequired')}</h2>
             {alerts.length > 0 && (
               <span className={`${styles.countBadge} ${styles.badgeRedBg}`}>{alerts.length}</span>
             )}
@@ -776,7 +778,7 @@ export default function MyWork() {
           {alerts.length === 0 ? (
             <div className={`${styles.emptyState} ${styles.emptyStateCaughtUp}`}>
               <CaughtUpIcon />
-              <p>You're all caught up.</p>
+              <p>{t('myWork_allCaughtUp')}</p>
             </div>
           ) : (
             <div className={styles.alertList} role="list">
@@ -806,11 +808,11 @@ export default function MyWork() {
       {/* ── Recent Activity ───────────────────────────────────────────────────── */}
       <section className={styles.sectionCard} aria-labelledby="ra-title">
         <div className={styles.scardHeader}>
-          <h2 className={styles.scardTitle} id="ra-title">Recent Activity</h2>
+          <h2 className={styles.scardTitle} id="ra-title">{t('myWork_recentActivity')}</h2>
         </div>
 
         {shownEvents.length === 0 ? (
-          <div className={styles.emptyState}><p>No recent activity available.</p></div>
+          <div className={styles.emptyState}><p>{t('myWork_noRecentActivity')}</p></div>
         ) : (
           <div className={styles.timeline} role="list">
             {shownEvents.map(e => (
@@ -841,7 +843,7 @@ export default function MyWork() {
               <div className={styles.weatherCond}>{weather.condition}</div>
             </div>
             <div className={styles.weatherRight}>
-              <div className={styles.weatherCity}>Baghdad, Iraq</div>
+              <div className={styles.weatherCity}>{t('myWork_weather')}</div>
               <div className={styles.weatherStats}>
                 <span className={styles.weatherStat}><DropIcon /> {weather.humidity}%</span>
                 <span className={styles.weatherStat}><WindIcon /> {Math.round(weather.windSpeed)} km/h</span>

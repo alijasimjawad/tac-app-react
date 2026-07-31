@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import styles from './MyAttendance.module.css';
 
 const LATE_CUTOFF_HOUR = 9;
@@ -77,6 +78,7 @@ function useLiveElapsed(clockInIso: string | null, active: boolean): string {
 
 export default function MyAttendance() {
   const { currentUser, hasPerm } = useAuth();
+  const { t } = useTranslation();
   const [memberId, setMemberId] = useState<string | null>(null);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [monthFilter, setMonthFilter] = useState('');
@@ -183,11 +185,11 @@ export default function MyAttendance() {
   }
 
   function getClockBtnLabel() {
-    if (gpsPhase === 'locating') return 'Verifying location…';
-    if (gpsPhase === 'saving') return isActive ? 'Clocking out…' : 'Clocking in…';
-    if (!todayRow?.clock_in) return 'Clock In';
-    if (isActive) return 'Clock Out';
-    return 'Done for today';
+    if (gpsPhase === 'locating') return t('att_verifyingLoc');
+    if (gpsPhase === 'saving') return isActive ? t('att_clockingOut') : t('att_clockingIn');
+    if (!todayRow?.clock_in) return t('att_clockIn');
+    if (isActive) return t('att_clockOut');
+    return t('att_clockIn');
   }
 
   // Filters
@@ -299,24 +301,24 @@ export default function MyAttendance() {
             {/* Clock times */}
             <div className={styles.todayTimesRow}>
               <div className={styles.todayTimeBlock}>
-                <span className={styles.todayTimeLabel}>Clock In</span>
+                <span className={styles.todayTimeLabel}>{t('att_clockIn')}</span>
                 <span className={styles.todayTimeBig}>{fmtTime(todayRow?.clock_in ?? null)}</span>
               </div>
               {isActive && liveElapsed ? (
                 <div className={styles.todayTimeBlock}>
-                  <span className={styles.todayTimeLabel}>Worked Today</span>
+                  <span className={styles.todayTimeLabel}>{t('att_totalHours')}</span>
                   <span className={`${styles.todayTimeBig} ${styles.liveTimer}`} aria-label={`Worked today: ${liveElapsed}`}>
                     {liveElapsed}
                   </span>
                 </div>
               ) : isDone ? (
                 <div className={styles.todayTimeBlock}>
-                  <span className={styles.todayTimeLabel}>Hours Worked</span>
+                  <span className={styles.todayTimeLabel}>{t('att_totalHours')}</span>
                   <span className={styles.todayTimeBig}>{fmtHours(todayRow?.hours_worked ?? null)}</span>
                 </div>
               ) : null}
               <div className={styles.todayTimeBlock}>
-                <span className={styles.todayTimeLabel}>Clock Out</span>
+                <span className={styles.todayTimeLabel}>{t('att_clockOut')}</span>
                 <span className={styles.todayTimeBig}>{fmtTime(todayRow?.clock_out ?? null)}</span>
               </div>
             </div>
@@ -349,7 +351,7 @@ export default function MyAttendance() {
               {gpsPhase !== 'idle' && (
                 <p className={styles.todayActionStatus} aria-live="polite">
                   <IcSpinner />
-                  {gpsPhase === 'locating' ? 'Verifying location…' : isActive ? 'Clocking out…' : 'Clocking in…'}
+                  {gpsPhase === 'locating' ? t('att_verifyingLoc') : isActive ? t('att_clockingOut') : t('att_clockingIn')}
                 </p>
               )}
               <button
@@ -359,7 +361,7 @@ export default function MyAttendance() {
                 aria-label={getClockBtnLabel()}
               >
                 {!todayRow?.clock_in ? <IcClockIn /> : <IcClockOut />}
-                {!todayRow?.clock_in ? 'Clock In' : 'Clock Out'}
+                {!todayRow?.clock_in ? t('att_clockIn') : t('att_clockOut')}
               </button>
             </div>
           )}
@@ -383,9 +385,9 @@ export default function MyAttendance() {
                 <IcCheckCircle color="#15803d" />
               </div>
               <div className={styles.summaryBody}>
-                <span className={styles.summaryLabel}>PRESENT DAYS</span>
+                <span className={styles.summaryLabel}>{t('att_presentDays')}</span>
                 <span className={`${styles.summaryVal} ${styles.summaryGreen}`}>{presentDays}</span>
-                <span className={styles.summarySub}>this month</span>
+                <span className={styles.summarySub}>{t('att_thisMonth')}</span>
               </div>
             </div>
             <div className={styles.summaryCard}>
@@ -393,9 +395,9 @@ export default function MyAttendance() {
                 <IcClockCircle color="#d97706" />
               </div>
               <div className={styles.summaryBody}>
-                <span className={styles.summaryLabel}>LATE ARRIVALS</span>
+                <span className={styles.summaryLabel}>{t('att_lateArrivals')}</span>
                 <span className={`${styles.summaryVal} ${styles.summaryAmber}`}>{lateArrivals}</span>
-                <span className={styles.summarySub}>this month</span>
+                <span className={styles.summarySub}>{t('att_thisMonth')}</span>
               </div>
             </div>
             <div className={styles.summaryCard}>
@@ -403,11 +405,11 @@ export default function MyAttendance() {
                 <IcHoursCircle color="#2563eb" />
               </div>
               <div className={styles.summaryBody}>
-                <span className={styles.summaryLabel}>TOTAL HOURS</span>
+                <span className={styles.summaryLabel}>{t('att_totalHours')}</span>
                 <span className={`${styles.summaryVal} ${styles.summaryBlue} ${styles.summaryValSm}`}>
                   {fmtHours(totalHours) || '0h'}
                 </span>
-                <span className={styles.summarySub}>this month</span>
+                <span className={styles.summarySub}>{t('att_thisMonth')}</span>
               </div>
             </div>
             <div className={styles.summaryCard}>
@@ -415,9 +417,9 @@ export default function MyAttendance() {
                 <IcRateCircle color="#0f766e" />
               </div>
               <div className={styles.summaryBody}>
-                <span className={styles.summaryLabel}>ATTENDANCE RATE</span>
+                <span className={styles.summaryLabel}>{t('att_attendanceRate')}</span>
                 <span className={`${styles.summaryVal} ${styles.summaryTeal}`}>{attendanceRate}%</span>
-                <span className={styles.summarySub}>of days present</span>
+                <span className={styles.summarySub}>{t('att_ofDaysPresent')}</span>
               </div>
             </div>
           </>
@@ -437,14 +439,14 @@ export default function MyAttendance() {
           </select>
           {(monthFilter || statusFilter) && (
             <button className={styles.clearFiltersBtn} onClick={() => { setMonthFilter(''); setStatusFilter(''); }}>
-              <IcX /> Clear Filters
+              <IcX /> {t('att_clearFilters')}
             </button>
           )}
         </div>
         <div className={styles.filterRight}>
           <span className={styles.recordCount}>{filtered.length} attendance record{filtered.length !== 1 ? 's' : ''}</span>
           <button className={styles.exportBtn} onClick={exportCSV} aria-label="Export as CSV">
-            <IcExport /> Export
+            <IcExport /> {t('att_export')}
           </button>
         </div>
       </div>
@@ -452,8 +454,8 @@ export default function MyAttendance() {
       {/* ── Attendance History Card ── */}
       <div className={styles.historyCard}>
         <div className={styles.historyHdr}>
-          <div className={styles.historyHdrTitle}>Attendance History</div>
-          <div className={styles.historyHdrSub}>Review your daily clock-in and clock-out records.</div>
+          <div className={styles.historyHdrTitle}>{t('att_history')}</div>
+          <div className={styles.historyHdrSub}>{t('att_historySub')}</div>
         </div>
 
         {/* Desktop table */}
@@ -461,12 +463,12 @@ export default function MyAttendance() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Clock In</th>
-                <th>Clock Out</th>
-                <th className={styles.thRight}>Hours</th>
-                <th>Location</th>
-                <th>Status</th>
+                <th>{t('att_date')}</th>
+                <th>{t('att_clockInCol')}</th>
+                <th>{t('att_clockOutCol')}</th>
+                <th className={styles.thRight}>{t('att_hours')}</th>
+                <th>{t('att_location')}</th>
+                <th>{t('att_statusCol')}</th>
                 <th />
               </tr>
             </thead>

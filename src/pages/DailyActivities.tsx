@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -167,6 +168,7 @@ interface FormVals {
 
 export default function DailyActivities() {
   const { currentUser, hasPerm } = useAuth();
+  const { t } = useTranslation();
 
   // Data
   const [activities, setActivities] = useState<DailyActivity[]>([]);
@@ -846,7 +848,7 @@ export default function DailyActivities() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            New Activity
+            {t('da_newActivity')}
           </button>
         )}
       </div>
@@ -874,7 +876,7 @@ export default function DailyActivities() {
             </svg>
           </div>
           <div>
-            <div className={styles.kpiLabel}>Completed</div>
+            <div className={styles.kpiLabel}>{t('da_completed')}</div>
             <div className={styles.kpiValue}>{loading ? '—' : completed}</div>
             <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(completed)}% of total activities`}</div>
           </div>
@@ -886,7 +888,7 @@ export default function DailyActivities() {
             </svg>
           </div>
           <div>
-            <div className={styles.kpiLabel}>In Progress</div>
+            <div className={styles.kpiLabel}>{t('da_inProgress')}</div>
             <div className={styles.kpiValue}>{loading ? '—' : inProg}</div>
             <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(inProg)}% of total activities`}</div>
           </div>
@@ -899,7 +901,7 @@ export default function DailyActivities() {
             </svg>
           </div>
           <div>
-            <div className={styles.kpiLabel}>Blocked</div>
+            <div className={styles.kpiLabel}>{t('da_blocked')}</div>
             <div className={styles.kpiValue}>{loading ? '—' : blocked}</div>
             <div className={styles.kpiSub}>{loading || total === 0 ? '—' : `${pct(blocked)}% of total activities`}</div>
           </div>
@@ -919,8 +921,8 @@ export default function DailyActivities() {
             </svg>
           </div>
           <div>
-            <div className={styles.formHdrTitle}>{editingId ? 'Edit Activity' : 'New Activity'}</div>
-            <div className={styles.formHdrSub}>{editingId ? 'Fill in the details below to save or send to WhatsApp' : 'Create, assign and share a field activity'}</div>
+            <div className={styles.formHdrTitle}>{editingId ? t('da_editActivity') : t('da_newActivity')}</div>
+            <div className={styles.formHdrSub}>{editingId ? t('da_editSubtitle') : t('da_createSubtitle')}</div>
           </div>
         </div>
 
@@ -934,12 +936,12 @@ export default function DailyActivities() {
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                   <circle cx="12" cy="10" r="3"/>
                 </svg>
-                <div className={styles.subCardTitle}>Location & Scope</div>
+                <div className={styles.subCardTitle}>{t('da_locationScope')}</div>
               </div>
               <div className={styles.subCardBody}>
                 <div className={styles.fieldsGrid}>
                   <div className={styles.field}>
-                    <label>Project <span className={styles.req}>*</span></label>
+                    <label>{t('da_project')} <span className={styles.req}>*</span></label>
                     <select
                       className={fieldErrors.project ? styles.inputError : ''}
                       value={project}
@@ -950,7 +952,7 @@ export default function DailyActivities() {
                     {fieldErrors.project && <span className={styles.fieldErrMsg}>{fieldErrors.project}</span>}
                   </div>
                   <div className={styles.field}>
-                    <label>Section <span className={styles.req}>*</span></label>
+                    <label>{t('da_section')} <span className={styles.req}>*</span></label>
                     <select
                       value={sectionId}
                       onChange={e => {
@@ -959,7 +961,7 @@ export default function DailyActivities() {
                         setSectionLabel(opt.text || '');
                       }}
                     >
-                      <option value="">{sections.length === 0 ? 'Select project first' : 'Select section'}</option>
+                      <option value="">{sections.length === 0 ? t('da_selectProjFirst') : t('da_selectSection')}</option>
                       {sections.map(s => {
                         const lbl = s.section_label || s.section_name || '';
                         return <option key={s.id} value={s.id}>{lbl}</option>;
@@ -967,7 +969,7 @@ export default function DailyActivities() {
                     </select>
                   </div>
                   <div className={styles.field}>
-                    <label>Site ID <span className={styles.req}>*</span></label>
+                    <label>{t('da_siteId')} <span className={styles.req}>*</span></label>
                     <div
                       className={`${styles.siteTagsWrap} ${fieldErrors.site_id ? styles.inputError : ''}`}
                       onClick={() => siteInputRef.current?.focus()}
@@ -982,7 +984,7 @@ export default function DailyActivities() {
                         ref={siteInputRef}
                         className={styles.siteInput}
                         type="text"
-                        placeholder={siteTags.length ? '' : 'Search or add a site…'}
+                        placeholder={siteTags.length ? '' : t('da_searchSite')}
                         value={siteInput}
                         list="da-site-list"
                         autoComplete="off"
@@ -1004,10 +1006,10 @@ export default function DailyActivities() {
                     {fieldErrors.site_id && <span className={styles.fieldErrMsg}>{fieldErrors.site_id}</span>}
                   </div>
                   <div className={styles.field}>
-                    <label>Governorate</label>
+                    <label>{t('da_governorate')}</label>
                     <input
                       type="text"
-                      placeholder="Auto-fills…"
+                      placeholder={t('da_autoFills')}
                       value={governate}
                       onChange={e => setGovernate(e.target.value)}
                     />
@@ -1025,12 +1027,12 @@ export default function DailyActivities() {
                   <line x1="16" y1="13" x2="8" y2="13"/>
                   <line x1="16" y1="17" x2="8" y2="17"/>
                 </svg>
-                <div className={styles.subCardTitle}>Work Details</div>
+                <div className={styles.subCardTitle}>{t('da_workDetails')}</div>
               </div>
               <div className={styles.subCardBody}>
                 <div className={styles.fieldsGrid}>
                   <div className={styles.field}>
-                    <label>Date <span className={styles.req}>*</span></label>
+                    <label>{t('da_date')} <span className={styles.req}>*</span></label>
                     <input
                       className={fieldErrors.date ? styles.inputError : ''}
                       type="date"
@@ -1040,7 +1042,7 @@ export default function DailyActivities() {
                     {fieldErrors.date && <span className={styles.fieldErrMsg}>{fieldErrors.date}</span>}
                   </div>
                   <div className={styles.field}>
-                    <label>Activity Type <span className={styles.req}>*</span></label>
+                    <label>{t('da_activityType')} <span className={styles.req}>*</span></label>
                     <select
                       className={fieldErrors.activityType ? styles.inputError : ''}
                       value={activityType}
@@ -1051,7 +1053,7 @@ export default function DailyActivities() {
                     {fieldErrors.activityType && <span className={styles.fieldErrMsg}>{fieldErrors.activityType}</span>}
                   </div>
                   <div className={styles.field}>
-                    <label>Status <span className={styles.req}>*</span></label>
+                    <label>{t('da_status')} <span className={styles.req}>*</span></label>
                     <select
                       className={fieldErrors.status ? styles.inputError : ''}
                       value={status}
@@ -1062,9 +1064,9 @@ export default function DailyActivities() {
                     {fieldErrors.status && <span className={styles.fieldErrMsg}>{fieldErrors.status}</span>}
                   </div>
                   <div className={styles.field}>
-                    <label>Notes</label>
+                    <label>{t('da_notes')}</label>
                     <textarea
-                      placeholder="Describe the work done…"
+                      placeholder={t('da_describeWork')}
                       value={notes}
                       onChange={e => setNotes(e.target.value)}
                     />

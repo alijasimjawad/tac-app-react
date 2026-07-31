@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Chart as ChartJS,
   ArcElement,
@@ -322,6 +323,7 @@ function OverallProgressCard({ total, installed, accepted, rejected, remaining }
 // ── Project Status Overview Card (donut + vertical legend) ───────────────────
 
 function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
+  const { t } = useTranslation();
   const counts = { complete: 0, active: 0, highRejection: 0, noData: 0 };
 
   for (const { sections } of projData) {
@@ -354,15 +356,15 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
   };
 
   const legendRows = [
-    { dot: styles.dotGreen,  label: 'Complete', count: counts.complete,      pct: calcPct(counts.complete, n) },
-    { dot: styles.dotBlue,   label: 'Active',   count: counts.active,        pct: calcPct(counts.active, n) },
-    { dot: styles.dotGray,   label: 'No Data',  count: counts.noData,        pct: calcPct(counts.noData, n) },
-    { dot: styles.dotPurple, label: 'At Risk',  count: counts.highRejection, pct: calcPct(counts.highRejection, n) },
+    { id: 'complete', dot: styles.dotGreen,  labelKey: 'dash_complete'   as const, count: counts.complete,      pct: calcPct(counts.complete, n) },
+    { id: 'active',   dot: styles.dotBlue,   labelKey: 'dash_activeLabel' as const, count: counts.active,        pct: calcPct(counts.active, n) },
+    { id: 'nodata',   dot: styles.dotGray,   labelKey: 'dash_noDataLabel' as const, count: counts.noData,        pct: calcPct(counts.noData, n) },
+    { id: 'atrisk',   dot: styles.dotPurple, labelKey: 'dash_atRisk'      as const, count: counts.highRejection, pct: calcPct(counts.highRejection, n) },
   ];
 
   return (
     <div className={styles.analyticsCard}>
-      <h3 className={styles.analyticsTitle}>Project Status Overview</h3>
+      <h3 className={styles.analyticsTitle}>{t('dash_title')}</h3>
       <div className={styles.analyticsBody}>
 
         {/* Left: Donut */}
@@ -383,10 +385,10 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
         {/* Right: Status legend — always render all four rows */}
         <div className={styles.analyticsList}>
           {legendRows.map((row, i) => (
-            <React.Fragment key={row.label}>
+            <React.Fragment key={row.id}>
               <div className={styles.analyticsLegendRow}>
                 <span className={row.dot} aria-hidden="true" />
-                <span className={styles.legendLabel}>{row.label}</span>
+                <span className={styles.legendLabel}>{t(row.labelKey)}</span>
                 <span className={styles.legendValue}>
                 {row.count} <span className={styles.legendPct}>({row.pct}%)</span>
               </span>
@@ -404,6 +406,7 @@ function ProjectStatusCard({ projData }: { projData: ProjData[] }) {
 
 function ProjectSummaryCard({ data }: { data: ProjData }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const { proj, sections } = data;
 
@@ -453,24 +456,24 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
       {!hasData ? (
         <div className={styles.noDataBody}>
           <div className={styles.noDataIcon}><IconDatabase /></div>
-          <p className={styles.noDataText}>No delivery data available yet.</p>
-          <p className={styles.noDataSub}>Sections are configured and ready for updates.</p>
+          <p className={styles.noDataText}>{t('dash_noDelivery')}</p>
+          <p className={styles.noDataSub}>{t('dash_sectionsReady')}</p>
         </div>
       ) : (
         <div className={styles.cardBody}>
 
           {/* 4-row stat breakdown with per-row progress bars */}
           {([
-            { label: 'Installed',    count: projInstalled, color: '#2563EB' },
-            { label: 'ATP Accepted', count: projAccepted,  color: '#16A34A' },
-            { label: 'Pending',      count: projPending,   color: '#D97706' },
-            { label: 'Rejected',     count: projRejected,  color: '#DC2626' },
+            { labelKey: 'dash_installed',   count: projInstalled, color: '#2563EB' },
+            { labelKey: 'dash_atpAccepted', count: projAccepted,  color: '#16A34A' },
+            { labelKey: 'dash_pending',     count: projPending,   color: '#D97706' },
+            { labelKey: 'dash_rejected',    count: projRejected,  color: '#DC2626' },
           ] as const).map(row => {
             const pct = calcPct(row.count, projTotal);
             return (
-              <div key={row.label} className={styles.statRow}>
+              <div key={row.labelKey} className={styles.statRow}>
                 <div className={styles.statRowHeader}>
-                  <span className={styles.statLabel}>{row.label}</span>
+                  <span className={styles.statLabel}>{t(row.labelKey)}</span>
                   <span className={styles.statValue} style={{ color: row.color }}>
                     {row.count}/{projTotal}
                     <span className={styles.statPct}> ({pct}%)</span>
@@ -492,7 +495,7 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
                 aria-expanded={breakdownOpen}
                 aria-controls={`breakdown-${proj}`}
               >
-                <span>{breakdownOpen ? 'Hide' : 'View'} section breakdown</span>
+                <span>{t(breakdownOpen ? 'dash_hideBreakdown' : 'dash_viewBreakdown')}</span>
                 <svg
                   className={`${styles.disclosureChevron} ${breakdownOpen ? styles.disclosureChevronOpen : ''}`}
                   width="13" height="13" viewBox="0 0 24 24" fill="none"
@@ -545,7 +548,7 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
           disabled={!firstKey}
           aria-label={`Open ${PROJ_NAMES[proj]} project`}
         >
-          Open Project
+          {t('dash_openProject')}
           <IconArrow />
         </button>
       </div>
@@ -556,6 +559,7 @@ function ProjectSummaryCard({ data }: { data: ProjData }) {
 // ── Recent Activity Panel ─────────────────────────────────────────────────────
 
 function RecentActivity() {
+  const { t } = useTranslation();
   return (
     <section className={styles.recentActivitySection} aria-labelledby="activity-heading">
       <h2 id="activity-heading" className={styles.sectionTitle}>
@@ -564,13 +568,13 @@ function RecentActivity() {
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
         </span>
-        Recent Activity
+        {t('dash_recentActivity')}
       </h2>
       <div className={styles.activityEmpty}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
-        <p>No recent activity available.</p>
+        <p>{t('dash_noRecentActivity')}</p>
       </div>
     </section>
   );
@@ -580,6 +584,7 @@ function RecentActivity() {
 
 function AttentionPanel({ items }: { items: AttentionItem[] }) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   return (
     <section className={styles.attentionSection} aria-labelledby="attention-heading">
       <h2 id="attention-heading" className={styles.sectionTitle}>
@@ -588,12 +593,12 @@ function AttentionPanel({ items }: { items: AttentionItem[] }) {
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </span>
-        Attention Required
+        {t('dash_attRequired')}
       </h2>
       {items.length === 0 ? (
         <div className={styles.attentionOk}>
           <IconOk />
-          <span>No critical issues detected.</span>
+          <span>{t('dash_noIssues')}</span>
         </div>
       ) : (
         <div className={styles.attentionList}>
@@ -652,6 +657,7 @@ function DashboardSkeleton() {
 // ── Error State ───────────────────────────────────────────────────────────────
 
 function ErrorState({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className={styles.errorState}>
       <div className={styles.errorIconWrap}>
@@ -659,9 +665,9 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h3 className={styles.errorTitle}>Unable to load dashboard</h3>
-      <p className={styles.errorMsg}>There was a problem fetching project data. Please try again.</p>
-      <button className={styles.retryBtn} onClick={onRetry}>Try again</button>
+      <h3 className={styles.errorTitle}>{t('dash_errorTitle')}</h3>
+      <p className={styles.errorMsg}>{t('dash_errorDesc')}</p>
+      <button className={styles.retryBtn} onClick={onRetry}>{t('dash_tryAgain')}</button>
     </div>
   );
 }
@@ -671,6 +677,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 export default function Dashboard() {
   const { hasPerm }   = useAuth();
   const navigate      = useNavigate();
+  const { t }         = useTranslation();
 
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
@@ -758,7 +765,7 @@ export default function Dashboard() {
   if (!hasPerm('view_dashboard')) {
     return (
       <div className={styles.page}>
-        <div className={styles.placeholder}>You don't have permission to view this page.</div>
+        <div className={styles.placeholder}>{t('dash_noPermission')}</div>
       </div>
     );
   }

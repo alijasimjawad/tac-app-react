@@ -13,11 +13,13 @@
     "@supabase/supabase-js": "^2.110.7",
     "chart.js": "^4.5.1",
     "exceljs": "^4.4.0",
+    "i18next": "^26.3.6",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
     "react": "^19.2.7",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.7",
+    "react-i18next": "^17.0.11",
     "react-router-dom": "^7.18.1",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"

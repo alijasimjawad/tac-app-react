@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { haversineKm } from '../lib/sitesNearest';
 import { cacheOk, getAllSites, ensureFullLoad } from '../lib/sitesCache';
 import { getRoadRoute, hasOrsToken } from '../lib/orsRouting';
@@ -427,6 +428,7 @@ function generatePlan(
 
 export default function RoutePlanner() {
   const { hasPerm } = useAuth();
+  const { t } = useTranslation();
 
   const [operators, setOperators] = useState<string[]>([]);
   const [sitesDB, setSitesDB] = useState<Site[]>([]);
@@ -444,7 +446,7 @@ export default function RoutePlanner() {
   const [priorityMenuOpen, setPriorityMenuOpen] = useState(false);
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [planError, setPlanError] = useState('');
-  const [copyLabel, setCopyLabel] = useState('Copy as Text');
+  const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [activeTeam, setActiveTeam] = useState(0);
   // Real road paths from OpenRouteService, keyed by "${teamIdx}-${dayIdx}" —
@@ -461,6 +463,8 @@ export default function RoutePlanner() {
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [savePlanName, setSavePlanName] = useState('');
   const [saveModalError, setSaveModalError] = useState('');
+
+  const copyLabel = copied ? '✓ Copied' : t('rp_copyAsText');
 
   const mapDivRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -788,7 +792,7 @@ export default function RoutePlanner() {
     if (p.allLeftover.length) lines.push(`Left over (didn't fit): ${p.allLeftover.map(s => `${s.site_code} (${s.team})`).join(', ')}`);
 
     navigator.clipboard.writeText(lines.join('\n'))
-      .then(() => { setCopyLabel('✓ Copied'); setTimeout(() => setCopyLabel('Copy as Text'), 1500); })
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })
       .catch(() => alert('Could not copy to clipboard.'));
     setExportMenuOpen(false);
   }
@@ -883,7 +887,7 @@ export default function RoutePlanner() {
   if (!hasPerm('view_route_planner')) {
     return (
       <div className={styles.page}>
-        <div className={styles.denied}>You don't have permission to view this page.</div>
+        <div className={styles.denied}>{t('rp_noPermission')}</div>
       </div>
     );
   }
@@ -895,7 +899,7 @@ export default function RoutePlanner() {
         <div className={styles.infoBanner}>
           <InfoIcon />
           <p className={styles.infoBannerText}>
-            Route estimates use geographic distance and configured average speed, not live road routing.
+            {t('rp_infoBanner')}
           </p>
         </div>
         <div className={styles.topBarActions}>
@@ -906,15 +910,15 @@ export default function RoutePlanner() {
               onClick={() => setSavedPlansOpen(o => !o)}
               title="Saved plans"
             >
-              <SavedPlansIcon /> Saved Plans{savedPlans.length ? ` (${savedPlans.length})` : ''}
+              <SavedPlansIcon /> {t('rp_savedPlans')}{savedPlans.length ? ` (${savedPlans.length})` : ''}
             </button>
             {savedPlansOpen && (
               <>
                 <div className={styles.menuBackdrop} onClick={() => setSavedPlansOpen(false)} />
                 <div className={styles.savedPlansMenu}>
-                  <div className={styles.savedPlansTitle}>Saved Plans</div>
+                  <div className={styles.savedPlansTitle}>{t('rp_savedPlans')}</div>
                   {savedPlans.length === 0 && (
-                    <div className={styles.savedPlansEmpty}>No saved plans yet. Generate a plan, then click "Save Plan".</div>
+                    <div className={styles.savedPlansEmpty}>{t('rp_noSavedPlans')}</div>
                   )}
                   {savedPlans.map(sp => (
                     <div key={sp.id} className={styles.savedPlanRow}>
@@ -940,7 +944,7 @@ export default function RoutePlanner() {
             )}
           </div>
           <button type="button" className={styles.generateBtn} style={{ flex: 'none' }} onClick={handleClear} title="Start a new plan">
-            New Plan
+            {t('rp_newPlan')}
           </button>
         </div>
       </div>
@@ -948,8 +952,8 @@ export default function RoutePlanner() {
       {saveModalOpen && (
         <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setSaveModalOpen(false); }}>
           <div className={styles.modal}>
-            <h3 className={styles.modalTitle}>Save Route Plan</h3>
-            <p className={styles.modalSub}>Saved in this browser only — give this plan a name so you can find it later.</p>
+            <h3 className={styles.modalTitle}>{t('rp_saveTitle')}</h3>
+            <p className={styles.modalSub}>{t('rp_saveSub')}</p>
             <input
               type="text"
               className={styles.modalInput}
@@ -961,8 +965,8 @@ export default function RoutePlanner() {
             />
             <div className={styles.modalErr}>{saveModalError}</div>
             <div className={styles.modalActions}>
-              <button className={styles.secondaryBtn} onClick={() => setSaveModalOpen(false)}>Cancel</button>
-              <button className={styles.generateBtn} onClick={handleConfirmSavePlan}>Save</button>
+              <button className={styles.secondaryBtn} onClick={() => setSaveModalOpen(false)}>{t('rp_cancel')}</button>
+              <button className={styles.generateBtn} onClick={handleConfirmSavePlan}>{t('rp_save')}</button>
             </div>
           </div>
         </div>
@@ -976,9 +980,9 @@ export default function RoutePlanner() {
           </div>
           <div className={styles.stepText}>
             <span className={`${styles.stepLabel} ${stepperStep === 1 ? styles.stepLabelActive : stepperStep > 1 ? styles.stepLabelDone : ''}`}>
-              Configure
+              {t('rp_configure')}
             </span>
-            <span className={styles.stepSub}>Set plan rules</span>
+            <span className={styles.stepSub}>{t('rp_setRules')}</span>
           </div>
         </div>
         <div className={`${styles.stepLine} ${stepperStep > 1 ? styles.stepLineDone : ''}`} />
@@ -988,9 +992,9 @@ export default function RoutePlanner() {
           </div>
           <div className={styles.stepText}>
             <span className={`${styles.stepLabel} ${stepperStep === 2 ? styles.stepLabelActive : stepperStep > 2 ? styles.stepLabelDone : ''}`}>
-              Add Sites
+              {t('rp_addSites')}
             </span>
-            <span className={styles.stepSub}>Paste or upload sites</span>
+            <span className={styles.stepSub}>{t('rp_pasteUpload')}</span>
           </div>
         </div>
         <div className={`${styles.stepLine} ${stepperStep > 2 ? styles.stepLineDone : ''}`} />
@@ -1000,9 +1004,9 @@ export default function RoutePlanner() {
           </div>
           <div className={styles.stepText}>
             <span className={`${styles.stepLabel} ${stepperStep === 3 ? styles.stepLabelActive : ''}`}>
-              Review Plan
+              {t('rp_reviewPlan')}
             </span>
-            <span className={styles.stepSub}>Generate itinerary</span>
+            <span className={styles.stepSub}>{t('rp_genItinerary')}</span>
           </div>
         </div>
       </div>
@@ -1013,32 +1017,32 @@ export default function RoutePlanner() {
         {/* ── Left: Config panel ── */}
         <div className={styles.configPanel}>
           <div className={styles.configPanelHead}>
-            <p className={styles.configPanelTitle}>Plan Configuration</p>
-            <p className={styles.configPanelSub}>Set parameters, add sites, then generate.</p>
+            <p className={styles.configPanelTitle}>{t('rp_planConfig')}</p>
+            <p className={styles.configPanelSub}>{t('rp_configSub')}</p>
           </div>
 
           {/* Plan Basics */}
           <div className={styles.configSection}>
-            <div className={styles.configSectionLabel}>Plan Basics</div>
+            <div className={styles.configSectionLabel}>{t('rp_planBasics')}</div>
             <div className={styles.field} style={{ marginBottom: 10 }}>
-              <label className={styles.fieldLabel}>Operator</label>
+              <label className={styles.fieldLabel}>{t('rp_operator')}</label>
               <select value={operator} onChange={e => setOperator(e.target.value)}>
                 {operators.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
             <div className={styles.grid3}>
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Teams</label>
+                <label className={styles.fieldLabel}>{t('rp_teams')}</label>
                 <input type="number" min={1} max={20} value={numTeams}
                   onChange={e => setNumTeams(Math.max(1, parseInt(e.target.value) || 1))} />
               </div>
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Days</label>
+                <label className={styles.fieldLabel}>{t('rp_days')}</label>
                 <input type="number" min={1} max={30} value={numDays}
                   onChange={e => setNumDays(Math.max(1, parseInt(e.target.value) || 1))} />
               </div>
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Hours/Day</label>
+                <label className={styles.fieldLabel}>{t('rp_hoursPerDay')}</label>
                 <input type="number" min={1} max={16} step={0.5} value={dailyHours}
                   onChange={e => setDailyHours(Math.max(0.5, parseFloat(e.target.value) || 8))} />
               </div>
@@ -1047,15 +1051,15 @@ export default function RoutePlanner() {
 
           {/* Travel Rules */}
           <div className={styles.configSection}>
-            <div className={styles.configSectionLabel}>Travel Rules</div>
+            <div className={styles.configSectionLabel}>{t('rp_travelRules')}</div>
             <div className={styles.grid2}>
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Speed (km/h)</label>
+                <label className={styles.fieldLabel}>{t('rp_speedKmh')}</label>
                 <input type="number" min={5} max={140} value={speed}
                   onChange={e => setSpeed(Math.max(1, parseFloat(e.target.value) || 40))} />
               </div>
               <div className={styles.field}>
-                <label className={styles.fieldLabel}>Max Sites/Team/Day</label>
+                <label className={styles.fieldLabel}>{t('rp_maxSites')}</label>
                 <input type="number" min={1} max={200} placeholder="optional"
                   value={maxSitesPerTeam} onChange={e => setMaxSitesPerTeam(e.target.value)} />
               </div>
@@ -1066,7 +1070,7 @@ export default function RoutePlanner() {
               </div>
             )}
             <div className={styles.field} style={{ marginTop: 10 }}>
-              <label className={styles.fieldLabel}>Start Location — site code or "lat,lng"</label>
+              <label className={styles.fieldLabel}>{t('rp_startLoc')}</label>
               <div className={styles.startLocRow}>
                 <input
                   type="text"
@@ -1086,7 +1090,7 @@ export default function RoutePlanner() {
           {/* Site List */}
           <div className={styles.configSection}>
             <div className={styles.sectionHeadRow}>
-              <div className={styles.configSectionLabel} style={{ marginBottom: 0 }}>Site List</div>
+              <div className={styles.configSectionLabel} style={{ marginBottom: 0 }}>{t('rp_siteList')}</div>
               <div className={styles.sectionHeadActions}>
                 <button type="button" className={styles.iconBtnSm} title="Paste from clipboard" aria-label="Paste from clipboard" onClick={handlePasteSites}>
                   <ClipboardPasteIcon />
@@ -1118,13 +1122,13 @@ export default function RoutePlanner() {
                   <span className={styles.textareaBadge}>{siteCount} valid</span>
                 )}
               </div>
-              <div className={styles.fieldHint}>One code per line, or comma-separated</div>
+              <div className={styles.fieldHint}>{t('rp_onePerLine')}</div>
             </div>
           </div>
 
           {/* Priority Sites */}
           <div className={styles.configSection}>
-            <div className={styles.configSectionLabel}>Priority Sites <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— visited first each day</span></div>
+            <div className={styles.configSectionLabel}>{t('rp_prioritySites')} <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{t('rp_visitedFirst')}</span></div>
             <div className={styles.chipInputWrap}>
               <div className={styles.chipField}>
                 {priorityCodes.map(code => (
@@ -1138,7 +1142,7 @@ export default function RoutePlanner() {
                 <input
                   className={styles.chipInput}
                   value={priorityInput}
-                  placeholder={priorityCodes.length ? '' : 'Type or pick a code…'}
+                  placeholder={priorityCodes.length ? '' : t('rp_typeOrPick')}
                   onChange={e => setPriorityInput(e.target.value)}
                   onKeyDown={handlePriorityKeyDown}
                   onFocus={() => setPriorityMenuOpen(true)}
@@ -1167,7 +1171,7 @@ export default function RoutePlanner() {
           <div className={styles.configFooter}>
             <button className={styles.generateBtn} onClick={handleGenerate} disabled={generating || !sitesText.trim()}>
               {generating ? <SpinnerInlineIcon /> : <SendIcon />}
-              {generating ? 'Generating…' : 'Generate Plan'}
+              {generating ? t('rp_generating') : t('rp_generatePlan')}
             </button>
             <button className={styles.secondaryBtn} onClick={handleClear} title="Reset">
               <TrashIcon />
@@ -1181,8 +1185,8 @@ export default function RoutePlanner() {
           {generating && (
             <div className={styles.spinnerState}>
               <div className={styles.spinner} />
-              <div className={styles.spinnerText}>Building your route plan…</div>
-              <div className={styles.spinnerSub}>Clustering sites, optimizing routes, splitting days</div>
+              <div className={styles.spinnerText}>{t('rp_buildingPlan')}</div>
+              <div className={styles.spinnerSub}>{t('rp_buildingSub')}</div>
             </div>
           )}
 
@@ -1222,25 +1226,26 @@ export default function RoutePlanner() {
 // ── Empty state ────────────────────────────────────────────────────────────────
 
 function RoutePlannerEmptyState() {
+  const { t } = useTranslation();
   return (
     <div className={styles.emptyState}>
       <div className={styles.emptyIcon}>
         <MapEmptyIcon />
       </div>
-      <p className={styles.emptyTitle}>No plan generated yet</p>
-      <p className={styles.emptyDesc}>Configure your plan and paste a list of sites to get started.</p>
+      <p className={styles.emptyTitle}>{t('rp_noplanTitle')}</p>
+      <p className={styles.emptyDesc}>{t('rp_noplanDesc')}</p>
       <div className={styles.emptySteps}>
         <div className={styles.emptyStep}>
           <span className={styles.emptyStepNum}>1</span>
-          Set teams, days, and travel rules
+          {t('rp_step1')}
         </div>
         <div className={styles.emptyStep}>
           <span className={styles.emptyStepNum}>2</span>
-          Paste site codes in the list
+          {t('rp_step2')}
         </div>
         <div className={styles.emptyStep}>
           <span className={styles.emptyStepNum}>3</span>
-          Hit Generate Plan
+          {t('rp_step3')}
         </div>
       </div>
     </div>
@@ -1267,10 +1272,11 @@ function PlanResults({
   onDownloadCsv: () => void;
   onSavePlanClick: () => void;
 }) {
+  const { t } = useTranslation();
   const notFound = plan.unmatched.filter(u => u.reason === 'not_found');
   const noCoord = plan.unmatched.filter(u => u.reason === 'missing_coordinates');
-  const totalDistanceKm = plan.teamsPlan.reduce((s, t) => s + t.days.reduce((s2, d) => s2 + d.distanceKm, 0), 0);
-  const totalMinutes = plan.teamsPlan.reduce((s, t) => s + t.days.reduce((s2, d) => s2 + d.minutes, 0), 0);
+  const totalDistanceKm = plan.teamsPlan.reduce((s, tm) => s + tm.days.reduce((s2, d) => s2 + d.distanceKm, 0), 0);
+  const totalMinutes = plan.teamsPlan.reduce((s, tm) => s + tm.days.reduce((s2, d) => s2 + d.minutes, 0), 0);
 
   return (
     <>
@@ -1279,7 +1285,7 @@ function PlanResults({
         <div className={styles.summaryCard}>
           <div className={`${styles.summaryIconBox} ${styles.iconBlue}`}><TargetIcon /></div>
           <div className={styles.summaryTextCol}>
-            <span className={styles.summaryLabel}>Sites Matched</span>
+            <span className={styles.summaryLabel}>{t('rp_sitesMatched')}</span>
             <span className={`${styles.summaryVal} ${styles.summaryValGood}`}>{plan.totalMatched}</span>
             <span className={styles.summarySub}>of {plan.totalRequested} pasted</span>
           </div>
@@ -1287,45 +1293,45 @@ function PlanResults({
         <div className={styles.summaryCard}>
           <div className={`${styles.summaryIconBox} ${styles.iconPurple}`}><TeamsIcon /></div>
           <div className={styles.summaryTextCol}>
-            <span className={styles.summaryLabel}>Teams</span>
+            <span className={styles.summaryLabel}>{t('rp_teamsLabel')}</span>
             <span className={styles.summaryVal}>{plan.numTeams}</span>
-            <span className={styles.summarySub}>teams</span>
+            <span className={styles.summarySub}>{t('rp_teamsCount')}</span>
           </div>
         </div>
         <div className={styles.summaryCard}>
           <div className={`${styles.summaryIconBox} ${styles.iconAmber}`}><SearchXIcon /></div>
           <div className={styles.summaryTextCol}>
-            <span className={styles.summaryLabel}>Not Found</span>
+            <span className={styles.summaryLabel}>{t('rp_notFound')}</span>
             <span className={`${styles.summaryVal} ${plan.unmatched.length > 0 ? styles.summaryValWarn : ''}`}>
               {plan.unmatched.length}
             </span>
-            <span className={styles.summarySub}>unmatched</span>
+            <span className={styles.summarySub}>{t('rp_unmatched')}</span>
           </div>
         </div>
         <div className={styles.summaryCard}>
           <div className={`${styles.summaryIconBox} ${styles.iconRed}`}><WarnTriangleIcon /></div>
           <div className={styles.summaryTextCol}>
-            <span className={styles.summaryLabel}>Left Over</span>
+            <span className={styles.summaryLabel}>{t('rp_leftOver')}</span>
             <span className={`${styles.summaryVal} ${plan.leftoverCount > 0 ? styles.summaryValBad : ''}`}>
               {plan.leftoverCount}
             </span>
-            <span className={styles.summarySub}>didn't fit</span>
+            <span className={styles.summarySub}>{t('rp_didntFit')}</span>
           </div>
         </div>
         <div className={styles.summaryCard}>
           <div className={`${styles.summaryIconBox} ${styles.iconCyan}`}><RouteDistanceIcon /></div>
           <div className={styles.summaryTextCol}>
-            <span className={styles.summaryLabel}>Est. Distance</span>
+            <span className={styles.summaryLabel}>{t('rp_estDistance')}</span>
             <span className={styles.summaryVal}>{totalDistanceKm.toFixed(0)} km</span>
-            <span className={styles.summarySub}>{roadStatus === 'done' ? 'Real road' : roadStatus === 'loading' ? 'Refining…' : 'Straight-line'}</span>
+            <span className={styles.summarySub}>{roadStatus === 'done' ? t('rp_realRoad') : roadStatus === 'loading' ? t('rp_refining') : t('rp_straightLine')}</span>
           </div>
         </div>
         <div className={styles.summaryCard}>
           <div className={`${styles.summaryIconBox} ${styles.iconIndigo}`}><ClockDurationIcon /></div>
           <div className={styles.summaryTextCol}>
-            <span className={styles.summaryLabel}>Est. Time</span>
+            <span className={styles.summaryLabel}>{t('rp_estTime')}</span>
             <span className={styles.summaryVal}>{formatMin(totalMinutes)}</span>
-            <span className={styles.summarySub}>Total time</span>
+            <span className={styles.summarySub}>{t('rp_totalTime')}</span>
           </div>
         </div>
       </div>
@@ -1376,7 +1382,7 @@ function PlanResults({
         <div className={styles.toolbarLeft}>
           <div className={styles.exportWrap}>
             <button className={styles.copyBtn} onClick={onToggleExportMenu}>
-              <DownloadIcon /> Export Plan <ChevronDownIcon />
+              <DownloadIcon /> {t('rp_exportPlan')} <ChevronDownIcon />
             </button>
             {exportMenuOpen && (
               <>
@@ -1386,19 +1392,19 @@ function PlanResults({
                     <CopyIcon /> {copyLabel}
                   </button>
                   <button className={styles.exportMenuItem} onClick={onDownloadCsv}>
-                    <DownloadIcon /> Download CSV
+                    <DownloadIcon /> {t('rp_downloadCSV')}
                   </button>
                 </div>
               </>
             )}
           </div>
           <button className={styles.copyBtn} onClick={onSavePlanClick}>
-            <SaveIcon /> Save Plan
+            <SaveIcon /> {t('rp_savePlan')}
           </button>
         </div>
         <div className={styles.toolbarRight}>
           <button className={styles.copyBtn} onClick={onFullscreenMap}>
-            <ExpandIcon /> View Full Map
+            <ExpandIcon /> {t('rp_viewFullMap')}
           </button>
         </div>
       </div>
@@ -1446,26 +1452,26 @@ function PlanResults({
                 {team.name}
               </div>
               <div className={styles.teamTotals}>
-                <span><b>{totalStops}</b> sites</span>
-                <span><b>{totalKm.toFixed(1)}</b> km</span>
-                <span><b>{formatMin(totalMin)}</b> drive</span>
+                <span><b>{totalStops}</b> {t('rp_sites')}</span>
+                <span><b>{totalKm.toFixed(1)}</b> {t('rp_km')}</span>
+                <span><b>{formatMin(totalMin)}</b> {t('rp_drive')}</span>
               </div>
             </div>
             {!team.days.length && (
-              <div className={styles.noSites}>No sites assigned to this team.</div>
+              <div className={styles.noSites}>{t('rp_noSitesAssigned')}</div>
             )}
             {!!team.days.length && (
               <div className={styles.daysGrid}>
                 {team.days.map(day => (
                   <div key={day.dayNum} className={styles.dayCard}>
                     <div className={styles.dayHead}>
-                      <span className={styles.dayTitle}>Day {day.dayNum}</span>
+                      <span className={styles.dayTitle}>{t('rp_day')} {day.dayNum}</span>
                       <span className={styles.dayMeta}>
-                        <span className={styles.dayMetaChip}>{day.stops.length} sites</span>
+                        <span className={styles.dayMetaChip}>{day.stops.length} {t('rp_sites')}</span>
                         <span className={styles.dayMetaChip} title={day.road ? 'Real road distance (OpenRouteService)' : 'Straight-line estimate'}>
-                          {day.distanceKm.toFixed(1)} km{day.road ? ' 🛣️' : ''}
+                          {day.distanceKm.toFixed(1)} {t('rp_km')}{day.road ? ' 🛣️' : ''}
                         </span>
-                        <span className={styles.dayMetaChip}>{formatMin(day.minutes)} drive</span>
+                        <span className={styles.dayMetaChip}>{formatMin(day.minutes)} {t('rp_drive')}</span>
                       </span>
                     </div>
                     <div className={styles.timeline}>
@@ -1473,7 +1479,7 @@ function PlanResults({
                         const s = stop.site;
                         const isVeryFirst = day.dayNum === 1 && si === 0;
                         let legLabel: string;
-                        if (isVeryFirst && !plan.startLoc) legLabel = 'Route start';
+                        if (isVeryFirst && !plan.startLoc) legLabel = t('rp_routeStart');
                         else if (isVeryFirst && plan.startLoc) legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from ${plan.startLoc._label || 'start'}`;
                         else if (si === 0) legLabel = stop.legMin > 0 ? `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} continuing` : 'Continues from previous day';
                         else legLabel = `${stop.legKm.toFixed(1)} km · ~${formatMin(stop.legMin)} from prev`;
@@ -1485,7 +1491,7 @@ function PlanResults({
                             <div className={styles.stopBody}>
                               <div className={styles.stopCode}>
                                 {s.site_code || '—'}
-                                {s._priority && <span className={styles.priorityChip}>Priority</span>}
+                                {s._priority && <span className={styles.priorityChip}>{t('rp_priority')}</span>}
                               </div>
                               <div className={styles.stopName}>{s.site_name || '—'}{s.governorate ? ` · ${s.governorate}` : ''}</div>
                               <div className={styles.stopLeg}>{legLabel}</div>

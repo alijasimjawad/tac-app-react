@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
+import i18n from '../lib/i18n';
 import styles from './Sidebar.module.css';
 import tacLogoLight from '../assets/tac-logo-light.png';
 import { SiteLookupIcon } from '../pages/SiteLookup';
@@ -728,8 +730,43 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
 
 // ── Field-role nav ────────────────────────────────────────────────────────────
 
-function FieldRoleNav({ expandedGroup, toggleGroup }: { expandedGroup: MajorGroup | null; toggleGroup: (group: MajorGroup) => void }) {
+function LangToggle({ roleLower }: { roleLower: string | undefined }) {
+  const { t, i18n: i18nInst } = useTranslation();
+  const [lang, setLang] = useState(i18nInst.language === 'ar' ? 'ar' : 'en');
+
+  // Keep local state in sync when language changes externally
+  useEffect(() => {
+    function onChanged(lng: string) { setLang(lng === 'ar' ? 'ar' : 'en'); }
+    i18nInst.on('languageChanged', onChanged);
+    return () => { i18nInst.off('languageChanged', onChanged); };
+  }, [i18nInst]);
+
+  if (roleLower !== 'technician') return null;
+
+  function toggle() {
+    const next = lang === 'en' ? 'ar' : 'en';
+    setLang(next);
+    i18n.changeLanguage(next);
+    localStorage.setItem('tac_lang', next);
+  }
+
+  return (
+    <button
+      className={styles.langToggle}
+      onClick={toggle}
+      title={t('nav_myProfile')}
+      aria-label="Toggle language"
+    >
+      <span style={{ opacity: lang === 'en' ? 1 : 0.45, fontWeight: lang === 'en' ? 700 : 400 }}>EN</span>
+      <span style={{ margin: '0 4px', opacity: 0.35 }}>|</span>
+      <span style={{ opacity: lang === 'ar' ? 1 : 0.45, fontWeight: lang === 'ar' ? 700 : 400 }}>AR</span>
+    </button>
+  );
+}
+
+function FieldRoleNav({ expandedGroup, toggleGroup, roleLower }: { expandedGroup: MajorGroup | null; toggleGroup: (group: MajorGroup) => void; roleLower: string | undefined }) {
   const { hasPerm } = useAuth();
+  const { t } = useTranslation();
   const dashboardDef     = VIEW_CORE.find(d => d.key === 'view_dashboard')!;
   const dailyActivityDef = VIEW_DAILY_WORK.find(d => d.key === 'view_daily_activities')!;
   const siteLookupDef    = VIEW_DAILY_WORK.find(d => d.key === 'view_site_lookup')!;
@@ -742,69 +779,69 @@ function FieldRoleNav({ expandedGroup, toggleGroup }: { expandedGroup: MajorGrou
     <nav className={styles.nav} aria-label="Field navigation">
       <NavLink to="/my-work" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
         <MyWorkIcon />
-        <span className={styles.navLabel}>My Work</span>
+        <span className={styles.navLabel}>{t('nav_myWork')}</span>
       </NavLink>
 
       {hasPerm(dashboardDef.key) && (
         <NavLink to={dashboardDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <GridIcon />
-          <span className={styles.navLabel}>{dashboardDef.label}</span>
+          <span className={styles.navLabel}>{t('nav_dashboard')}</span>
         </NavLink>
       )}
 
-      <div className={styles.fieldNavLabel}>WORK</div>
+      <div className={styles.fieldNavLabel}>{t('nav_workLabel')}</div>
 
       {hasPerm(dailyActivityDef.key) && (
         <NavLink to="/daily-activities" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <ActivityIcon />
-          <span className={styles.navLabel}>{dailyActivityDef.label}</span>
+          <span className={styles.navLabel}>{t('nav_dailyActivities')}</span>
         </NavLink>
       )}
       {hasPerm(myAttendanceDef.key) && (
         <NavLink to="/attendance" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <ClockIcon />
-          <span className={styles.navLabel}>{myAttendanceDef.label}</span>
+          <span className={styles.navLabel}>{t('nav_myAttendance')}</span>
         </NavLink>
       )}
       {hasPerm(myTripsDef.key) && (
         <NavLink to="/my-trips" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <CarIcon />
-          <span className={styles.navLabel}>{myTripsDef.label}</span>
+          <span className={styles.navLabel}>{t('nav_myTrips')}</span>
         </NavLink>
       )}
       {hasPerm(siteLookupDef.key) && (
         <NavLink to={siteLookupDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <SiteLookupIcon />
-          <span className={styles.navLabel}>{siteLookupDef.label}</span>
+          <span className={styles.navLabel}>{t('nav_siteLookup')}</span>
         </NavLink>
       )}
       {hasPerm(routePlannerDef.key) && (
         <NavLink to={routePlannerDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <RouteIcon />
-          <span className={styles.navLabel}>{routePlannerDef.label}</span>
+          <span className={styles.navLabel}>{t('nav_routePlanner')}</span>
         </NavLink>
       )}
 
-      <div className={styles.fieldNavLabel}>SITES</div>
+      <div className={styles.fieldNavLabel}>{t('nav_sitesLabel')}</div>
 
       {hasPerm(sitesDbDef.key) && (
         <NavLink to={sitesDbDef.to} className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
           <DatabaseIcon />
-          <span className={styles.navLabel}>{sitesDbDef.label}</span>
+          <span className={styles.navLabel}>{t('nav_networkScopes')}</span>
         </NavLink>
       )}
       <NavLink to="/my-sites" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
         <MySitesIcon />
-        <span className={styles.navLabel}>My Sites</span>
+        <span className={styles.navLabel}>{t('nav_mySites')}</span>
       </NavLink>
 
       <NetworkScopesTree />
 
-      <div className={styles.fieldNavLabel}>FINANCE</div>
+      <div className={styles.fieldNavLabel}>{t('nav_financeLabel')}</div>
 
       <NavLink to="/my-expenses" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
         <ReceiptIcon />
-        <span className={styles.navLabel}>My Expenses</span>
+        <span className={styles.navLabel}>{t('nav_myExpenses')}</span>
       </NavLink>
 
       {/* Finance/HR/Admin sub-page permissions (e.g. Revenue, Employee
@@ -819,12 +856,14 @@ function FieldRoleNav({ expandedGroup, toggleGroup }: { expandedGroup: MajorGrou
       <HrNavGroup isExpanded={expandedGroup === 'hr'} onToggle={() => toggleGroup('hr')} />
       <AdminNavGroup isExpanded={expandedGroup === 'admin'} onToggle={() => toggleGroup('admin')} />
 
-      <div className={styles.fieldNavLabel}>ACCOUNT</div>
+      <div className={styles.fieldNavLabel}>{t('nav_accountLabel')}</div>
 
       <NavLink to="/my-profile" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
         <ProfileIcon />
-        <span className={styles.navLabel}>My Profile</span>
+        <span className={styles.navLabel}>{t('nav_myProfile')}</span>
       </NavLink>
+
+      <LangToggle roleLower={roleLower} />
     </nav>
   );
 }
@@ -887,6 +926,14 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
   // toggle said, which is why granting it from User Management had no effect.
   const roleLower = currentUser?.role?.toLowerCase();
   const isFieldRole = roleLower === 'engineer' || roleLower === 'technician';
+
+  // Reset to English for non-technician roles so AR never leaks to Finance/HR/Admin
+  useEffect(() => {
+    if (roleLower && roleLower !== 'technician' && i18n.language !== 'en') {
+      i18n.changeLanguage('en');
+      localStorage.removeItem('tac_lang');
+    }
+  }, [roleLower]);
 
   const dashboardDef      = VIEW_CORE.find(d => d.key === 'view_dashboard')!;
   const dailyActivityDef  = VIEW_DAILY_WORK.find(d => d.key === 'view_daily_activities')!;
@@ -970,7 +1017,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
         </div>
 
         {isFieldRole ? (
-          <FieldRoleNav expandedGroup={expandedGroup} toggleGroup={toggleGroup} />
+          <FieldRoleNav expandedGroup={expandedGroup} toggleGroup={toggleGroup} roleLower={roleLower} />
         ) : (
           <>
             <nav className={styles.nav} aria-label="Main">
