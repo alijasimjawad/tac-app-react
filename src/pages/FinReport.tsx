@@ -14,6 +14,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { FIN_MONTHS, iqd, getYears } from '../lib/finHelpers';
 import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
+import { type StageDone, loadStageMap, currentRevenueFor } from '../lib/revenueStages';
 import css from './FinReport.module.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
@@ -29,7 +30,7 @@ interface TeamMember {
   activated_at: string | null;
   deactivated_at: string | null;
 }
-interface RevRow    { project_name: string; amount: number | null; month: number; year: number; }
+interface RevRow    { project_name: string; site_id: string | null; amount: number | null; month: number; year: number; }
 interface GenExpRow { amount: number | null; month: number; year: number; }
 interface ProjExpRow {
   project_name: string | null;
@@ -147,6 +148,9 @@ export default function FinReport() {
   const [allGen,  setAllGen]  = useState<GenExpRow[]>([]);
   const [allProj, setAllProj] = useState<ProjExpRow[]>([]);
   const [adjs,    setAdjs]    = useState<SalAdj[]>([]);
+  // project|||site_id -> pipeline-stage completion, used to recognize revenue
+  // the same way the Revenue page does (staged, not the raw invoiced amount).
+  const [stageMap, setStageMap] = useState<Record<string, StageDone>>({});
 
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
@@ -173,25 +177,33 @@ export default function FinReport() {
     toastTimer.current = setTimeout(() => setToast(null), 3000);
   }
 
-  // ── Fetch static data once ───────────────────────────────────
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError('');
-      const [t, r, g, p] = await Promise.all([
-        supabase.from('team_members').select('id,full_name,role,monthly_salary,is_active,activated_at,deactivated_at').order('full_name'),
-        supabase.from('revenue').select('project_name,amount,month,year'),
-        supabase.from('general_expenses').select('amount,month,year'),
-        supabase.from('project_expenses').select('project_name,amount,month,year,activity_date'),
-      ]);
-      if (t.error || r.error || g.error || p.error) { setError('Failed to load data.'); setLoading(false); return; }
-      setTeam(t.data || []);
-      setAllRev(r.data || []);
-      setAllGen(g.data || []);
-      setAllProj(p.data || []);
-      setLoading(false);
-    })();
+  // ── Fetch static data (+ live pipeline-stage map for Current Revenue) ────
+  const loadFinData = useCallback(async () => {
+    setError('');
+    const [t, r, g, p, sm] = await Promise.all([
+      supabase.from('team_members').select('id,full_name,role,monthly_salary,is_active,activated_at,deactivated_at').order('full_name'),
+      supabase.from('revenue').select('project_name,site_id,amount,month,year'),
+      supabase.from('general_expenses').select('amount,month,year'),
+      supabase.from('project_expenses').select('project_name,amount,month,year,activity_date'),
+      loadStageMap().catch(() => ({} as Record<string, StageDone>)),
+    ]);
+    if (t.error || r.error || g.error || p.error) { setError('Failed to load data.'); return; }
+    setTeam(t.data || []);
+    setAllRev(r.data || []);
+    setAllGen(g.data || []);
+    setAllProj(p.data || []);
+    setStageMap(sm);
   }, []);
+
+  useEffect(() => {
+    (async () => { setLoading(true); await loadFinData(); setLoading(false); })();
+  }, [loadFinData]);
+
+  /** Recognized ("earned") revenue for one row, staged by its site's pipeline progress. */
+  function currentRevenueOf(r: RevRow): number {
+    const sd = r.site_id ? stageMap[`${r.project_name}|||${r.site_id}`] : undefined;
+    return currentRevenueFor(r.amount, sd);
+  }
 
   // ── Fetch adjustments when month/year changes ────────────────
   const loadAdjs = useCallback(async (m: number, y: number) => {
@@ -205,9 +217,12 @@ export default function FinReport() {
   if (error)   return <div style={{ padding: 40, color: '#ef4444' }}>{error}</div>;
 
   // ── Calculations ─────────────────────────────────────────────
+  // Revenue here is "Current Revenue" — staged by each site's pipeline
+  // progress (Delivery/Installation/Integration/ATP/Clearance/Final ATP),
+  // same recognition model as the Revenue page, not the raw invoiced amount.
   const projRevMap: Record<string, number> = {};
   allRev.filter(r => r.month === month && r.year === year).forEach(r => {
-    if (r.project_name) projRevMap[r.project_name] = (projRevMap[r.project_name] || 0) + (+(r.amount ?? 0));
+    if (r.project_name) projRevMap[r.project_name] = (projRevMap[r.project_name] || 0) + currentRevenueOf(r);
   });
   const activeProjs: string[] = [
     ...FIN_PROJECTS.filter(p => (projRevMap[p] ?? 0) > 0),
@@ -330,7 +345,7 @@ export default function FinReport() {
     // Recompute independently (old app behavior — no adjustments applied in export)
     const expRevMap: Record<string, number> = {};
     allRev.filter(r => r.month === month && r.year === year).forEach(r => {
-      if (r.project_name) expRevMap[r.project_name] = (expRevMap[r.project_name] || 0) + (+(r.amount ?? 0));
+      if (r.project_name) expRevMap[r.project_name] = (expRevMap[r.project_name] || 0) + currentRevenueOf(r);
     });
     const expProjs = [
       ...FIN_PROJECTS.filter(p => (expRevMap[p] ?? 0) > 0),
@@ -444,7 +459,7 @@ export default function FinReport() {
           />
         </label>
         <div className={css.spacer} />
-        <button className={css.btnGhost} onClick={() => loadAdjs(month, year)}>
+        <button className={css.btnGhost} onClick={() => { loadFinData(); loadAdjs(month, year); }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
