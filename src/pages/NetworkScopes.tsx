@@ -23,8 +23,12 @@ export const PROJ_NAMES: Record<string, string> = new Proxy({} as Record<string,
 void ensureProjectsLoaded();
 export const SEC_LABELS: Record<string, string> = { ftk: 'FTK', tdd: 'TDD', addsector: 'Add Sector' };
 
+// Note: 'Delivery' and 'Installation' were removed from this set — they're
+// now part of the official default column template (see Sidebar.tsx
+// DEFAULT_HEADERS) used for Current Revenue stage tracking, and must stay
+// visible.
 const LEGACY_DEFAULT_COLS = new Set([
-  'RFTI', 'Delivery', 'Installation',
+  'RFTI',
   'Status of Integration', 'Integration date', 'Integration Date',
   'TDD', 'Subcon',
 ]);
