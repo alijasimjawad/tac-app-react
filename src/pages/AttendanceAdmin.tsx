@@ -138,6 +138,39 @@ function nearSummary(lat: number | null, lng: number | null, sites: CachedSite[]
   return `${code} · ${dist}`;
 }
 
+type LocVerify = 'verified' | 'unverified' | 'none';
+
+function locVerifyStatus(lat: number | null | undefined, lng: number | null | undefined, sites: CachedSite[]): LocVerify {
+  if (lat == null || lng == null) return 'none';
+  return nearestSiteWithin(sites, lat, lng, NEAREST_SITE_KM) ? 'verified' : 'unverified';
+}
+
+/** How long ago the daily late-cutoff passed, formatted "Xh Ym" — used for the
+ *  "Overdue by …" subtext under not-clocked-in employees. */
+function overdueSince(cutoffHour: number): string {
+  const now = new Date();
+  const cutoff = new Date();
+  cutoff.setHours(cutoffHour, 0, 0, 0);
+  const ms = now.getTime() - cutoff.getTime();
+  if (ms <= 0) return '';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** How late a given clock-in was relative to the cutoff, formatted "Xh Ym late". */
+function lateBy(clockInIso: string | null, cutoffHour: number): string | null {
+  if (!clockInIso) return null;
+  const d = new Date(clockInIso);
+  const cutoff = new Date(d);
+  cutoff.setHours(cutoffHour, 0, 0, 0);
+  const ms = d.getTime() - cutoff.getTime();
+  if (ms <= 0) return null;
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h ${m}m late` : `${m}m late`;
+}
+
 function getRowStatus(row: AttRow | null, isOverdue: boolean): RowStatus {
   if (!row?.clock_in) return isOverdue ? 'overdue' : 'not-in';
   if (row.clock_in && !row.clock_out) return 'missing-out';
@@ -215,6 +248,44 @@ function LocCompact({
   );
 }
 
+function RowStatusBadge({ row, isOverdue }: { row: AttRow | null; isOverdue: boolean }) {
+  if (!row?.clock_in) {
+    return isOverdue
+      ? <span className={`${styles.badge} ${styles.badgeOverdue}`}>Not Clocked In</span>
+      : <span className={`${styles.badge} ${styles.badgeNotIn}`}>Not Clocked In</span>;
+  }
+  if (!row.clock_out) {
+    return <span className={`${styles.badge} ${styles.badgeLate}`}>Clocked In</span>;
+  }
+  return <StatusBadge s={row.status} />;
+}
+
+function LocPrimary({ row, sites }: { row: AttRow | null; sites: CachedSite[] }) {
+  if (!row) return <span className={styles.dimVal}>—</span>;
+  const lat = row.clock_in_lat ?? row.clock_out_lat;
+  const lng = row.clock_in_lng ?? row.clock_out_lng;
+  if (lat == null) return <span className={styles.dimVal}>—</span>;
+  const near = nearSummary(lat, lng, sites);
+  return (
+    <a
+      className={styles.locLink}
+      href={`https://www.google.com/maps?q=${lat},${lng}`}
+      target="_blank" rel="noopener noreferrer"
+    >
+      <MapPinIcon /> {near ?? 'View map'}
+    </a>
+  );
+}
+
+function VerifyBadge({ status }: { status: LocVerify }) {
+  if (status === 'none') return <span className={styles.dimVal}>—</span>;
+  return status === 'verified'
+    ? <span className={`${styles.badge} ${styles.badgeVerified}`}>Verified</span>
+    : <span className={`${styles.badge} ${styles.badgeUnverified}`}>Unverified</span>;
+}
+
+type DrawerTab = 'overview' | 'timeline' | 'location' | 'notes';
+
 function DetailsDrawer({
   data, sites, onClose, onEdit, canEdit,
 }: {
@@ -224,6 +295,8 @@ function DetailsDrawer({
   onEdit: (id: string) => void;
   canEdit: boolean;
 }) {
+  const [tab, setTab] = useState<DrawerTab>('overview');
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onKey);
@@ -233,6 +306,18 @@ function DetailsDrawer({
   const { member, row } = data;
   const inNear  = row ? nearSummary(row.clock_in_lat,  row.clock_in_lng,  sites) : null;
   const outNear = row ? nearSummary(row.clock_out_lat, row.clock_out_lng, sites) : null;
+  const inVerify  = row ? locVerifyStatus(row.clock_in_lat,  row.clock_in_lng,  sites) : 'none';
+  const outVerify = row ? locVerifyStatus(row.clock_out_lat, row.clock_out_lng, sites) : 'none';
+  const late = row ? lateBy(row.clock_in, LATE_CUTOFF_HOUR) : null;
+  const mapLat = row ? row.clock_in_lat ?? row.clock_out_lat : null;
+  const mapLng = row ? row.clock_in_lng ?? row.clock_out_lng : null;
+
+  const tabs: { id: DrawerTab; label: string }[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'timeline', label: 'Timeline' },
+    { id: 'location', label: 'Location' },
+    { id: 'notes', label: 'Notes' },
+  ];
 
   return (
     <>
@@ -257,12 +342,34 @@ function DetailsDrawer({
           </div>
         )}
 
+        {row && (
+          <div className={styles.drawerTabs}>
+            {tabs.map(t => (
+              <button
+                key={t.id}
+                className={`${styles.drawerTabBtn} ${tab === t.id ? styles.drawerTabBtnActive : ''}`}
+                onClick={() => setTab(t.id)}
+              >{t.label}</button>
+            ))}
+          </div>
+        )}
+
         <div className={styles.drawerBody}>
-          {row ? (
+          {!row ? (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyIcon}>📋</div>
+              <div className={styles.emptyTitle}>No record for this date</div>
+              <div className={styles.emptySub}>{member.full_name} has not clocked in.</div>
+            </div>
+          ) : tab === 'overview' ? (
             <>
               <div className={styles.drawerSection}>
-                <div className={styles.drawerSectTitle}>Times</div>
+                <div className={styles.drawerSectTitle}>Today's Summary</div>
                 <div className={styles.drawerFields}>
+                  <div className={styles.drawerField}>
+                    <div className={styles.drawerFieldLbl}>Date</div>
+                    <div className={styles.drawerFieldVal}>{fmtDateNav(row.date)}</div>
+                  </div>
                   <div className={styles.drawerField}>
                     <div className={styles.drawerFieldLbl}>Clock In</div>
                     <div className={styles.drawerFieldVal}>{fmtTime(row.clock_in)}</div>
@@ -274,86 +381,184 @@ function DetailsDrawer({
                     </div>
                   </div>
                   <div className={styles.drawerField}>
-                    <div className={styles.drawerFieldLbl}>Hours Worked</div>
+                    <div className={styles.drawerFieldLbl}>Worked Hours</div>
                     <div className={styles.drawerFieldVal}>{fmtHours(row.hours_worked)}</div>
+                  </div>
+                  <div className={styles.drawerField}>
+                    <div className={styles.drawerFieldLbl}>Status</div>
+                    <div className={styles.drawerFieldVal}><StatusBadge s={row.status} /></div>
+                  </div>
+                  <div className={styles.drawerField}>
+                    <div className={styles.drawerFieldLbl}>Late</div>
+                    <div className={late ? styles.drawerFieldVal : styles.drawerFieldMuted}>{late ?? 'On time'}</div>
                   </div>
                 </div>
               </div>
 
-              {(row.clock_in_lat != null || row.clock_out_lat != null) && (
-                <div className={styles.drawerSection}>
-                  <div className={styles.drawerSectTitle}>Location</div>
+              <div className={styles.drawerSection}>
+                <div className={styles.drawerSectTitle}>Location Verification</div>
+                {row.clock_in_lat == null && row.clock_out_lat == null ? (
+                  <div className={styles.drawerFieldMuted}>No location recorded.</div>
+                ) : (
                   <div className={styles.drawerLocBlock}>
                     {row.clock_in_lat != null && (
-                      <div className={styles.drawerLocRow}>
-                        <span className={styles.locLabel}>In</span>
-                        <a
-                          className={styles.drawerLocLink}
-                          href={`https://www.google.com/maps?q=${row.clock_in_lat},${row.clock_in_lng}`}
-                          target="_blank" rel="noopener noreferrer"
-                        >
-                          <MapPinIcon /> {inNear ?? 'View on map'}
-                        </a>
-                        <div className={styles.drawerLocCoords}>
-                          {row.clock_in_lat.toFixed(5)}, {(row.clock_in_lng ?? 0).toFixed(5)}
-                        </div>
+                      <div className={styles.drawerVerifyRow}>
+                        <span className={styles.drawerVerifyLabel}>Check-in: <MapPinIcon /> {inNear ?? 'Unknown location'}</span>
+                        <VerifyBadge status={inVerify} />
                       </div>
                     )}
                     {row.clock_out_lat != null && (
-                      <div className={styles.drawerLocRow}>
-                        <span className={styles.locLabel}>Out</span>
-                        <a
-                          className={styles.drawerLocLink}
-                          href={`https://www.google.com/maps?q=${row.clock_out_lat},${row.clock_out_lng}`}
-                          target="_blank" rel="noopener noreferrer"
-                        >
-                          <MapPinIcon /> {outNear ?? 'View on map'}
-                        </a>
-                        <div className={styles.drawerLocCoords}>
-                          {row.clock_out_lat.toFixed(5)}, {(row.clock_out_lng ?? 0).toFixed(5)}
-                        </div>
+                      <div className={styles.drawerVerifyRow}>
+                        <span className={styles.drawerVerifyLabel}>Check-out: <MapPinIcon /> {outNear ?? 'Unknown location'}</span>
+                        <VerifyBadge status={outVerify} />
                       </div>
                     )}
+                    {(inVerify === 'verified' || outVerify === 'verified') && (
+                      <div className={styles.drawerGeofence}>Geofence: Within allowed area</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.drawerSection}>
+                <div className={styles.drawerSectTitle}>Additional Information</div>
+                <div className={styles.drawerFields}>
+                  <div className={styles.drawerField}>
+                    <div className={styles.drawerFieldLbl}>Department</div>
+                    <div className={styles.drawerFieldVal}>{member.role ?? '—'}</div>
+                  </div>
+                  <div className={styles.drawerField}>
+                    <div className={styles.drawerFieldLbl}>Recorded By</div>
+                    <div className={styles.drawerFieldVal}>{row.updated_by || 'Employee (self clock-in)'}</div>
+                  </div>
+                  <div className={styles.drawerField}>
+                    <div className={styles.drawerFieldLbl}>Last Updated</div>
+                    <div className={styles.drawerFieldVal}>
+                      {row.updated_at
+                        ? new Date(row.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : '—'}
+                    </div>
                   </div>
                 </div>
-              )}
-
-              {row.notes && (
-                <div className={styles.drawerSection}>
-                  <div className={styles.drawerSectTitle}>Notes</div>
-                  <div className={styles.drawerNotes}>{row.notes}</div>
-                </div>
-              )}
-
-              {(row.updated_by || row.updated_at) && (
-                <div className={styles.drawerSection}>
-                  <div className={styles.drawerMeta}>
-                    Last updated
-                    {row.updated_by ? ` by ${row.updated_by}` : ''}
-                    {row.updated_at
-                      ? ` · ${new Date(row.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
-                      : ''}
-                  </div>
-                </div>
-              )}
+              </div>
             </>
+          ) : tab === 'timeline' ? (
+            <div className={styles.drawerSection}>
+              <div className={styles.drawerSectTitle}>Timeline</div>
+              {!row.clock_in && !row.clock_out ? (
+                <div className={styles.drawerFieldMuted}>No events recorded.</div>
+              ) : (
+                <div className={styles.timeline}>
+                  {row.clock_in && (
+                    <div className={styles.timelineItem}>
+                      <div className={styles.timelineDot} style={{ background: '#16a34a' }} />
+                      <div>
+                        <div className={styles.timelineLbl}>Clocked In</div>
+                        <div className={styles.timelineTime}>{fmtTime(row.clock_in)}{late ? ` · ${late}` : ''}</div>
+                      </div>
+                    </div>
+                  )}
+                  {row.clock_in && !row.clock_out && (
+                    <div className={styles.timelineItem}>
+                      <div className={styles.timelineDot} style={{ background: '#f59e0b' }} />
+                      <div>
+                        <div className={styles.timelineLbl}>Still Active</div>
+                        <div className={styles.timelineTime}>Awaiting clock-out</div>
+                      </div>
+                    </div>
+                  )}
+                  {row.clock_out && (
+                    <div className={styles.timelineItem}>
+                      <div className={styles.timelineDot} style={{ background: '#64748b' }} />
+                      <div>
+                        <div className={styles.timelineLbl}>Clocked Out</div>
+                        <div className={styles.timelineTime}>{fmtTime(row.clock_out)}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : tab === 'location' ? (
+            <div className={styles.drawerSection}>
+              <div className={styles.drawerSectTitle}>Location</div>
+              {row.clock_in_lat == null && row.clock_out_lat == null ? (
+                <div className={styles.drawerFieldMuted}>No location recorded.</div>
+              ) : (
+                <div className={styles.drawerLocBlock}>
+                  {row.clock_in_lat != null && (
+                    <div className={styles.drawerLocRow}>
+                      <span className={styles.locLabel}>In</span>
+                      <a
+                        className={styles.drawerLocLink}
+                        href={`https://www.google.com/maps?q=${row.clock_in_lat},${row.clock_in_lng}`}
+                        target="_blank" rel="noopener noreferrer"
+                      >
+                        <MapPinIcon /> {inNear ?? 'View on map'}
+                      </a>
+                      <div className={styles.drawerLocCoords}>
+                        {row.clock_in_lat.toFixed(5)}, {(row.clock_in_lng ?? 0).toFixed(5)}
+                      </div>
+                      <VerifyBadge status={inVerify} />
+                    </div>
+                  )}
+                  {row.clock_out_lat != null && (
+                    <div className={styles.drawerLocRow}>
+                      <span className={styles.locLabel}>Out</span>
+                      <a
+                        className={styles.drawerLocLink}
+                        href={`https://www.google.com/maps?q=${row.clock_out_lat},${row.clock_out_lng}`}
+                        target="_blank" rel="noopener noreferrer"
+                      >
+                        <MapPinIcon /> {outNear ?? 'View on map'}
+                      </a>
+                      <div className={styles.drawerLocCoords}>
+                        {row.clock_out_lat.toFixed(5)}, {(row.clock_out_lng ?? 0).toFixed(5)}
+                      </div>
+                      <VerifyBadge status={outVerify} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           ) : (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyIcon}>📋</div>
-              <div className={styles.emptyTitle}>No record for this date</div>
-              <div className={styles.emptySub}>{member.full_name} has not clocked in.</div>
+            <div className={styles.drawerSection}>
+              <div className={styles.drawerSectTitle}>Notes</div>
+              {row.notes
+                ? <div className={styles.drawerNotes}>{row.notes}</div>
+                : <div className={styles.drawerFieldMuted}>No notes for this entry.</div>}
+              {(row.updated_by || row.updated_at) && (
+                <div className={styles.drawerMeta}>
+                  Last updated
+                  {row.updated_by ? ` by ${row.updated_by}` : ' by Employee (self clock-in)'}
+                  {row.updated_at
+                    ? ` · ${new Date(row.updated_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                    : ''}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {row && canEdit && (
+        {row && (
           <div className={styles.drawerFooter}>
-            <button
-              className={styles.drawerEditBtn}
-              onClick={() => { onEdit(row.id); onClose(); }}
-            >
-              <PencilIcon /> Edit Attendance
-            </button>
+            {canEdit && (
+              <button
+                className={styles.drawerEditBtn}
+                onClick={() => { onEdit(row.id); onClose(); }}
+              >
+                <PencilIcon /> Edit Attendance
+              </button>
+            )}
+            {mapLat != null && (
+              <a
+                className={styles.drawerMapBtn}
+                href={`https://www.google.com/maps?q=${mapLat},${mapLng}`}
+                target="_blank" rel="noopener noreferrer"
+              >
+                <MapPinIcon /> View on Map
+              </a>
+            )}
           </div>
         )}
       </aside>
@@ -377,6 +582,14 @@ export default function AttendanceAdmin() {
   const [filters,      setFilters]      = useState<Filters>({ member: '', monthYear: '', search: '' });
   const [histStatus,   setHistStatus]   = useState('All');
   const [histPage,     setHistPage]     = useState(1);
+
+  const [deptFilter,       setDeptFilter]       = useState('All');
+  const [locFilter,        setLocFilter]        = useState('All');
+  const [onlyFlagged,      setOnlyFlagged]      = useState(false);
+  const [moreFiltersOpen,  setMoreFiltersOpen]  = useState(false);
+  const [attentionExpanded, setAttentionExpanded] = useState(false);
+  const [rosterPage,     setRosterPage]     = useState(1);
+  const [rosterPageSize, setRosterPageSize] = useState(10);
 
   const [drawerData, setDrawerData] = useState<{ member: Member; row: AttRow | null } | null>(null);
 
@@ -527,17 +740,47 @@ export default function AttendanceAdmin() {
   const kpiNotIn   = allRosterRows.filter(r => !r.row?.clock_in).length;
   const kpiLate    = allRosterRows.filter(r => r.row?.status === 'Late').length;
 
-  const rosterRows = filterStatus === 'All'
-    ? allRosterRows
-    : allRosterRows.filter(r => {
-        if (filterStatus === 'Active')  return r.row?.clock_in && !r.row?.clock_out;
-        if (filterStatus === 'Done')    return r.row?.clock_in && r.row?.clock_out;
-        if (filterStatus === 'Not In')  return !r.row?.clock_in;
-        if (filterStatus === 'Late')    return r.row?.status === 'Late';
-        return true;
-      });
+  const departmentOptions = [...new Set(
+    activeMembers.map(m => m.role).filter(Boolean) as string[]
+  )].sort();
+
+  const rosterRows = allRosterRows.filter(r => {
+    if (filterStatus === 'Active' && !(r.row?.clock_in && !r.row?.clock_out)) return false;
+    if (filterStatus === 'Done'   && !(r.row?.clock_in && r.row?.clock_out))  return false;
+    if (filterStatus === 'Not In' && r.row?.clock_in)                        return false;
+    if (filterStatus === 'Late'   && r.row?.status !== 'Late')               return false;
+    if (deptFilter !== 'All' && (r.member.role ?? '') !== deptFilter) return false;
+    if (locFilter !== 'All') {
+      const verify = r.row
+        ? locVerifyStatus(r.row.clock_in_lat ?? r.row.clock_out_lat, r.row.clock_in_lng ?? r.row.clock_out_lng, sites)
+        : 'none';
+      if (locFilter === 'Verified'   && verify !== 'verified')   return false;
+      if (locFilter === 'Unverified' && verify !== 'unverified') return false;
+    }
+    if (onlyFlagged && !(r.status === 'overdue' || r.status === 'missing-out' || r.status === 'late')) return false;
+    return true;
+  });
 
   const attentionItems = allRosterRows.filter(r => r.status === 'overdue' || r.status === 'missing-out');
+
+  const anyRosterFilter = filterStatus !== 'All' || deptFilter !== 'All' || locFilter !== 'All'
+    || onlyFlagged || !!filters.search;
+
+  const rosterPageCount = Math.max(1, Math.ceil(rosterRows.length / rosterPageSize));
+  const rosterPageSafe  = Math.min(rosterPage, rosterPageCount);
+  const pagedRoster = rosterRows.slice((rosterPageSafe - 1) * rosterPageSize, rosterPageSafe * rosterPageSize);
+  const rosterRangeStart = rosterRows.length === 0 ? 0 : (rosterPageSafe - 1) * rosterPageSize + 1;
+  const rosterRangeEnd   = Math.min(rosterPageSafe * rosterPageSize, rosterRows.length);
+
+  useEffect(() => { setRosterPage(1); }, [filterStatus, deptFilter, locFilter, onlyFlagged, filters.search, rosterDate, rosterPageSize]);
+
+  function clearRosterFilters() {
+    setFilterStatus('All');
+    setDeptFilter('All');
+    setLocFilter('All');
+    setOnlyFlagged(false);
+    setFilters(f => ({ ...f, search: '' }));
+  }
 
   // History
   const filteredHistory = attendance.filter(r => {
@@ -584,25 +827,11 @@ export default function AttendanceAdmin() {
           <h1 className={styles.title}>Attendance</h1>
           <div className={styles.subtitle}>
             {view === 'roster'
-              ? `${kpiPresent + kpiActive} clocked in · ${kpiNotIn} not clocked in · ${fmtDateShort(rosterDate)}`
+              ? "Monitor today's attendance, working hours, and location verification."
               : `${filteredHistory.length} record${filteredHistory.length !== 1 ? 's' : ''}`}
           </div>
         </div>
         <div className={styles.headerRight}>
-          <div className={styles.segmented}>
-            <button
-              className={`${styles.segBtn} ${view === 'roster' ? styles.segBtnActive : ''}`}
-              onClick={() => setView('roster')}
-            >
-              <CalendarIcon /> Roster
-            </button>
-            <button
-              className={`${styles.segBtn} ${view === 'history' ? styles.segBtnActive : ''}`}
-              onClick={() => setView('history')}
-            >
-              <HistoryIcon /> History
-            </button>
-          </div>
           {hasPerm('attendance_admin_add') && (
             <button className={styles.addBtn} onClick={() => openModal(null)}>
               <PlusIcon /> Manual Entry
@@ -619,7 +848,7 @@ export default function AttendanceAdmin() {
             <div className={styles.kpiContent}>
               <div className={styles.kpiValue}>{kpiPresent + kpiActive}</div>
               <div className={styles.kpiLabel}>Clocked In</div>
-              {kpiActive > 0 && <div className={styles.kpiSub}>{kpiActive} still active</div>}
+              <div className={styles.kpiSub}>{kpiPresent + kpiActive} of {activeMembers.length} employees</div>
             </div>
           </div>
           <div className={`${styles.kpiCard} ${styles.kpiSlate}`}>
@@ -627,14 +856,15 @@ export default function AttendanceAdmin() {
             <div className={styles.kpiContent}>
               <div className={styles.kpiValue}>{kpiNotIn}</div>
               <div className={styles.kpiLabel}>Not Clocked In</div>
-              {overdueCutoff && kpiNotIn > 0 && <div className={styles.kpiSub}>Past 9:00 AM</div>}
+              {kpiNotIn > 0 && <div className={styles.kpiSub}>Requires review</div>}
             </div>
           </div>
           <div className={`${styles.kpiCard} ${kpiLate > 0 ? styles.kpiAmber : styles.kpiNeutral}`}>
             <div className={styles.kpiIcon}><ClockWarningIcon /></div>
             <div className={styles.kpiContent}>
               <div className={styles.kpiValue}>{kpiLate}</div>
-              <div className={styles.kpiLabel}>Late Arrivals</div>
+              <div className={styles.kpiLabel}>Late</div>
+              <div className={styles.kpiSub}>Today</div>
             </div>
           </div>
           <div className={`${styles.kpiCard} ${kpiActive > 0 ? styles.kpiRed : styles.kpiNeutral}`}>
@@ -642,14 +872,23 @@ export default function AttendanceAdmin() {
             <div className={styles.kpiContent}>
               <div className={styles.kpiValue}>{kpiActive}</div>
               <div className={styles.kpiLabel}>Missing Clock-Out</div>
+              {kpiActive > 0 && <div className={styles.kpiSub}>Requires action</div>}
+            </div>
+          </div>
+          <div className={`${styles.kpiCard} ${styles.kpiBlue}`}>
+            <div className={styles.kpiIcon}><TeamIcon /></div>
+            <div className={styles.kpiContent}>
+              <div className={styles.kpiValue}>{activeMembers.length}</div>
+              <div className={styles.kpiLabel}>Total Employees</div>
+              <div className={styles.kpiSub}>Active employees</div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Roster controls */}
-      {view === 'roster' && (
-        <div className={styles.controlBar}>
+      {/* Date nav + view tabs */}
+      <div className={styles.controlBar}>
+        {view === 'roster' && (
           <div className={styles.dateNav}>
             <button className={styles.dateNavBtn} onClick={() => setRosterDate(d => offsetDate(d, -1))}>
               <ChevronLeftIcon />
@@ -666,6 +905,22 @@ export default function AttendanceAdmin() {
               <button className={styles.todayBtn} onClick={() => setRosterDate(today)}>Today</button>
             )}
           </div>
+        )}
+        <div className={styles.viewTabs}>
+          <button
+            className={`${styles.viewTabBtn} ${view === 'roster' ? styles.viewTabBtnActive : ''}`}
+            onClick={() => setView('roster')}
+          >Today's Roster</button>
+          <button
+            className={`${styles.viewTabBtn} ${view === 'history' ? styles.viewTabBtnActive : ''}`}
+            onClick={() => setView('history')}
+          >History</button>
+        </div>
+      </div>
+
+      {/* Roster filters */}
+      {view === 'roster' && (
+        <div className={styles.filterBarWrap}>
           <div className={styles.filterBar}>
             <div className={styles.searchWrap}>
               <span className={styles.searchIcon}><SearchIcon /></span>
@@ -688,7 +943,45 @@ export default function AttendanceAdmin() {
               <option value="Not In">Not In</option>
               <option value="Late">Late</option>
             </select>
+            <select
+              className={styles.filterSelect}
+              value={deptFilter}
+              onChange={e => setDeptFilter(e.target.value)}
+            >
+              <option value="All">All Departments</option>
+              {departmentOptions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <select
+              className={styles.filterSelect}
+              value={locFilter}
+              onChange={e => setLocFilter(e.target.value)}
+            >
+              <option value="All">Location Verification</option>
+              <option value="Verified">Verified</option>
+              <option value="Unverified">Unverified</option>
+            </select>
+            <button
+              className={`${styles.moreFiltersBtn} ${moreFiltersOpen ? styles.moreFiltersBtnActive : ''}`}
+              onClick={() => setMoreFiltersOpen(v => !v)}
+            >
+              <FilterIcon /> More Filters
+            </button>
+            {anyRosterFilter && (
+              <button className={styles.clearBtn} onClick={clearRosterFilters}>Clear Filters</button>
+            )}
           </div>
+          {moreFiltersOpen && (
+            <div className={styles.moreFiltersPanel}>
+              <label className={styles.flaggedCheck}>
+                <input
+                  type="checkbox"
+                  checked={onlyFlagged}
+                  onChange={e => setOnlyFlagged(e.target.checked)}
+                />
+                Only show flagged (not clocked in / late / missing clock-out)
+              </label>
+            </div>
+          )}
         </div>
       )}
 
@@ -745,38 +1038,67 @@ export default function AttendanceAdmin() {
       )}
 
       {/* Attention panel */}
-      {view === 'roster' && !loading && attentionItems.length > 0 && (
+      {view === 'roster' && !loading && (kpiNotIn + kpiLate + kpiActive) > 0 && (
         <div className={styles.attentionPanel}>
           <div className={styles.attentionTitle}>
-            <WarningIcon /> Needs Attention ({attentionItems.length})
+            <WarningIcon /> Attention Required
           </div>
-          <div className={styles.attentionItems}>
-            {attentionItems.slice(0, 5).map(({ member, row, status }) => (
-              <div key={member.id} className={styles.attentionItem}>
-                <div
-                  className={styles.attentionDot}
-                  style={{ background: status === 'overdue' ? '#f59e0b' : '#ef4444' }}
-                />
-                <div className={styles.attentionText}>
-                  <strong>{member.full_name}</strong>{' — '}
-                  {status === 'overdue' ? 'not clocked in past 9:00 AM' : 'clocked in, missing clock-out'}
-                </div>
-                {hasPerm('attendance_admin_add') && (
-                  <button
-                    className={styles.attentionAction}
-                    onClick={() => openModal(row ? row.id : null, member.id, rosterDate)}
-                  >
-                    {row ? 'Edit' : 'Add Entry'}
-                  </button>
-                )}
+          <div className={styles.attentionStats}>
+            <div className={styles.attentionStat}>
+              <PersonXIcon />
+              <div>
+                <div className={styles.attentionStatValue}>{kpiNotIn} employee{kpiNotIn !== 1 ? 's' : ''}</div>
+                <div className={styles.attentionStatLabel}>Not clocked in yet</div>
               </div>
-            ))}
-            {attentionItems.length > 5 && (
-              <div style={{ fontSize: 12, color: '#92400e', paddingLeft: 16 }}>
-                +{attentionItems.length - 5} more
+            </div>
+            <div className={styles.attentionStat}>
+              <ClockWarningIcon />
+              <div>
+                <div className={styles.attentionStatValue}>{kpiLate} employee{kpiLate !== 1 ? 's' : ''}</div>
+                <div className={styles.attentionStatLabel}>Late today</div>
               </div>
-            )}
+            </div>
+            <div className={styles.attentionStat}>
+              <MissingIcon />
+              <div>
+                <div className={styles.attentionStatValue}>{kpiActive} employee{kpiActive !== 1 ? 's' : ''}</div>
+                <div className={styles.attentionStatLabel}>Missing clock-out</div>
+              </div>
+            </div>
           </div>
+          {attentionItems.length === 0 ? null : !attentionExpanded ? (
+            <button className={styles.attentionToggle} onClick={() => setAttentionExpanded(true)}>
+              View All ({attentionItems.length}) →
+            </button>
+          ) : (
+            <>
+              <div className={styles.attentionItems}>
+                {attentionItems.map(({ member, row, status }) => (
+                  <div key={member.id} className={styles.attentionItem}>
+                    <div
+                      className={styles.attentionDot}
+                      style={{ background: status === 'overdue' ? '#f59e0b' : '#ef4444' }}
+                    />
+                    <div className={styles.attentionText}>
+                      <strong>{member.full_name}</strong>{' — '}
+                      {status === 'overdue' ? 'not clocked in past 9:00 AM' : 'clocked in, missing clock-out'}
+                    </div>
+                    {hasPerm('attendance_admin_add') && (
+                      <button
+                        className={styles.attentionAction}
+                        onClick={() => openModal(row ? row.id : null, member.id, rosterDate)}
+                      >
+                        {row ? 'Edit' : 'Add Entry'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button className={styles.attentionToggle} onClick={() => setAttentionExpanded(false)}>
+                Collapse
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -796,16 +1118,16 @@ export default function AttendanceAdmin() {
                     <th>Employee</th>
                     <th>Clock In</th>
                     <th>Clock Out</th>
-                    <th>Hours</th>
+                    <th>Worked Hours</th>
                     <th>Status</th>
                     <th>Location</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rosterRows.length === 0 ? (
+                  {pagedRoster.length === 0 ? (
                     <tr><td colSpan={7} className={styles.tdEmpty}>No employees match the current filter.</td></tr>
-                  ) : rosterRows.map(({ member, row, status }) => (
+                  ) : pagedRoster.map(({ member, row, status }) => (
                     <tr key={member.id} className={`${styles.tableRow} ${rowBorderClass(status)}`}>
                       <td>
                         <div className={styles.empCell}>
@@ -822,9 +1144,9 @@ export default function AttendanceAdmin() {
                         {row?.clock_in
                           ? <span className={styles.timeVal}>{fmtTime(row.clock_in)}</span>
                           : status === 'overdue'
-                            ? <div className={styles.notInCell}>
+                            ? <div className={styles.notInStack}>
                                 <span className={styles.notInText}>Not clocked in</span>
-                                <span className={styles.overduePill}>Overdue</span>
+                                <span className={styles.overdueSub}>Overdue by {overdueSince(LATE_CUTOFF_HOUR)}</span>
                               </div>
                             : <span className={styles.dimVal}>—</span>}
                       </td>
@@ -841,39 +1163,47 @@ export default function AttendanceAdmin() {
                           : <span className={styles.dimVal}>—</span>}
                       </td>
                       <td>
-                        {row?.status
-                          ? <StatusBadge s={row.status} />
-                          : <span className={styles.dimVal}>—</span>}
+                        <RowStatusBadge row={row} isOverdue={status === 'overdue'} />
                       </td>
                       <td>
-                        {row
-                          ? <LocCompact
-                              inLat={row.clock_in_lat}   inLng={row.clock_in_lng}
-                              outLat={row.clock_out_lat} outLng={row.clock_out_lng}
-                              sites={sites}
+                        <div className={styles.locCell}>
+                          <LocPrimary row={row} sites={sites} />
+                          {row && (row.clock_in_lat != null || row.clock_out_lat != null) && (
+                            <VerifyBadge
+                              status={locVerifyStatus(
+                                row.clock_in_lat ?? row.clock_out_lat,
+                                row.clock_in_lng ?? row.clock_out_lng,
+                                sites
+                              )}
                             />
-                          : <span className={styles.dimVal}>—</span>}
+                          )}
+                        </div>
                       </td>
                       <td className={styles.actionsCell}>
-                        <button
-                          className={styles.iconBtn}
-                          title="View details"
-                          onClick={() => setDrawerData({ member, row })}
-                        ><EyeIcon /></button>
-                        {row
-                          ? (hasPerm('attendance_admin_edit') && (
+                        {row ? (
+                          <>
+                            <button
+                              className={styles.iconBtn}
+                              title="View details"
+                              onClick={() => setDrawerData({ member, row })}
+                            ><EyeIcon /></button>
+                            {hasPerm('attendance_admin_edit') && (
                               <button
                                 className={styles.iconBtn}
                                 title="Edit"
                                 onClick={() => openModal(row.id)}
                               ><PencilIcon /></button>
-                            ))
-                          : (hasPerm('attendance_admin_add') && (
-                              <button
-                                className={styles.addEntryBtn}
-                                onClick={() => openModal(null, member.id, rosterDate)}
-                              ><PlusIcon /> Add</button>
-                            ))}
+                            )}
+                          </>
+                        ) : (
+                          hasPerm('attendance_admin_add') && (
+                            <button
+                              className={styles.iconBtn}
+                              title="Add entry"
+                              onClick={() => openModal(null, member.id, rosterDate)}
+                            ><PlusIcon /></button>
+                          )
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -884,7 +1214,7 @@ export default function AttendanceAdmin() {
 
           {/* Mobile cards */}
           <div className={styles.mobileList}>
-            {rosterRows.map(({ member, row, status }) => (
+            {pagedRoster.map(({ member, row, status }) => (
               <div key={member.id} className={`${styles.mobileCard} ${rowBorderClass(status)}`}>
                 <div className={styles.mobileCardHeader}>
                   <div className={styles.mobileCardLeft}>
@@ -933,12 +1263,62 @@ export default function AttendanceAdmin() {
                 </div>
               </div>
             ))}
-            {rosterRows.length === 0 && (
+            {pagedRoster.length === 0 && (
               <div className={styles.emptyState}>
                 <div className={styles.emptyTitle}>No employees match the current filter.</div>
               </div>
             )}
           </div>
+
+          {rosterRows.length > 0 && (
+            <div className={styles.rosterPagination}>
+              <div className={styles.rosterPageInfo}>
+                Showing {rosterRangeStart} to {rosterRangeEnd} of {rosterRows.length} employee{rosterRows.length !== 1 ? 's' : ''}
+              </div>
+              <div className={styles.rosterPageControls}>
+                <label className={styles.rowsPerPageLbl}>
+                  Rows per page:
+                  <select
+                    className={styles.rowsPerPageSelect}
+                    value={rosterPageSize}
+                    onChange={e => setRosterPageSize(Number(e.target.value))}
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </label>
+                <div className={styles.pageNumNav}>
+                  <button
+                    className={styles.pageNumBtn}
+                    disabled={rosterPageSafe <= 1}
+                    onClick={() => setRosterPage(p => Math.max(1, p - 1))}
+                  >←</button>
+                  {Array.from({ length: rosterPageCount }, (_, i) => i + 1)
+                    .filter(n => n === 1 || n === rosterPageCount || Math.abs(n - rosterPageSafe) <= 1)
+                    .reduce<number[]>((acc, n) => {
+                      if (acc.length > 0 && n - acc[acc.length - 1] > 1) acc.push(-1);
+                      acc.push(n);
+                      return acc;
+                    }, [])
+                    .map((n, i) => n === -1 ? (
+                      <span key={`gap-${i}`} className={styles.pageNumGap}>…</span>
+                    ) : (
+                      <button
+                        key={n}
+                        className={`${styles.pageNumBtn} ${n === rosterPageSafe ? styles.pageNumBtnActive : ''}`}
+                        onClick={() => setRosterPage(n)}
+                      >{n}</button>
+                    ))}
+                  <button
+                    className={styles.pageNumBtn}
+                    disabled={rosterPageSafe >= rosterPageCount}
+                    onClick={() => setRosterPage(p => Math.min(rosterPageCount, p + 1))}
+                  >→</button>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         /* History view */
@@ -952,7 +1332,7 @@ export default function AttendanceAdmin() {
                     <th>Date</th>
                     <th>Clock In</th>
                     <th>Clock Out</th>
-                    <th>Hours</th>
+                    <th>Worked Hours</th>
                     <th>Status</th>
                     <th>Location</th>
                     <th>Actions</th>
@@ -1132,22 +1512,21 @@ export default function AttendanceAdmin() {
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
-function CalendarIcon() {
+function TeamIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="4" width="18" height="18" rx="2"/>
-      <line x1="16" y1="2" x2="16" y2="6"/>
-      <line x1="8" y1="2" x2="8" y2="6"/>
-      <line x1="3" y1="10" x2="21" y2="10"/>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+      <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
     </svg>
   );
 }
 
-function HistoryIcon() {
+function FilterIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10"/>
-      <polyline points="12 6 12 12 16 14"/>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
     </svg>
   );
 }
