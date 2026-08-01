@@ -66,6 +66,52 @@ function gpsErrorMessage(err: unknown): string {
   return 'Could not verify your location. Please enable location services and try again.';
 }
 
+// ── Backgrounding resilience ────────────────────────────────────────────────
+// If the phone/OS freezes or kills the tab right after Clock In/Out is tapped
+// (e.g. the user immediately switches apps), the in-flight write can be
+// abandoned silently — no error, no confirmation, and the user has no way to
+// know whether it actually saved. We drop a small marker in localStorage the
+// instant a write starts and clear it the instant the write settles; if the
+// marker is still there next time attendance data loads, we know that attempt
+// never completed and can tell the user to retry instead of leaving them
+// guessing.
+const PENDING_CLOCK_KEY = 'tac_pending_clock';
+
+interface PendingClock {
+  action: 'in' | 'out';
+  memberId: string;
+  date: string;
+  startedAt: number;
+}
+
+function writePendingClock(p: PendingClock) {
+  try { localStorage.setItem(PENDING_CLOCK_KEY, JSON.stringify(p)); } catch { /* storage unavailable — degrade silently */ }
+}
+function clearPendingClock() {
+  try { localStorage.removeItem(PENDING_CLOCK_KEY); } catch { /* storage unavailable */ }
+}
+function readPendingClock(): PendingClock | null {
+  try {
+    const raw = localStorage.getItem(PENDING_CLOCK_KEY);
+    return raw ? (JSON.parse(raw) as PendingClock) : null;
+  } catch { return null; }
+}
+
+/** Checks a leftover pending marker against freshly-loaded rows. Returns
+ *  whether that earlier attempt actually failed to save, or null if there's
+ *  nothing to report (no marker, stale/unrelated marker, or still within the
+ *  normal completion window so it may just be genuinely in flight). */
+function checkPendingClock(memberId: string, today: string, freshRows: AttendanceRow[]): { action: 'in' | 'out'; failed: boolean } | null {
+  const pending = readPendingClock();
+  if (!pending || pending.memberId !== memberId) return null;
+  if (pending.date !== today) { clearPendingClock(); return null; } // leftover from a previous day — irrelevant
+  if (Date.now() - pending.startedAt < 15000) return null; // give a genuinely in-flight write a chance to finish
+  const row = freshRows.find(r => r.date === pending.date);
+  const succeeded = pending.action === 'in' ? !!row?.clock_in : !!row?.clock_out;
+  clearPendingClock();
+  return { action: pending.action, failed: !succeeded };
+}
+
 function useLiveElapsed(clockInIso: string | null, active: boolean): string {
   const [display, setDisplay] = useState('');
   useEffect(() => {
@@ -140,6 +186,17 @@ export default function MyAttendance() {
       .limit(60);
     setRows(data || []);
     setLoading(false);
+    const _now = new Date();
+    const _today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
+    const pendingResult = checkPendingClock(memberId, _today, data || []);
+    if (pendingResult?.failed) {
+      showToast(
+        pendingResult.action === 'in'
+          ? 'Your last clock-in may not have saved (app was interrupted). Please try again.'
+          : 'Your last clock-out may not have saved (app was interrupted). Please try again.',
+        false,
+      );
+    }
   }
 
   const _d = new Date();
@@ -170,9 +227,11 @@ export default function MyAttendance() {
       member_id: memberId, date: today, clock_in: now, status,
       clock_in_lat: gps.lat, clock_in_lng: gps.lng,
     };
+    writePendingClock({ action: 'in', memberId, date: today, startedAt: Date.now() });
     const { error } = await supabase
       .from('attendance')
       .upsert(payload, { onConflict: 'member_id,date' });
+    clearPendingClock();
     setGpsPhase('idle');
     setClocking(false);
     if (error) { showToast(error.message, false); return; }
@@ -181,7 +240,7 @@ export default function MyAttendance() {
   }
 
   async function clockOut() {
-    if (!todayRow?.id || !todayRow.clock_in) return;
+    if (!memberId || !todayRow?.id || !todayRow.clock_in) return;
     setClocking(true);
     setGpsPhase('locating');
     let gps: { lat: number; lng: number };
@@ -200,7 +259,9 @@ export default function MyAttendance() {
       clock_out: now, hours_worked: hours,
       clock_out_lat: gps.lat, clock_out_lng: gps.lng,
     };
+    writePendingClock({ action: 'out', memberId, date: today, startedAt: Date.now() });
     const { error } = await supabase.from('attendance').update(payload).eq('id', todayRow.id);
+    clearPendingClock();
     setGpsPhase('idle');
     setClocking(false);
     if (error) { showToast(error.message, false); return; }

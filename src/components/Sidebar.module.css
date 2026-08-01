@@ -7,7 +7,8 @@
   background: linear-gradient(180deg, #0d1e35 0%, #081626 100%);
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100vh; /* fallback for browsers without dvh support */
+  height: 100dvh; /* tracks the actual visible viewport as Android Chrome's address bar shows/hides */
   position: sticky;
   top: 0;
   overflow-y: auto;

@@ -1,6 +1,7 @@
 .shell {
   display: flex;
-  height: 100vh;
+  height: 100vh; /* fallback for browsers without dvh support */
+  height: 100dvh; /* tracks the actual visible viewport as Android Chrome's address bar shows/hides */
 }
 
 /* ── Top navigation progress bar (route switches) ── */
