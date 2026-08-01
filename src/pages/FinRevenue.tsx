@@ -34,6 +34,9 @@ interface StageDone {
   atp: boolean;
   clearance: boolean;
   finalAtp: boolean;
+  /** Raw text of the site's Final ATP cell (e.g. "Accepted", "Rejected", "Pending"),
+   *  used to drive the Revenue table's Status column live from Network Scopes. */
+  finalAtpStatus: string;
 }
 
 function findDeliveryColIdx(headers: string[]): number {
@@ -57,7 +60,8 @@ function findFinalAtpColIdx(headers: string[]): number {
 // done, every earlier stage is treated as done too — even if its own column
 // is still blank (e.g. someone updates Integration but never went back to
 // fill in the Delivery/Installation cells for that site).
-const STAGE_ORDER: (keyof StageDone)[] = ['delivery', 'installation', 'integration', 'atp', 'clearance', 'finalAtp'];
+type StageKey = 'delivery' | 'installation' | 'integration' | 'atp' | 'clearance' | 'finalAtp';
+const STAGE_ORDER: StageKey[] = ['delivery', 'installation', 'integration', 'atp', 'clearance', 'finalAtp'];
 
 function cascadeStages(sd: StageDone): StageDone {
   let lastDoneIdx = -1;
@@ -83,6 +87,7 @@ function readStageDone(headers: string[], cells: string[]): StageDone {
     atp: isAtpAccepted(cell(atpIdx)),
     clearance: !!cell(clearanceIdx),
     finalAtp: isAtpAccepted(cell(finalAtpIdx)),
+    finalAtpStatus: cell(finalAtpIdx),
   };
   return cascadeStages(raw);
 }
@@ -585,17 +590,20 @@ export default function FinRevenue() {
                 <th className={styles.num}>Amount (IQD)</th>
                 <th className={styles.num}>Current Revenue (IQD){stageMapLoading ? ' …' : ''}</th>
                 <th>Status</th>
-                <th>Notes</th><th>Added By</th><th>Actions</th>
+                <th>Added By</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0
-                ? <tr><td colSpan={10} className={styles.empty}>No revenue records.</td></tr>
+                ? <tr><td colSpan={9} className={styles.empty}>No revenue records.</td></tr>
                 : filtered.map(r => {
-                  const isAcc = r.status === 'Accepted';
-                  const isPend = r.status === 'Implemented - Pending ATP';
+                  const sdForStatus = r.site_id ? stageMap[`${r.project_name}|||${r.site_id}`] : undefined;
+                  const finalAtpStatus = sdForStatus?.finalAtpStatus || '';
+                  const isAcc = isAtpAccepted(finalAtpStatus);
+                  const isRej = /^rejected$/i.test(finalAtpStatus.trim());
+                  const isPend = !isAcc && !isRej;
                   return (
-                    <tr key={r.id} style={isAcc ? { background: '#dcfce7' } : isPend ? { background: '#fefce8' } : undefined}>
+                    <tr key={r.id} style={isAcc ? { background: '#dcfce7' } : isRej ? { background: '#fee2e2' } : isPend ? { background: '#fefce8' } : undefined}>
                       <td style={{ whiteSpace: 'nowrap' }}>{r.invoice_date || ''}</td>
                       <td>{r.project_name || ''}</td>
                       <td style={{ color: 'var(--slate-500)', fontSize: 12 }}>{r.section_name || '—'}</td>
@@ -626,10 +634,9 @@ export default function FinRevenue() {
                       </td>
                       <td>
                         {isAcc ? <span className={`${styles.badge} ${styles.badgeGreen}`}>Accepted</span>
-                          : isPend ? <span className={`${styles.badge} ${styles.badgeAmber}`}>Pending ATP</span>
-                          : <span style={{ color: 'var(--slate-400)', fontSize: 12 }}>{r.status || ''}</span>}
+                          : isRej ? <span className={`${styles.badge} ${styles.badgeRed}`}>Rejected</span>
+                          : <span className={`${styles.badge} ${styles.badgeAmber}`}>{finalAtpStatus || 'Pending ATP'}</span>}
                       </td>
-                      <td className={styles.noteCell}>{r.notes || ''}</td>
                       <td style={{ color: 'var(--slate-500)', whiteSpace: 'nowrap' }}>{r.added_by || ''}</td>
                       <td>
                         <div className={styles.actions}>
