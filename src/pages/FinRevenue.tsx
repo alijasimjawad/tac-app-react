@@ -63,6 +63,25 @@ function findFinalAtpColIdx(headers: string[]): number {
 type StageKey = 'delivery' | 'installation' | 'integration' | 'atp' | 'clearance' | 'finalAtp';
 const STAGE_ORDER: StageKey[] = ['delivery', 'installation', 'integration', 'atp', 'clearance', 'finalAtp'];
 
+const STAGE_LABELS: Record<StageKey, string> = {
+  delivery: 'Delivery',
+  installation: 'Installation',
+  integration: 'Integration',
+  atp: 'ATP',
+  clearance: 'Clearance & Tools',
+  finalAtp: 'Final ATP',
+};
+
+/** The first pipeline stage that isn't done yet — i.e. what's blocking a site
+ *  from being fully revenued. Returns null once every stage is complete. */
+function stuckAtLabel(sd: StageDone | undefined): string | null {
+  if (!sd) return STAGE_LABELS[STAGE_ORDER[0]];
+  for (const key of STAGE_ORDER) {
+    if (!sd[key]) return STAGE_LABELS[key];
+  }
+  return null;
+}
+
 function cascadeStages(sd: StageDone): StageDone {
   let lastDoneIdx = -1;
   STAGE_ORDER.forEach((key, i) => { if (sd[key]) lastDoneIdx = i; });
@@ -702,6 +721,11 @@ export default function FinRevenue() {
                               <div style={{ color: pctColor, fontSize: 11, fontWeight: pct < 1 ? 700 : 500 }}>
                                 {pct >= 1 ? '✓ 100% complete' : `${Math.round(pct * 100)}% complete`}
                               </div>
+                              {pct < 1 && stuckAtLabel(sd) && (
+                                <div style={{ color: 'var(--slate-500)', fontSize: 10, marginTop: 1 }}>
+                                  Stuck at: {stuckAtLabel(sd)}
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
