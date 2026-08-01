@@ -52,6 +52,21 @@ function findFinalAtpColIdx(headers: string[]): number {
   return headers.findIndex(h => h.trim().toLowerCase() === FINAL_ATP_COL_NAME.toLowerCase());
 }
 
+// Fixed pipeline order. A site can't reach a later stage without having
+// already passed through every earlier one, so if a later stage is marked
+// done, every earlier stage is treated as done too — even if its own column
+// is still blank (e.g. someone updates Integration but never went back to
+// fill in the Delivery/Installation cells for that site).
+const STAGE_ORDER: (keyof StageDone)[] = ['delivery', 'installation', 'integration', 'atp', 'clearance', 'finalAtp'];
+
+function cascadeStages(sd: StageDone): StageDone {
+  let lastDoneIdx = -1;
+  STAGE_ORDER.forEach((key, i) => { if (sd[key]) lastDoneIdx = i; });
+  const result = { ...sd };
+  STAGE_ORDER.forEach((key, i) => { if (i <= lastDoneIdx) result[key] = true; });
+  return result;
+}
+
 /** Reads the 6 pipeline stages for one site row against its section's headers. */
 function readStageDone(headers: string[], cells: string[]): StageDone {
   const cell = (idx: number) => (idx >= 0 ? (cells[idx] ?? '').trim() : '');
@@ -61,7 +76,7 @@ function readStageDone(headers: string[], cells: string[]): StageDone {
   const atpIdx = findAtpColIdx(headers);
   const clearanceIdx = findClearanceColIdx(headers);
   const finalAtpIdx = findFinalAtpColIdx(headers);
-  return {
+  const raw: StageDone = {
     delivery: !!cell(deliveryIdx),
     installation: !!cell(installIdx),
     integration: /^integrated$/i.test(cell(integrationIdx)),
@@ -69,6 +84,7 @@ function readStageDone(headers: string[], cells: string[]): StageDone {
     clearance: !!cell(clearanceIdx),
     finalAtp: isAtpAccepted(cell(finalAtpIdx)),
   };
+  return cascadeStages(raw);
 }
 
 /** Weighted completion fraction (0..1) from a StageDone snapshot. */
