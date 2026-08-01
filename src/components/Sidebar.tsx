@@ -28,7 +28,7 @@ const DEFAULT_SECTIONS: Record<string, string[]> = {
   moj:    ['ftk', 'tdd', 'addsector'],
 };
 
-const DEFAULT_HEADERS = ['Site ID', 'Governate', 'Imp. Date', 'ATP Status', 'Comment'];
+const DEFAULT_HEADERS = ['Site ID', 'Governate', 'Delivery', 'Installation', 'Integration Status', 'ATP Status', 'Clearance & Tools', 'Final ATP'];
 
 type MajorGroup = 'finance' | 'hr' | 'admin';
 
