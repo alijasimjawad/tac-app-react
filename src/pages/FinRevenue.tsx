@@ -519,8 +519,8 @@ export default function FinRevenue() {
       const ExcelJS = (await import('exceljs')).default;
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('revenue');
-      ws.addRow(['Date', 'Project', 'Site ID', 'Amount (IQD)', 'Current Revenue (IQD)', 'Status', 'Notes', 'Added By']);
-      for (const r of data) ws.addRow([r.invoice_date, r.project_name, r.site_id, r.amount, Math.round(currentRevenueOf(r)), r.status, r.notes, r.added_by]);
+      ws.addRow(['Date', 'Project', 'Site ID', 'Amount (IQD)', 'Current Revenue (IQD)', 'Outstanding (IQD)', '% Complete', 'Status', 'Notes', 'Added By']);
+      for (const r of data) ws.addRow([r.invoice_date, r.project_name, r.site_id, r.amount, Math.round(currentRevenueOf(r)), Math.round(outstandingOf(r)), Math.round(pctOf(r) * 100), r.status, r.notes, r.added_by]);
       const buf = await wb.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       Object.assign(document.createElement('a'), { href: url, download: `Finance_revenue_${new Date().toISOString().slice(0,10)}.xlsx` }).click();
@@ -532,6 +532,11 @@ export default function FinRevenue() {
     if (!r.site_id) return 0;
     const sd = stageMap[`${r.project_name}|||${r.site_id}`];
     return (+r.amount || 0) * stagePct(sd);
+  }
+
+  /** Amount invoiced but not yet earned (not yet recognized as Current Revenue). */
+  function outstandingOf(r: RevRow): number {
+    return (+r.amount || 0) - currentRevenueOf(r);
   }
 
   function pctOf(r: RevRow): number {
@@ -546,6 +551,7 @@ export default function FinRevenue() {
   }
   const total = filtered.reduce((s, r) => s + (+r.amount || 0), 0);
   const totalCurrentRevenue = filtered.reduce((s, r) => s + currentRevenueOf(r), 0);
+  const totalOutstanding = filtered.reduce((s, r) => s + outstandingOf(r), 0);
   const years = getYears();
 
   return (
@@ -616,13 +622,14 @@ export default function FinRevenue() {
                   Current Revenue (IQD){stageMapLoading ? ' …' : ''}
                   {pctSort === 'asc' ? ' ▲' : pctSort === 'desc' ? ' ▼' : ''}
                 </th>
+                <th className={styles.num}>Outstanding (IQD)</th>
                 <th>Status</th>
                 <th>Added By</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0
-                ? <tr><td colSpan={9} className={styles.empty}>No revenue records.</td></tr>
+                ? <tr><td colSpan={10} className={styles.empty}>No revenue records.</td></tr>
                 : filtered.map(r => {
                   const sdForStatus = r.site_id ? stageMap[`${r.project_name}|||${r.site_id}`] : undefined;
                   const finalAtpStatus = sdForStatus?.finalAtpStatus || '';
@@ -667,6 +674,13 @@ export default function FinRevenue() {
                           );
                         })()}
                       </td>
+                      <td className={styles.num}>
+                        {(() => {
+                          const out = outstandingOf(r);
+                          if (out <= 0) return <span style={{ color: 'var(--slate-400)', fontSize: 12 }}>—</span>;
+                          return <span style={{ color: '#dc2626', fontWeight: 600 }}>{iqd(out)}</span>;
+                        })()}
+                      </td>
                       <td>
                         {isAcc ? <span className={`${styles.badge} ${styles.badgeGreen}`}>Accepted</span>
                           : isRej ? <span className={`${styles.badge} ${styles.badgeRed}`}>Rejected</span>
@@ -693,7 +707,8 @@ export default function FinRevenue() {
                 <td colSpan={4}><strong>Total (filtered)</strong></td>
                 <td className={styles.num} style={{ color: '#16a34a' }}><strong>{iqd(total)}</strong></td>
                 <td className={styles.num} style={{ color: '#2563eb' }}><strong>{iqd(totalCurrentRevenue)}</strong></td>
-                <td colSpan={4} />
+                <td className={styles.num} style={{ color: '#dc2626' }}><strong>{iqd(totalOutstanding)}</strong></td>
+                <td colSpan={3} />
               </tr>
             </tfoot>
           </table>
