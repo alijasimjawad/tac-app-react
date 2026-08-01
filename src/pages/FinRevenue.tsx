@@ -554,8 +554,40 @@ export default function FinRevenue() {
   const totalOutstanding = filtered.reduce((s, r) => s + outstandingOf(r), 0);
   const years = getYears();
 
+  // KPI strip always reflects the Project/Month/Year filters only, not the
+  // "Incomplete only" toggle — otherwise the summary numbers would shift
+  // under you every time you flip that toggle.
+  const fullyRevenuedCount = baseFiltered.length - incompleteCount;
+  const totalCurrentRevenueAll = baseFiltered.reduce((s, r) => s + currentRevenueOf(r), 0);
+  const totalOutstandingAll = baseFiltered.reduce((s, r) => s + outstandingOf(r), 0);
+  const overallPct = baseFiltered.length ? Math.round((fullyRevenuedCount / baseFiltered.length) * 100) : 0;
+
   return (
     <div className={styles.page}>
+      {!loading && baseFiltered.length > 0 && (
+        <div className={styles.kpiRow}>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>Sites Fully Revenued</div>
+            <div className={`${styles.kpiValue} ${styles.kpiGreen}`}>{fullyRevenuedCount} / {baseFiltered.length}</div>
+            <div className={styles.kpiSub}>{overallPct}% of filtered sites</div>
+          </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>Incomplete Sites</div>
+            <div className={`${styles.kpiValue} ${incompleteCount > 0 ? styles.kpiAmber : styles.kpiGreen}`}>{incompleteCount}</div>
+            <div className={styles.kpiSub}>not yet fully revenued</div>
+          </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>Total Outstanding</div>
+            <div className={`${styles.kpiValue} ${totalOutstandingAll > 0 ? styles.kpiRed : styles.kpiGreen}`}>{iqd(totalOutstandingAll)}</div>
+            <div className={styles.kpiSub}>invoiced but not yet earned</div>
+          </div>
+          <div className={styles.kpiCard}>
+            <div className={styles.kpiLabel}>Total Current Revenue</div>
+            <div className={`${styles.kpiValue} ${styles.kpiBlue}`}>{iqd(totalCurrentRevenueAll)}</div>
+            <div className={styles.kpiSub}>recognized to date</div>
+          </div>
+        </div>
+      )}
       <div className={styles.toolbar}>
         <select className={styles.sel} value={fProj} onChange={e => setFProj(e.target.value)}>
           <option value="">All Projects</option>
