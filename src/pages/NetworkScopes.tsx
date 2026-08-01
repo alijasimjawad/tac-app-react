@@ -40,6 +40,20 @@ const SUBCON_OPTIONS  = ['', 'ATC', 'IPT', 'KCT', 'MFC', 'MRC', 'Metco', 'Oraxel
 const ATP_OPTIONS     = ['Pending', 'Accepted', 'Rejected'];
 const DATE_KEYWORDS   = ['date', 'rfti', 'delivery', 'installation', 'imp date', 'imp_date'];
 
+// Iraq's 18 governorates, for the Governate field dropdown.
+const IRAQ_GOVERNORATES = [
+  '', 'Baghdad', 'Basra', 'Nineveh', 'Erbil', 'Najaf', 'Karbala', 'Kirkuk',
+  'Sulaymaniyah', 'Anbar', 'Babil', 'Diyala', 'Dhi Qar', 'Al-Qadisiyyah',
+  'Maysan', 'Muthanna', 'Salah ad-Din', 'Wasit', 'Duhok',
+];
+
+// Final ATP field options (distinct from the ATP Status field's ATP_OPTIONS,
+// which also includes Rejected).
+const FINAL_ATP_OPTIONS = ['', 'Pending', 'Accepted'];
+
+// Integration Status field options.
+const INTEGRATION_STATUS_OPTIONS = ['', 'Integrated'];
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface GridRow {
@@ -790,9 +804,12 @@ export default function NetworkScopes() {
 
   function renderBulkValueInput(colIdx: number, value: string, onChange: (v: string) => void) {
     const h        = columns[colIdx] ?? '';
-    const isStatus = h === 'Status of Integration';
-    const isSubcon = h === 'Subcon';
-    const isAtp    = /^atp.{0,8}status$/i.test(h);
+    const isStatus      = h === 'Status of Integration';
+    const isSubcon      = h === 'Subcon';
+    const isAtp         = /^atp.{0,8}status$/i.test(h);
+    const isGovernate   = /^governa(te|torate)$/i.test(h.trim());
+    const isFinalAtp    = h.trim().toLowerCase() === 'final atp';
+    const isIntegration = !isStatus && (/status.*integrat/i.test(h) || /integrat.*status/i.test(h));
     const isDate   = DATE_KEYWORDS.some(kw => h.toLowerCase().includes(kw));
     if (isStatus) return (
       <select className={styles.detailSelect} value={value} onChange={e => onChange(e.target.value)}>
@@ -807,6 +824,21 @@ export default function NetworkScopes() {
     if (isAtp) return (
       <select className={styles.detailSelect} value={value || 'Pending'} onChange={e => onChange(e.target.value)}>
         {ATP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    );
+    if (isGovernate) return (
+      <select className={styles.detailSelect} value={value} onChange={e => onChange(e.target.value)}>
+        {IRAQ_GOVERNORATES.map(o => <option key={o} value={o}>{o || '— Select governate —'}</option>)}
+      </select>
+    );
+    if (isFinalAtp) return (
+      <select className={styles.detailSelect} value={value} onChange={e => onChange(e.target.value)}>
+        {FINAL_ATP_OPTIONS.map(o => <option key={o} value={o}>{o || '— Empty —'}</option>)}
+      </select>
+    );
+    if (isIntegration) return (
+      <select className={styles.detailSelect} value={value} onChange={e => onChange(e.target.value)}>
+        {INTEGRATION_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o || '— Empty —'}</option>)}
       </select>
     );
     if (isDate) return (
@@ -1345,10 +1377,13 @@ export default function NetworkScopes() {
               <div className={styles.detailGrid}>
                 {columns.map((h, ci) => {
                   const v       = modal.cells[ci] ?? '';
-                  const isStatus = h === 'Status of Integration';
-                  const isSubcon = h === 'Subcon';
-                  const isAtp    = /^atp.{0,8}status$/i.test(h);
-                  const isDate   = DATE_KEYWORDS.some(kw => h.toLowerCase().includes(kw));
+                  const isStatus      = h === 'Status of Integration';
+                  const isSubcon      = h === 'Subcon';
+                  const isAtp         = /^atp.{0,8}status$/i.test(h);
+                  const isGovernate   = /^governa(te|torate)$/i.test(h.trim());
+                  const isFinalAtp    = h.trim().toLowerCase() === 'final atp';
+                  const isIntegration = !isStatus && (/status.*integrat/i.test(h) || /integrat.*status/i.test(h));
+                  const isDate        = DATE_KEYWORDS.some(kw => h.toLowerCase().includes(kw));
                   const canEdit  = modal.rowId === null ? hasPerm('sdb_add_rows') : hasPerm('sdb_edit_rows');
                   const atpVal   = isAtp ? (ATP_OPTIONS.includes(v) ? v : 'Pending') : '';
 
@@ -1371,6 +1406,24 @@ export default function NetworkScopes() {
                         <select className={styles.detailSelect} value={atpVal} disabled={!canEdit}
                           onChange={e => updateModalCell(ci, e.target.value)}>
                           {ATP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : isGovernate ? (
+                        <select className={styles.detailSelect} value={v} disabled={!canEdit}
+                          onChange={e => updateModalCell(ci, e.target.value)}>
+                          {IRAQ_GOVERNORATES.map(o => <option key={o} value={o}>{o || '— Select governate —'}</option>)}
+                          {!IRAQ_GOVERNORATES.includes(v) && v && <option value={v}>{v}</option>}
+                        </select>
+                      ) : isFinalAtp ? (
+                        <select className={styles.detailSelect} value={v} disabled={!canEdit}
+                          onChange={e => updateModalCell(ci, e.target.value)}>
+                          {FINAL_ATP_OPTIONS.map(o => <option key={o} value={o}>{o || '— Empty —'}</option>)}
+                          {!FINAL_ATP_OPTIONS.includes(v) && v && <option value={v}>{v}</option>}
+                        </select>
+                      ) : isIntegration ? (
+                        <select className={styles.detailSelect} value={v} disabled={!canEdit}
+                          onChange={e => updateModalCell(ci, e.target.value)}>
+                          {INTEGRATION_STATUS_OPTIONS.map(o => <option key={o} value={o}>{o || '— Empty —'}</option>)}
+                          {!INTEGRATION_STATUS_OPTIONS.includes(v) && v && <option value={v}>{v}</option>}
                         </select>
                       ) : isDate ? (
                         <div className={styles.dateFieldWrap}>
