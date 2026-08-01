@@ -446,8 +446,11 @@ export default function FinRevenue() {
     finally { setFixing(false); }
   }
 
-  /** One-click backfill: adds the 'Clearance & Tools' / 'Final ATP' columns to every
-   *  section that's missing them, so Current Revenue can track all 6 pipeline stages. */
+  /** One-click backfill: adds any missing of the 6 pipeline-stage columns
+   *  (Delivery, Installation, Integration Status, ATP Status, Clearance & Tools,
+   *  Final ATP) to every section, so Current Revenue can track all stages —
+   *  including older/empty sections created before the default template
+   *  was updated to include them. */
   async function handleBackfillStageColumns() {
     setBackfilling(true);
     try {
@@ -458,6 +461,9 @@ export default function FinRevenue() {
       for (const sec of allSecs) {
         const headers = sec.columns || [];
         const missing: string[] = [];
+        if (findDeliveryColIdx(headers) < 0) missing.push('Delivery');
+        if (findInstallColIdx(headers) < 0) missing.push('Installation');
+        if (findIntegrationColIdx(headers) < 0) missing.push('Integration Status');
         if (findClearanceColIdx(headers) < 0) missing.push(CLEARANCE_COL_NAME);
         if (findFinalAtpColIdx(headers) < 0) missing.push(FINAL_ATP_COL_NAME);
         if (!missing.length) continue;
@@ -476,7 +482,7 @@ export default function FinRevenue() {
       logActivity({
         userFullName: currentUser?.full_name ?? currentUser?.username,
         action: 'Backfilled Revenue Stage Columns',
-        details: `Added "${CLEARANCE_COL_NAME}" / "${FINAL_ATP_COL_NAME}" to ${updatedSections} section(s)`,
+        details: `Added missing pipeline-stage columns to ${updatedSections} section(s)`,
       });
       await loadStageMap();
     } catch (e: unknown) { showToast('Backfill failed: ' + (e instanceof Error ? e.message : String(e))); }
