@@ -171,6 +171,8 @@ export default function FinRevenue() {
   const [NAME_TO_KEY, setNameToKey] = useState<Record<string, string>>({});
   const [stageMap, setStageMap] = useState<Record<string, StageDone>>({});
   const [stageMapLoading, setStageMapLoading] = useState(false);
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
+  const [pctSort, setPctSort] = useState<'asc' | 'desc' | null>(null);
 
   function showToast(msg: string) {
     setToastMsg(msg);
@@ -532,7 +534,16 @@ export default function FinRevenue() {
     return (+r.amount || 0) * stagePct(sd);
   }
 
-  const filtered = filteredRows();
+  function pctOf(r: RevRow): number {
+    return stagePct(r.site_id ? stageMap[`${r.project_name}|||${r.site_id}`] : undefined);
+  }
+
+  const baseFiltered = filteredRows();
+  const incompleteCount = baseFiltered.filter(r => pctOf(r) < 1).length;
+  let filtered = incompleteOnly ? baseFiltered.filter(r => pctOf(r) < 1) : baseFiltered;
+  if (pctSort) {
+    filtered = [...filtered].sort((a, b) => pctSort === 'asc' ? pctOf(a) - pctOf(b) : pctOf(b) - pctOf(a));
+  }
   const total = filtered.reduce((s, r) => s + (+r.amount || 0), 0);
   const totalCurrentRevenue = filtered.reduce((s, r) => s + currentRevenueOf(r), 0);
   const years = getYears();
@@ -552,6 +563,14 @@ export default function FinRevenue() {
           <option value={0}>All Years</option>
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
+        <button
+          className={styles.btnGhost}
+          style={incompleteOnly ? { background: '#fef3c7', borderColor: '#f59e0b', color: '#92400e', fontWeight: 600 } : undefined}
+          onClick={() => setIncompleteOnly(v => !v)}
+          title="Show only sites that aren't fully revenued yet"
+        >
+          {incompleteOnly ? '✓ ' : ''}Incomplete only{incompleteCount > 0 ? ` (${incompleteCount})` : ''}
+        </button>
         <div className={styles.spacer} />
         <button className={styles.btnGhost} onClick={() => { loadData(); loadStageMap(); }}>↺ Refresh</button>
         {hasPerm('fin_revenue_sync') && (
@@ -588,7 +607,15 @@ export default function FinRevenue() {
               <tr>
                 <th>Date</th><th>Project</th><th>Section</th><th>Site ID</th>
                 <th className={styles.num}>Amount (IQD)</th>
-                <th className={styles.num}>Current Revenue (IQD){stageMapLoading ? ' …' : ''}</th>
+                <th
+                  className={styles.num}
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => setPctSort(s => s === 'asc' ? 'desc' : s === 'desc' ? null : 'asc')}
+                  title="Click to sort by % complete"
+                >
+                  Current Revenue (IQD){stageMapLoading ? ' …' : ''}
+                  {pctSort === 'asc' ? ' ▲' : pctSort === 'desc' ? ' ▼' : ''}
+                </th>
                 <th>Status</th>
                 <th>Added By</th><th>Actions</th>
               </tr>
@@ -602,9 +629,14 @@ export default function FinRevenue() {
                   const isAcc = isAtpAccepted(finalAtpStatus);
                   const isRej = /^rejected$/i.test(finalAtpStatus.trim());
                   const isPend = !isAcc && !isRej;
+                  const pctRow = stagePct(sdForStatus);
+                  const isIncomplete = pctRow < 1;
                   return (
                     <tr key={r.id} style={isAcc ? { background: '#dcfce7' } : isRej ? { background: '#fee2e2' } : isPend ? { background: '#fefce8' } : undefined}>
-                      <td style={{ whiteSpace: 'nowrap' }}>{r.invoice_date || ''}</td>
+                      <td style={{ whiteSpace: 'nowrap', borderLeft: isIncomplete ? '4px solid #f59e0b' : undefined }}
+                        title={isIncomplete ? 'Not fully revenued yet' : undefined}>
+                        {r.invoice_date || ''}
+                      </td>
                       <td>{r.project_name || ''}</td>
                       <td style={{ color: 'var(--slate-500)', fontSize: 12 }}>{r.section_name || '—'}</td>
                       <td>{r.site_id || ''}</td>
@@ -624,10 +656,13 @@ export default function FinRevenue() {
                           const sd = r.site_id ? stageMap[`${r.project_name}|||${r.site_id}`] : undefined;
                           if (!sd) return <span style={{ color: 'var(--slate-400)', fontSize: 12 }}>—</span>;
                           const pct = stagePct(sd);
+                          const pctColor = pct >= 1 ? '#16a34a' : pct >= 0.5 ? '#d97706' : '#dc2626';
                           return (
                             <div>
                               <div>{iqd(currentRevenueOf(r))}</div>
-                              <div style={{ color: 'var(--slate-500)', fontSize: 11 }}>{Math.round(pct * 100)}% complete</div>
+                              <div style={{ color: pctColor, fontSize: 11, fontWeight: pct < 1 ? 700 : 500 }}>
+                                {pct >= 1 ? '✓ 100% complete' : `${Math.round(pct * 100)}% complete`}
+                              </div>
                             </div>
                           );
                         })()}
