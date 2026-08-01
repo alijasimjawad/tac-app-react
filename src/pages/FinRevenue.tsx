@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { isAtpAccepted, findImpColIdx, findAtpColIdx, PROJ_NAMES, SEC_LABELS } from './NetworkScopes';
-import { ensureSectionsLoaded, getSections } from '../lib/sectionsCache';
+import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
@@ -11,6 +11,78 @@ import styles from './FinPages.module.css';
 
 const FIN_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const REVENUE_CUTOFF_DATE = new Date('2026-07-01T00:00:00');
+
+// ── Current Revenue (percentage-of-completion) ──────────────────────────────
+// Each site's revenue is recognized in stages as work progresses through
+// the network rollout pipeline. Weights must sum to 100%.
+const CLEARANCE_COL_NAME = 'Clearance & Tools';
+const FINAL_ATP_COL_NAME = 'Final ATP';
+
+const STAGE_WEIGHTS = {
+  delivery: 0.15,
+  installation: 0.50,
+  integration: 0.10,
+  atp: 0.10,
+  clearance: 0.05,
+  finalAtp: 0.10,
+} as const;
+
+interface StageDone {
+  delivery: boolean;
+  installation: boolean;
+  integration: boolean;
+  atp: boolean;
+  clearance: boolean;
+  finalAtp: boolean;
+}
+
+function findDeliveryColIdx(headers: string[]): number {
+  return headers.findIndex(h => /delivery/i.test(h));
+}
+function findInstallColIdx(headers: string[]): number {
+  return headers.findIndex(h => /^install(ation)?$/i.test(h.trim()) || /install.*date/i.test(h));
+}
+function findIntegrationColIdx(headers: string[]): number {
+  return headers.findIndex(h => /status.*integrat/i.test(h) || /integrat.*status/i.test(h));
+}
+function findClearanceColIdx(headers: string[]): number {
+  return headers.findIndex(h => h.trim().toLowerCase() === CLEARANCE_COL_NAME.toLowerCase());
+}
+function findFinalAtpColIdx(headers: string[]): number {
+  return headers.findIndex(h => h.trim().toLowerCase() === FINAL_ATP_COL_NAME.toLowerCase());
+}
+
+/** Reads the 6 pipeline stages for one site row against its section's headers. */
+function readStageDone(headers: string[], cells: string[]): StageDone {
+  const cell = (idx: number) => (idx >= 0 ? (cells[idx] ?? '').trim() : '');
+  const deliveryIdx = findDeliveryColIdx(headers);
+  const installIdx = findInstallColIdx(headers);
+  const integrationIdx = findIntegrationColIdx(headers);
+  const atpIdx = findAtpColIdx(headers);
+  const clearanceIdx = findClearanceColIdx(headers);
+  const finalAtpIdx = findFinalAtpColIdx(headers);
+  return {
+    delivery: !!cell(deliveryIdx),
+    installation: !!cell(installIdx),
+    integration: /^integrated$/i.test(cell(integrationIdx)),
+    atp: isAtpAccepted(cell(atpIdx)),
+    clearance: !!cell(clearanceIdx),
+    finalAtp: isAtpAccepted(cell(finalAtpIdx)),
+  };
+}
+
+/** Weighted completion fraction (0..1) from a StageDone snapshot. */
+function stagePct(sd: StageDone | undefined): number {
+  if (!sd) return 0;
+  let pct = 0;
+  if (sd.delivery) pct += STAGE_WEIGHTS.delivery;
+  if (sd.installation) pct += STAGE_WEIGHTS.installation;
+  if (sd.integration) pct += STAGE_WEIGHTS.integration;
+  if (sd.atp) pct += STAGE_WEIGHTS.atp;
+  if (sd.clearance) pct += STAGE_WEIGHTS.clearance;
+  if (sd.finalAtp) pct += STAGE_WEIGHTS.finalAtp;
+  return pct;
+}
 
 function iqd(n: number | null | undefined): string {
   if (n == null) return '—';
@@ -71,10 +143,13 @@ export default function FinRevenue() {
   const [delSaving, setDelSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [FIN_PROJECTS, setFinProjects] = useState<string[]>([]);
   const [NAME_TO_KEY, setNameToKey] = useState<Record<string, string>>({});
+  const [stageMap, setStageMap] = useState<Record<string, StageDone>>({});
+  const [stageMapLoading, setStageMapLoading] = useState(false);
 
   function showToast(msg: string) {
     setToastMsg(msg);
@@ -90,7 +165,7 @@ export default function FinRevenue() {
   }, []);
 
   useEffect(() => {
-    if (hasPerm('view_fin_revenue')) loadData();
+    if (hasPerm('view_fin_revenue')) { loadData(); loadStageMap(); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!hasPerm('view_fin_revenue')) {
@@ -105,6 +180,41 @@ export default function FinRevenue() {
       setRows((data as RevRow[]) || []);
     } catch (e: unknown) { setLoadError(e instanceof Error ? e.message : String(e)); }
     finally { setLoading(false); }
+  }
+
+  /** Builds the project|||site_id -> StageDone lookup from live Network Scopes data. */
+  async function loadStageMap() {
+    setStageMapLoading(true);
+    try {
+      await ensureSectionsLoaded();
+      const allSecs = getSections().filter(s => !s.is_deleted);
+      const secIds = allSecs.map(s => s.id).filter(Boolean);
+      if (!secIds.length) { setStageMap({}); return; }
+      const { data: allRows } = await supabase.from('rows').select('section_id, data').in('section_id', secIds);
+      const bySec: Record<string, { data: Record<string, unknown> }[]> = {};
+      for (const row of (allRows || []) as { section_id: string; data: Record<string, unknown> }[]) {
+        (bySec[row.section_id] ??= []).push(row);
+      }
+      const map: Record<string, StageDone> = {};
+      for (const sec of allSecs) {
+        const projName = PROJ_NAMES[sec.project_name as keyof typeof PROJ_NAMES] || sec.project_name;
+        if (!projName) continue;
+        const headers: string[] = sec.columns || [];
+        const siteCol = headers.find(h => /^site.{0,3}id$/i.test(h)) || headers[0] || '';
+        if (!siteCol) continue;
+        for (const row of bySec[sec.id] || []) {
+          const siteId = String(row.data[siteCol] || '').trim();
+          if (!siteId) continue;
+          const cells = headers.map(h => String(row.data[h] ?? ''));
+          map[`${projName}|||${siteId}`] = readStageDone(headers, cells);
+        }
+      }
+      setStageMap(map);
+    } catch {
+      // Non-fatal — Current Revenue just falls back to 0/unknown for this session.
+    } finally {
+      setStageMapLoading(false);
+    }
   }
 
   function filteredRows(): RevRow[] {
@@ -336,6 +446,43 @@ export default function FinRevenue() {
     finally { setFixing(false); }
   }
 
+  /** One-click backfill: adds the 'Clearance & Tools' / 'Final ATP' columns to every
+   *  section that's missing them, so Current Revenue can track all 6 pipeline stages. */
+  async function handleBackfillStageColumns() {
+    setBackfilling(true);
+    try {
+      await ensureSectionsLoaded();
+      const allSecs = getSections().filter(s => !s.is_deleted);
+      if (!allSecs.length) { showToast('No sections found'); return; }
+      let updatedSections = 0;
+      for (const sec of allSecs) {
+        const headers = sec.columns || [];
+        const missing: string[] = [];
+        if (findClearanceColIdx(headers) < 0) missing.push(CLEARANCE_COL_NAME);
+        if (findFinalAtpColIdx(headers) < 0) missing.push(FINAL_ATP_COL_NAME);
+        if (!missing.length) continue;
+        const newCols = [...headers, ...missing];
+        const newCustomCols = [...(sec.custom_columns || []), ...missing];
+        const { error } = await supabase.from('sections')
+          .update({ columns: newCols, custom_columns: newCustomCols })
+          .eq('id', sec.id);
+        if (error) throw error;
+        updatedSections++;
+      }
+      invalidateSections();
+      showToast(updatedSections === 0
+        ? 'All sections already have the stage columns'
+        : `Added stage columns to ${updatedSections} section${updatedSections === 1 ? '' : 's'}`);
+      logActivity({
+        userFullName: currentUser?.full_name ?? currentUser?.username,
+        action: 'Backfilled Revenue Stage Columns',
+        details: `Added "${CLEARANCE_COL_NAME}" / "${FINAL_ATP_COL_NAME}" to ${updatedSections} section(s)`,
+      });
+      await loadStageMap();
+    } catch (e: unknown) { showToast('Backfill failed: ' + (e instanceof Error ? e.message : String(e))); }
+    finally { setBackfilling(false); }
+  }
+
   async function handleExport() {
     const data = filteredRows();
     if (!data.length) { showToast('No data to export'); return; }
@@ -343,8 +490,8 @@ export default function FinRevenue() {
       const ExcelJS = (await import('exceljs')).default;
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('revenue');
-      ws.addRow(['Date', 'Project', 'Site ID', 'Amount (IQD)', 'Status', 'Notes', 'Added By']);
-      for (const r of data) ws.addRow([r.invoice_date, r.project_name, r.site_id, r.amount, r.status, r.notes, r.added_by]);
+      ws.addRow(['Date', 'Project', 'Site ID', 'Amount (IQD)', 'Current Revenue (IQD)', 'Status', 'Notes', 'Added By']);
+      for (const r of data) ws.addRow([r.invoice_date, r.project_name, r.site_id, r.amount, Math.round(currentRevenueOf(r)), r.status, r.notes, r.added_by]);
       const buf = await wb.xlsx.writeBuffer();
       const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       Object.assign(document.createElement('a'), { href: url, download: `Finance_revenue_${new Date().toISOString().slice(0,10)}.xlsx` }).click();
@@ -352,8 +499,15 @@ export default function FinRevenue() {
     } catch (e: unknown) { showToast('Export failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
 
+  function currentRevenueOf(r: RevRow): number {
+    if (!r.site_id) return 0;
+    const sd = stageMap[`${r.project_name}|||${r.site_id}`];
+    return (+r.amount || 0) * stagePct(sd);
+  }
+
   const filtered = filteredRows();
   const total = filtered.reduce((s, r) => s + (+r.amount || 0), 0);
+  const totalCurrentRevenue = filtered.reduce((s, r) => s + currentRevenueOf(r), 0);
   const years = getYears();
 
   return (
@@ -372,7 +526,7 @@ export default function FinRevenue() {
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <div className={styles.spacer} />
-        <button className={styles.btnGhost} onClick={() => loadData()}>↺ Refresh</button>
+        <button className={styles.btnGhost} onClick={() => { loadData(); loadStageMap(); }}>↺ Refresh</button>
         {hasPerm('fin_revenue_sync') && (
           <button className={styles.btnGhost} onClick={handleSync} disabled={syncing}>
             {syncing ? 'Syncing…' : '↑ Sync Revenue'}
@@ -381,6 +535,12 @@ export default function FinRevenue() {
         {hasPerm('fin_revenue_fix_sections') && (
           <button className={styles.btnGhost} onClick={handleFixSections} disabled={fixing}>
             {fixing ? 'Fixing…' : '✎ Fix Sections'}
+          </button>
+        )}
+        {hasPerm('fin_revenue_sync') && (
+          <button className={styles.btnGhost} onClick={handleBackfillStageColumns} disabled={backfilling}
+            title="Adds 'Clearance & Tools' and 'Final ATP' columns to any section missing them">
+            {backfilling ? 'Adding…' : '+ Add Stage Columns'}
           </button>
         )}
         {hasPerm('fin_revenue_export') && (
@@ -400,13 +560,15 @@ export default function FinRevenue() {
             <thead>
               <tr>
                 <th>Date</th><th>Project</th><th>Section</th><th>Site ID</th>
-                <th className={styles.num}>Amount (IQD)</th><th>Status</th>
+                <th className={styles.num}>Amount (IQD)</th>
+                <th className={styles.num}>Current Revenue (IQD){stageMapLoading ? ' …' : ''}</th>
+                <th>Status</th>
                 <th>Notes</th><th>Added By</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0
-                ? <tr><td colSpan={9} className={styles.empty}>No revenue records.</td></tr>
+                ? <tr><td colSpan={10} className={styles.empty}>No revenue records.</td></tr>
                 : filtered.map(r => {
                   const isAcc = r.status === 'Accepted';
                   const isPend = r.status === 'Implemented - Pending ATP';
@@ -426,6 +588,19 @@ export default function FinRevenue() {
                           onBlur={e => { const v = parseFloat(e.target.value); updateAmount(r.id, isNaN(v) ? 0 : v); }}
                           onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                         />
+                      </td>
+                      <td className={styles.num}>
+                        {(() => {
+                          const sd = r.site_id ? stageMap[`${r.project_name}|||${r.site_id}`] : undefined;
+                          if (!sd) return <span style={{ color: 'var(--slate-400)', fontSize: 12 }}>—</span>;
+                          const pct = stagePct(sd);
+                          return (
+                            <div>
+                              <div>{iqd(currentRevenueOf(r))}</div>
+                              <div style={{ color: 'var(--slate-500)', fontSize: 11 }}>{Math.round(pct * 100)}% complete</div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td>
                         {isAcc ? <span className={`${styles.badge} ${styles.badgeGreen}`}>Accepted</span>
@@ -453,6 +628,7 @@ export default function FinRevenue() {
               <tr>
                 <td colSpan={4}><strong>Total (filtered)</strong></td>
                 <td className={styles.num} style={{ color: '#16a34a' }}><strong>{iqd(total)}</strong></td>
+                <td className={styles.num} style={{ color: '#2563eb' }}><strong>{iqd(totalCurrentRevenue)}</strong></td>
                 <td colSpan={4} />
               </tr>
             </tfoot>
