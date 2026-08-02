@@ -405,33 +405,23 @@ export default function FinPayslips() {
   const [adjs,   setAdjs]   = useState<SalAdj[]>([]);
   const [claims, setClaims] = useState<ExpClaim[]>([]);
 
-  const [teamLoading,   setTeamLoading]   = useState(true);
-  const [periodLoading, setPeriodLoading] = useState(true);
-  const [error,         setError]         = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Fetch team members once
-  useEffect(() => {
-    (async () => {
-      setTeamLoading(true);
-      const { data, error: err } = await supabase
-        .from('team_members')
+  // Fetch team members (current salary/status), adjustments, and approved claims
+  // together so every field on the payslip — base salary, bonuses/deductions,
+  // and reimbursements — is always pulled fresh, never stale/cached.
+  const loadAll = useCallback(async (m: number, y: number) => {
+    setLoading(true);
+    const dLast = new Date(y, m, 0);
+    const first = `${y}-${String(m).padStart(2, '0')}-01`;
+    const last  = `${y}-${String(m).padStart(2, '0')}-${String(dLast.getDate()).padStart(2, '0')}`;
+    const [teamRes, adjRes, claimRes] = await Promise.all([
+      supabase.from('team_members')
         .select('id,full_name,role,monthly_salary,is_active,activated_at,deactivated_at')
-        .order('full_name');
-      if (err) { setError('Failed to load team members.'); setTeamLoading(false); return; }
-      setTeam(data || []);
-      setTeamLoading(false);
-    })();
-  }, []);
-
-  // Fetch adjustments + approved claims for the selected month/year
-  const loadPeriod = useCallback(async (m: number, y: number) => {
-    setPeriodLoading(true);
-    const dLast    = new Date(y, m, 0);
-    const first    = `${y}-${String(m).padStart(2, '0')}-01`;
-    const last     = `${y}-${String(m).padStart(2, '0')}-${String(dLast.getDate()).padStart(2, '0')}`;
-    const [adjRes, claimRes] = await Promise.all([
+        .order('full_name'),
       supabase.from('salary_adjustments').select('*').eq('month', m).eq('year', y),
       supabase.from('expense_claims')
         .select('id,member_id,activity_date,total_amount,transport_amount,food_amount,extra_categories,project_name,site_id')
@@ -439,12 +429,14 @@ export default function FinPayslips() {
         .gte('activity_date', first)
         .lte('activity_date', last),
     ]);
+    if (teamRes.error) { setError('Failed to load team members.'); setLoading(false); return; }
+    setTeam(teamRes.data || []);
     setAdjs(adjRes.data || []);
     setClaims(claimRes.data || []);
-    setPeriodLoading(false);
+    setLoading(false);
   }, []);
 
-  useEffect(() => { loadPeriod(month, year); }, [month, year, loadPeriod]);
+  useEffect(() => { loadAll(month, year); }, [month, year, loadAll]);
 
   // ── Computed rows ──────────────────────────────────────────────
   const teamWithSalary = buildTeamWithSalary(team, adjs, month, year);
@@ -459,7 +451,6 @@ export default function FinPayslips() {
   const totalNetPay     = rows.reduce((s, r) => s + r.netPay, 0);
   const mLabel          = FIN_MONTHS[month - 1] + ' ' + year;
   const years           = getYears();
-  const loading         = teamLoading || periodLoading;
 
   function toggleExpand(id: string) {
     setExpandedId(prev => (prev === id ? null : id));
@@ -477,7 +468,7 @@ export default function FinPayslips() {
           {years.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <div className={css.spacer} />
-        <button className={css.btnGhost} onClick={() => loadPeriod(month, year)}>
+        <button className={css.btnGhost} onClick={() => loadAll(month, year)}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
             <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
