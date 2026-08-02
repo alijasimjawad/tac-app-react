@@ -53,6 +53,8 @@ const EMPTY_FILTERS: Filters = { member: '', project: '', status: '', month: 0, 
 const DESC_OPTIONS = ['Delivery', 'Installation', 'Integration', 'ATP', 'Clearance', 'Other'];
 const ACCOM_OPTIONS = ['', 'Returned Home', 'Hotel'];
 
+interface ExtraRow { category: string; amount: number | string; }
+
 interface EditForm {
   project_name: string;
   site_id: string;
@@ -62,6 +64,8 @@ interface EditForm {
   transport_amount: number;
   accommodation: string;
   food_amount: number;
+  extra_categories: ExtraRow[];
+  employee_ids: string[];
 }
 
 export default function FinExpClaims() {
@@ -86,7 +90,7 @@ export default function FinExpClaims() {
   const [detailRejVal,   setDetailRejVal]   = useState('');
   const [detailRejErr,   setDetailRejErr]   = useState(false);
   const [editMode,   setEditMode]   = useState(false);
-  const [editForm,   setEditForm]   = useState<EditForm>({ project_name: '', site_id: '', governorate: '', description: 'Delivery', activity_date: '', transport_amount: 0, accommodation: '', food_amount: 0 });
+  const [editForm,   setEditForm]   = useState<EditForm>({ project_name: '', site_id: '', governorate: '', description: 'Delivery', activity_date: '', transport_amount: 0, accommodation: '', food_amount: 0, extra_categories: [], employee_ids: [] });
   const [editSaving, setEditSaving] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
 
@@ -294,6 +298,10 @@ export default function FinExpClaims() {
 
   // ── Edit form ──────────────────────────────────────────────────────────────
   function startEdit(r: ExpClaim) {
+    let extraCats: ExtraRow[] = [];
+    try { extraCats = JSON.parse(r.extra_categories || '[]'); } catch (_) { extraCats = []; }
+    let empIds: string[] = [];
+    try { empIds = JSON.parse(r.employee_ids || '[]'); } catch (_) { empIds = []; }
     setEditForm({
       project_name:     r.project_name   || '',
       site_id:          r.site_id        || '',
@@ -303,6 +311,8 @@ export default function FinExpClaims() {
       transport_amount: r.transport_amount ?? 0,
       accommodation:    r.accommodation  || '',
       food_amount:      r.food_amount    ?? 0,
+      extra_categories: extraCats,
+      employee_ids:     empIds,
     });
     setEditMode(true);
     setDetailRejOpen(false);
@@ -315,18 +325,37 @@ export default function FinExpClaims() {
     setEditForm(f => ({ ...f, accommodation: val, food_amount: food }));
   }
 
+  function addExtraRow() { setEditForm(f => ({ ...f, extra_categories: [...f.extra_categories, { category: '', amount: '' }] })); }
+  function removeExtraRow(i: number) { setEditForm(f => ({ ...f, extra_categories: f.extra_categories.filter((_, idx) => idx !== i) })); }
+  function updateExtraRow(i: number, field: 'category' | 'amount', val: string) {
+    setEditForm(f => ({ ...f, extra_categories: f.extra_categories.map((row, idx) => idx === i ? { ...row, [field]: val } : row) }));
+  }
+  function toggleEditEmployee(id: string) {
+    setEditForm(f => ({ ...f, employee_ids: f.employee_ids.includes(id) ? f.employee_ids.filter(x => x !== id) : [...f.employee_ids, id] }));
+  }
+  function editExtraSum(): number {
+    return editForm.extra_categories.reduce((sum, r) => sum + (parseFloat(String(r.amount)) || 0), 0);
+  }
+
   async function saveEdit() {
     const id = detailId;
     if (!id) return;
     setEditSaving(true);
-    const { project_name, site_id, governorate, description, activity_date, transport_amount, accommodation, food_amount } = editForm;
-    const total_amount = transport_amount + food_amount;
+    const { project_name, site_id, governorate, description, activity_date, transport_amount, accommodation, food_amount, extra_categories, employee_ids } = editForm;
+    const validExtra = extra_categories
+      .filter(r => r.category.trim())
+      .map(r => ({ category: r.category.trim(), amount: parseFloat(String(r.amount)) || 0 }));
+    const extraSum = validExtra.reduce((sum, r) => sum + r.amount, 0);
+    const total_amount = transport_amount + food_amount + extraSum;
+    const extra_categories_str = JSON.stringify(validExtra);
+    const employee_ids_str = JSON.stringify(employee_ids);
     const { error: e } = await supabase.from('expense_claims').update({
       project_name, site_id: site_id.trim(), governorate: governorate.trim(),
       description, activity_date, transport_amount, accommodation, food_amount, total_amount,
+      extra_categories: extra_categories_str, employee_ids: employee_ids_str,
     }).eq('id', id);
     if (e) { showToast(e.message, false); setEditSaving(false); return; }
-    setClaims(cs => cs.map(c => c.id === id ? { ...c, project_name, site_id: site_id.trim(), governorate: governorate.trim(), description, activity_date, transport_amount, accommodation, food_amount, total_amount } : c));
+    setClaims(cs => cs.map(c => c.id === id ? { ...c, project_name, site_id: site_id.trim(), governorate: governorate.trim(), description, activity_date, transport_amount, accommodation, food_amount, total_amount, extra_categories: extra_categories_str, employee_ids: employee_ids_str } : c));
     showToast('Claim updated', true);
     const claim = claims.find(c => c.id === id);
     logActivity({
@@ -741,12 +770,39 @@ export default function FinExpClaims() {
                     <input className={css.editInp} type="number" min="0" value={editForm.food_amount}
                       onChange={e => setEditForm(f => ({ ...f, food_amount: parseFloat(e.target.value) || 0 }))} />
                   </div>
-                  <div className={`${css.editField} ${css.full}`}>
-                    <div className={css.editTotalBar}>
-                      <span className={css.editTotalLabel}>Total Amount</span>
-                      <span className={css.editTotalVal}>{iqd(editForm.transport_amount + editForm.food_amount)}</span>
+                </div>
+
+                <div className={css.editCatsSection}>
+                  <label className={css.editLabel}>Additional Categories</label>
+                  {editForm.extra_categories.map((row, i) => (
+                    <div key={i} className={css.editCatRow}>
+                      <input className={css.editInp} placeholder="Category" value={row.category} onChange={e => updateExtraRow(i, 'category', e.target.value)} />
+                      <input className={css.editInp} type="number" min="0" placeholder="0" value={row.amount} onChange={e => updateExtraRow(i, 'amount', e.target.value)} />
+                      <button type="button" className={css.editCatRemove} onClick={() => removeExtraRow(i)} title="Remove">✕</button>
                     </div>
+                  ))}
+                  <button type="button" className={css.editAddBtn} onClick={addExtraRow}>+ Add Category</button>
+                </div>
+
+                <div className={css.editTeamSection}>
+                  <label className={css.editLabel}>Team Members</label>
+                  <div className={css.editTeamGrid}>
+                    {team.map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={`${css.editTeamChip} ${editForm.employee_ids.includes(m.id) ? css.editTeamChipActive : ''}`}
+                        onClick={() => toggleEditEmployee(m.id)}
+                      >
+                        {editForm.employee_ids.includes(m.id) ? '✓ ' : ''}{m.full_name}
+                      </button>
+                    ))}
                   </div>
+                </div>
+
+                <div className={css.editTotalBar} style={{ marginTop: 16 }}>
+                  <span className={css.editTotalLabel}>Total Amount</span>
+                  <span className={css.editTotalVal}>{iqd(editForm.transport_amount + editForm.food_amount + editExtraSum())}</span>
                 </div>
               </div>
             )}

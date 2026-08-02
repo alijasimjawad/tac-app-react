@@ -221,6 +221,31 @@
 .editTotalLabel { font-size: 13px; font-weight: 600; color: #64748b; }
 .editTotalVal { font-size: 15px; font-weight: 800; color: #16a34a; }
 
+/* ── Edit form: extra categories ──────────────────────────────── */
+.editCatsSection { margin-top: 14px; }
+.editCatRow { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.editCatRow .editInp { flex: 1; }
+.editCatRemove {
+  width: 30px; height: 30px; flex-shrink: 0; border: 1px solid #fecaca; border-radius: 6px;
+  background: #fff; color: #ef4444; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center;
+}
+.editCatRemove:hover { background: #fef2f2; }
+.editAddBtn {
+  display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border: 1.5px dashed #cbd5e1;
+  border-radius: 6px; background: #fff; color: #6366f1; font-size: 12px; font-weight: 600; cursor: pointer; margin-top: 2px;
+}
+.editAddBtn:hover { background: #f5f5ff; border-color: #6366f1; }
+
+/* ── Edit form: team members ─────────────────────────────────── */
+.editTeamSection { margin-top: 16px; }
+.editTeamGrid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.editTeamChip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 20px;
+  border: 1.5px solid #e2e8f0; background: #fff; font-size: 12px; font-weight: 600; color: #475569; cursor: pointer;
+}
+.editTeamChip:hover { border-color: #94a3b8; }
+.editTeamChipActive { background: #eef2ff; border-color: #6366f1; color: #4338ca; }
+
 /* ── Modal footer ─────────────────────────────────────────────── */
 .modalFooter { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .btnClose { padding: 8px 16px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #334155; font-size: 13px; font-weight: 600; cursor: pointer; }
