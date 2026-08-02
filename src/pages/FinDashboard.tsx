@@ -193,7 +193,8 @@ export default function FinDashboard() {
   // ── Employee name lookup for project expenses ────────────────
   function empNames(row: ProjExpRow): string {
     try {
-      const ids: string[] = JSON.parse(row.employee_ids || '[]');
+      const raw: unknown = row.employee_ids;
+      const ids: string[] = Array.isArray(raw) ? raw as string[] : JSON.parse((raw as string) || '[]');
       const names = ids.map(id => team.find(m => m.id === id)?.full_name).filter(Boolean) as string[];
       return names.length ? names.join(', ') : '—';
     } catch { return '—'; }

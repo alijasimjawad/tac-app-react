@@ -29,8 +29,8 @@ interface ExpClaim {
   reviewed_by: string | null;
   reviewed_at: string | null;
   notes: string | null;
-  employee_ids: string | null;
-  extra_categories: string | null;
+  employee_ids: string[] | string | null;
+  extra_categories: ExtraRow[] | string | null;
 }
 
 interface DailyActivity {
@@ -49,6 +49,21 @@ interface Filters {
 }
 
 const EMPTY_FILTERS: Filters = { member: '', project: '', status: '', month: 0, year: 0, search: '' };
+
+// Supabase may return these fields either as a native array (jsonb column) or as a
+// JSON-encoded string (text column / legacy rows) — handle both so data never
+// silently vanishes on read.
+function parseJsonArray<T>(raw: T[] | string | null | undefined): T[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
+}
 
 const DESC_OPTIONS = ['Delivery', 'Installation', 'Integration', 'ATP', 'Clearance', 'Other'];
 const ACCOM_OPTIONS = ['', 'Returned Home', 'Hotel'];
@@ -298,10 +313,8 @@ export default function FinExpClaims() {
 
   // ── Edit form ──────────────────────────────────────────────────────────────
   function startEdit(r: ExpClaim) {
-    let extraCats: ExtraRow[] = [];
-    try { extraCats = JSON.parse(r.extra_categories || '[]'); } catch (_) { extraCats = []; }
-    let empIds: string[] = [];
-    try { empIds = JSON.parse(r.employee_ids || '[]'); } catch (_) { empIds = []; }
+    const extraCats = parseJsonArray<ExtraRow>(r.extra_categories);
+    const empIds = parseJsonArray<string>(r.employee_ids);
     setEditForm({
       project_name:     r.project_name   || '',
       site_id:          r.site_id        || '',
@@ -347,15 +360,13 @@ export default function FinExpClaims() {
       .map(r => ({ category: r.category.trim(), amount: parseFloat(String(r.amount)) || 0 }));
     const extraSum = validExtra.reduce((sum, r) => sum + r.amount, 0);
     const total_amount = transport_amount + food_amount + extraSum;
-    const extra_categories_str = JSON.stringify(validExtra);
-    const employee_ids_str = JSON.stringify(employee_ids);
     const { error: e } = await supabase.from('expense_claims').update({
       project_name, site_id: site_id.trim(), governorate: governorate.trim(),
       description, activity_date, transport_amount, accommodation, food_amount, total_amount,
-      extra_categories: extra_categories_str, employee_ids: employee_ids_str,
+      extra_categories: validExtra, employee_ids,
     }).eq('id', id);
     if (e) { showToast(e.message, false); setEditSaving(false); return; }
-    setClaims(cs => cs.map(c => c.id === id ? { ...c, project_name, site_id: site_id.trim(), governorate: governorate.trim(), description, activity_date, transport_amount, accommodation, food_amount, total_amount, extra_categories: extra_categories_str, employee_ids: employee_ids_str } : c));
+    setClaims(cs => cs.map(c => c.id === id ? { ...c, project_name, site_id: site_id.trim(), governorate: governorate.trim(), description, activity_date, transport_amount, accommodation, food_amount, total_amount, extra_categories: validExtra, employee_ids } : c));
     showToast('Claim updated', true);
     const claim = claims.find(c => c.id === id);
     logActivity({
@@ -838,11 +849,8 @@ function DetailGrid({ claim, team, fmtDate, css: c }: {
   fmtDate: (s: string | null, time?: boolean) => string;
   css: Record<string, string>;
 }) {
-  let empIds: string[] = [];
-  try { empIds = JSON.parse(claim.employee_ids || '[]'); } catch (_) {}
-
-  let cats: Array<{ category: string; amount: number }> = [];
-  try { cats = JSON.parse(claim.extra_categories || '[]'); } catch (_) {}
+  const empIds = parseJsonArray<string>(claim.employee_ids);
+  const cats = parseJsonArray<ExtraRow>(claim.extra_categories);
   const validCats = cats.filter(cat => cat.category);
 
   return (
@@ -879,7 +887,7 @@ function DetailGrid({ claim, team, fmtDate, css: c }: {
           {validCats.map((cat, i) => (
             <div key={i} className={c.catRow}>
               <span>{cat.category}</span>
-              <span className={c.catAmt}>{iqd(cat.amount || 0)}</span>
+              <span className={c.catAmt}>{iqd(Number(cat.amount) || 0)}</span>
             </div>
           ))}
         </div>

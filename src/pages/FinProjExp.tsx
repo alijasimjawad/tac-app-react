@@ -215,7 +215,9 @@ export default function FinProjExp() {
       const r = rows.find(x => x.id === id);
       if (!r) return;
       let parsedIds: string[] = [];
-      try { parsedIds = JSON.parse(r.employee_ids || '[]'); } catch { parsedIds = []; }
+      const rawIds: unknown = r.employee_ids;
+      if (Array.isArray(rawIds)) { parsedIds = rawIds as string[]; }
+      else { try { parsedIds = JSON.parse((rawIds as string) || '[]'); } catch { parsedIds = []; } }
       const isFood = r.category === 'Food';
       setForm({
         proj: r.project_name || '',
