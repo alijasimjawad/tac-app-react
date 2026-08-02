@@ -32,8 +32,8 @@ interface ExpenseClaim {
   description: string | null;
   transport_amount: number | null;
   food_amount: number | null;
-  extra_categories: ExtraRow[] | null;
-  employee_ids: string[] | null;
+  extra_categories: ExtraRow[] | string | null;
+  employee_ids: string[] | string | null;
   notes: string | null;
   status: string;
   total_amount: number | null;
@@ -60,14 +60,28 @@ function fmtDateTime(iso: string) {
 
 function fmtAmt(n: number | null | undefined) { return (n ?? 0).toLocaleString('en-US'); }
 
-function parseExtra(raw: ExtraRow[] | null): ExtraRow[] {
+function parseExtra(raw: ExtraRow[] | string | null): ExtraRow[] {
   if (!raw) return [];
-  return Array.isArray(raw) ? raw : [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
 }
 
-function parseEmployeeIds(raw: string[] | null): string[] {
+function parseEmployeeIds(raw: string[] | string | null): string[] {
   if (!raw) return [];
-  return Array.isArray(raw) ? raw : [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
+  }
+  return [];
 }
 
 function claimRef(allClaims: ExpenseClaim[], claim: ExpenseClaim): string {
