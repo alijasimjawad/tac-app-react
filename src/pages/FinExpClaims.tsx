@@ -701,11 +701,11 @@ export default function FinExpClaims() {
               </div>
             )}
 
-            {/* Actions (pending only) */}
-            {!editMode && detailClaim.status === 'pending' && (
+            {/* Actions (pending: approve/reject/edit · approved: edit only, for post-approval corrections) */}
+            {!editMode && (detailClaim.status === 'pending' || detailClaim.status === 'approved') && (
               <div className={css.detailActions}>
                 <div className={css.detailActionBtns}>
-                  {hasPerm('fin_exp_claims_approve') && (
+                  {detailClaim.status === 'pending' && hasPerm('fin_exp_claims_approve') && (
                     <button
                       className={css.btnApprove}
                       disabled={approvingId === detailId}
@@ -714,13 +714,16 @@ export default function FinExpClaims() {
                       {approvingId === detailId ? 'Approving…' : 'Approve'}
                     </button>
                   )}
-                  {hasPerm('fin_exp_claims_reject') && (
+                  {detailClaim.status === 'pending' && hasPerm('fin_exp_claims_reject') && (
                     <button className={css.btnReject} onClick={() => { setDetailRejOpen(v => !v); setDetailRejErr(false); }}>Reject</button>
                   )}
                   {hasPerm('fin_exp_claims_edit') && (
                     <button className={css.btnEdit} onClick={() => startEdit(detailClaim)}>&#9998; Edit</button>
                   )}
                 </div>
+                {detailClaim.status === 'approved' && (
+                  <div className={css.editApprovedNote}>Editing an approved claim keeps it approved — the correction will reflect in Payslips automatically.</div>
+                )}
                 {detailRejOpen && (
                   <div className={css.detailRejWrap}>
                     <input
