@@ -214,9 +214,10 @@ function buildWaMsg(
         const distLine = trip.distanceKm != null
           ? `\n◆ *Total Distance:* ${trip.distanceKm.toFixed(2)} km${trip.source ? ` (${trip.source === 'road' ? 'Road' : 'Straight-line'})` : ''}`
           : '';
-        const rateLine = trip.rateIqd != null ? `\n◆ *Rate:* ${trip.rateIqd.toLocaleString()} IQD/km` : '';
-        const costLine = trip.costIqd != null ? `\n◆ *Cost:* ${trip.costIqd.toLocaleString()} IQD` : '';
-        return `\n\n━━━━━━━━━━━━\n◆ *Car Trip Details*\n◆ *Car:* ${trip.carType || '—'}  |  ◆ *Driver:* ${trip.driverName || '—'}${routeSection}${distLine}${rateLine}${costLine}`;
+        // Rate/Cost are intentionally left out of the shared WhatsApp text
+        // (still shown on-screen in the app's trip result box) — the report
+        // is meant for operational/route info, not the expense amount.
+        return `\n\n━━━━━━━━━━━━\n◆ *Car Trip Details*\n◆ *Car:* ${trip.carType || '—'}  |  ◆ *Driver:* ${trip.driverName || '—'}${routeSection}${distLine}`;
       })()
     : '';
 
