@@ -7,6 +7,7 @@ import { logActivity } from '../lib/activityLog';
 import { sendPushToUser, sendPushToRoles, getMemberUserId } from '../lib/pushNotify';
 import { iqd, FIN_MONTHS } from '../lib/finHelpers';
 import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
+import { ensureCarsLoaded, getCarName } from '../lib/carsCache';
 import css from './FinExpClaims.module.css';
 
 interface TeamMember { id: string; full_name: string; }
@@ -31,6 +32,11 @@ interface ExpClaim {
   notes: string | null;
   employee_ids: string[] | string | null;
   extra_categories: ExtraRow[] | string | null;
+  is_car_trip: boolean | null;
+  daily_activity_id: string | null;
+  car_id: string | null;
+  car_trip_distance_km: number | null;
+  car_trip_rate_iqd: number | null;
 }
 
 interface DailyActivity {
@@ -114,6 +120,7 @@ export default function FinExpClaims() {
   const [FIN_PROJECTS, setFinProjects] = useState<string[]>([]);
 
   useEffect(() => {
+    ensureCarsLoaded();
     ensureProjectsLoaded().then(() => setFinProjects(getProjectNames()));
   }, []);
 
@@ -557,7 +564,14 @@ export default function FinExpClaims() {
                             </span>
                         }
                       </td>
-                      <td>{r.description || '—'}</td>
+                      <td>
+                        {r.description || '—'}
+                        {r.is_car_trip && (
+                          <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--accent)', background: 'var(--blue-50)', borderRadius: 4, padding: '2px 6px' }}>
+                            Car: {getCarName(r.car_id) || '—'}
+                          </span>
+                        )}
+                      </td>
                       <td className={css.num}>{iqd(r.total_amount)}</td>
                       <td>
                         <span className={`${css.badge} ${badgeCls(r.status)}`}>{statusLabel(r.status)}</span>
@@ -855,9 +869,21 @@ function DetailGrid({ claim, team, fmtDate, css: c }: {
   const empIds = parseJsonArray<string>(claim.employee_ids);
   const cats = parseJsonArray<ExtraRow>(claim.extra_categories);
   const validCats = cats.filter(cat => cat.category);
+  const driverName = team.find(t => t.id === claim.member_id)?.full_name || claim.member_id || '—';
 
   return (
     <>
+      {claim.is_car_trip && (
+        <div className={c.detailGrid} style={{ background: 'var(--blue-50)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', marginBottom: 10 }}>
+          <div className={`${c.detailField} ${c.full}`}>
+            <span className={c.detailLbl}>Car Trip</span>
+            <span className={c.detailVal}>Car: {getCarName(claim.car_id) || '—'} — Driven by {driverName}</span>
+          </div>
+          <div className={c.detailField}><span className={c.detailLbl}>Distance</span><span className={c.detailVal}>{claim.car_trip_distance_km != null ? `${claim.car_trip_distance_km} km` : '—'}</span></div>
+          <div className={c.detailField}><span className={c.detailLbl}>Rate</span><span className={c.detailVal}>{claim.car_trip_rate_iqd != null ? `${iqd(claim.car_trip_rate_iqd)}/km` : '—'}</span></div>
+          <div className={c.detailField}><span className={c.detailLbl}>Trip Cost</span><span className={c.detailVal}>{iqd(claim.total_amount ?? 0)}</span></div>
+        </div>
+      )}
       <div className={c.detailGrid}>
         <div className={c.detailField}><span className={c.detailLbl}>Project</span><span className={c.detailVal}>{claim.project_name || '—'}</span></div>
         <div className={c.detailField}><span className={c.detailLbl}>Site ID</span><span className={c.detailVal}>{claim.site_id || '—'}</span></div>

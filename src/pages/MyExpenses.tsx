@@ -191,6 +191,7 @@ export default function MyExpenses() {
     const { data } = await supabase
       .from('expense_claims').select('*')
       .eq('member_id', memberId)
+      .or('is_car_trip.is.null,is_car_trip.eq.false')
       .order('submitted_at', { ascending: false });
     setClaims((data as ExpenseClaim[]) ?? []);
     setLoading(false);

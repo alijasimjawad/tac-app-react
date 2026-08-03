@@ -7,6 +7,11 @@ import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
 import { FIN_MONTHS, getYears } from '../lib/finHelpers';
+import { ensureCarsLoaded, getCars, getCarOwnerId, type CarMeta } from '../lib/carsCache';
+import { ensureSavedPointsLoaded, getSavedPoints, type SavedPointMeta } from '../lib/savedPointsCache';
+import { ensureCarKmRateLoaded, getCarKmRate } from '../lib/carSettingsCache';
+import { getRoadRoute } from '../lib/orsRouting';
+import { haversineKm } from '../lib/sitesNearest';
 import styles from './DailyActivities.module.css';
 
 const ACTIVITY_TYPES = ['Installation', 'Maintenance', 'Survey', 'Testing', 'Commissioning', 'Integration', 'Clearance'];
@@ -45,6 +50,15 @@ interface DailyActivity {
   edit_reason: string | null;
   updated_at: string | null;
   updated_by: string | null;
+  car_id: string | null;
+  driver_id: string | null;
+  start_point_name: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
+  trip_distance_km: number | null;
+  trip_rate_iqd: number | null;
+  trip_cost_iqd: number | null;
+  trip_distance_source: string | null;
 }
 
 interface TeamMember {
@@ -149,6 +163,36 @@ async function ftCreateTrip(daId: string, v: FormVals, createdBy: string) {
   }
 }
 
+// Fire-and-forget: when a Daily Activity is saved with a car trip attached,
+// auto-create a linked "pending" Expense Claim so it shows up in Finance >
+// Expense Claims for awareness/approval into Project Expenses (company
+// cost). is_car_trip = true keeps it out of the driver's personal expense
+// views/totals and out of Payslips — see react_migration_phase17_sql.sql.
+async function ftCreateCarClaim(daId: string, v: FormVals, submittedBy: string) {
+  if (!v.car_id || !v.driver_id || v.trip_cost_iqd == null) return;
+  await supabase.from('expense_claims').insert({
+    member_id: v.driver_id,
+    project_name: v.project,
+    site_id: v.site_id,
+    governorate: v.governate || null,
+    description: 'Car Trip',
+    activity_date: v.date,
+    submitted_at: new Date().toISOString(),
+    submitted_by: submittedBy,
+    transport_amount: v.trip_cost_iqd,
+    food_amount: 0,
+    accommodation: '',
+    total_amount: v.trip_cost_iqd,
+    status: 'pending',
+    notes: `Auto-generated from car trip (${v.trip_distance_km ?? '—'} km @ ${v.trip_rate_iqd ?? '—'} IQD/km).`,
+    is_car_trip: true,
+    daily_activity_id: daId,
+    car_id: v.car_id,
+    car_trip_distance_km: v.trip_distance_km,
+    car_trip_rate_iqd: v.trip_rate_iqd,
+  });
+}
+
 async function ftSyncTrip(daId: string, v: FormVals, createdBy: string) {
   const { data: existing } = await supabase
     .from('field_trips').select('id,status').eq('daily_activity_id', daId).single();
@@ -181,6 +225,15 @@ interface FormVals {
   notes: string;
   team_member_ids: string[];
   team_member_names: string[];
+  car_id: string | null;
+  driver_id: string | null;
+  start_point_name: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
+  trip_distance_km: number | null;
+  trip_rate_iqd: number | null;
+  trip_cost_iqd: number | null;
+  trip_distance_source: string | null;
 }
 
 export default function DailyActivities() {
@@ -210,6 +263,22 @@ export default function DailyActivities() {
   const [notes, setNotes] = useState('');
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
   const [memberSearch, setMemberSearch] = useState('');
+
+  // Car Trip sub-section
+  const [carTripEnabled, setCarTripEnabled] = useState(false);
+  const [cars, setCars] = useState<CarMeta[]>([]);
+  const [savedPoints, setSavedPoints] = useState<SavedPointMeta[]>([]);
+  const [carId, setCarId] = useState('');
+  const [driverId, setDriverId] = useState('');
+  const [startPointId, setStartPointId] = useState('');
+  const [startPointName, setStartPointName] = useState('');
+  const [startLat, setStartLat] = useState('');
+  const [startLng, setStartLng] = useState('');
+  const [tripDistanceKm, setTripDistanceKm] = useState<number | null>(null);
+  const [tripCostIqd, setTripCostIqd] = useState<number | null>(null);
+  const [tripDistanceSource, setTripDistanceSource] = useState<'road' | 'straight' | null>(null);
+  const [tripCalculating, setTripCalculating] = useState(false);
+  const [tripCalcError, setTripCalcError] = useState('');
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -268,6 +337,14 @@ export default function DailyActivities() {
     });
   }, []);
 
+  // ── Car Trip reference data ──
+  useEffect(() => {
+    Promise.all([ensureCarsLoaded(), ensureSavedPointsLoaded(), ensureCarKmRateLoaded()]).then(() => {
+      setCars(getCars());
+      setSavedPoints(getSavedPoints());
+    });
+  }, []);
+
   // Debounce the search box so filtering doesn't re-run on every keystroke.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
@@ -312,7 +389,7 @@ export default function DailyActivities() {
   useEffect(() => {
     if (suppressDirty.current) { suppressDirty.current = false; return; }
     setFormTouched(true);
-  }, [date, project, sectionId, siteTags, siteInput, governate, activityType, status, notes, selectedMemberIds]);
+  }, [date, project, sectionId, siteTags, siteInput, governate, activityType, status, notes, selectedMemberIds, carTripEnabled, carId, driverId, startPointName, startLat, startLng]);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -361,6 +438,7 @@ export default function DailyActivities() {
     setSiteTags([]);
     setSiteInput('');
     setGovernate('');
+    resetCarTripCalc();
     if (!project) { setSections([]); return; }
     const projKey = nameToKey[project] || project;
     supabase
@@ -419,6 +497,7 @@ export default function DailyActivities() {
       const newTags = [...siteTags, val];
       setSiteTags(newTags);
       autoFillGovernate(val);
+      if (carTripEnabled) resetCarTripCalc();
     }
     setSiteInput('');
   }
@@ -434,6 +513,7 @@ export default function DailyActivities() {
 
   function removeSiteTag(idx: number) {
     setSiteTags(siteTags.filter((_, i) => i !== idx));
+    if (carTripEnabled) resetCarTripCalc();
   }
 
   // ── Busy detection ──
@@ -466,6 +546,72 @@ export default function DailyActivities() {
     }
     next.add(memberId);
     setSelectedMemberIds(next);
+  }
+
+  // ── Car Trip ──
+  function onCarChange(id: string) {
+    setCarId(id);
+    if (!driverId) {
+      const ownerId = getCarOwnerId(id);
+      if (ownerId) setDriverId(ownerId);
+    }
+  }
+
+  function onStartPointChange(id: string) {
+    setStartPointId(id);
+    if (!id) return;
+    const p = savedPoints.find(sp => sp.id === id);
+    if (p) {
+      setStartPointName(p.name);
+      setStartLat(String(p.latitude));
+      setStartLng(String(p.longitude));
+    }
+  }
+
+  function resetCarTripCalc() {
+    setTripDistanceKm(null);
+    setTripCostIqd(null);
+    setTripDistanceSource(null);
+    setTripCalcError('');
+  }
+
+  async function calcCarTrip() {
+    setTripCalcError('');
+    const sLat = parseFloat(startLat);
+    const sLng = parseFloat(startLng);
+    if (isNaN(sLat) || isNaN(sLng)) { setTripCalcError(t('da_tripStartRequired')); return; }
+    const targetSite = siteTags[0] || siteInput.trim();
+    if (!targetSite) { setTripCalcError(t('da_siteRequired')); return; }
+
+    setTripCalculating(true);
+    setTripDistanceKm(null);
+    setTripCostIqd(null);
+    setTripDistanceSource(null);
+    try {
+      const { data: siteRow } = await supabase
+        .from('sites').select('latitude, longitude').eq('site_code', targetSite).maybeSingle();
+      const destLat = siteRow?.latitude;
+      const destLng = siteRow?.longitude;
+      if (destLat == null || destLng == null) {
+        setTripCalcError(t('da_tripSiteCoordsMissing', { site: targetSite }));
+        return;
+      }
+
+      const road = await getRoadRoute([{ latitude: sLat, longitude: sLng }, { latitude: destLat, longitude: destLng }]);
+      const km = road ? road.distanceKm : haversineKm(sLat, sLng, destLat, destLng);
+      const source: 'road' | 'straight' = road ? 'road' : 'straight';
+      const rate = getCarKmRate();
+      const roundedKm = Math.round(km * 100) / 100;
+      const cost = Math.round(roundedKm * rate);
+
+      setTripDistanceKm(roundedKm);
+      setTripCostIqd(cost);
+      setTripDistanceSource(source);
+    } catch {
+      setTripCalcError(t('da_tripCalcFailed'));
+    } finally {
+      setTripCalculating(false);
+    }
   }
 
   // ── Reason modal ──
@@ -501,6 +647,14 @@ export default function DailyActivities() {
     if (!hasSite) errs.site_id = t('da_siteRequired');
     if (!activityType) errs.activityType = t('da_actTypeRequired');
     if (!status) errs.status = t('da_statusRequired');
+    if (carTripEnabled) {
+      if (!carId) errs.carId = t('da_tripCarRequired');
+      if (!driverId) errs.driverId = t('da_tripDriverRequired');
+      const sLat = parseFloat(startLat);
+      const sLng = parseFloat(startLng);
+      if (isNaN(sLat) || isNaN(sLng)) errs.startLat = t('da_tripStartRequired');
+      if (tripDistanceKm == null || tripCostIqd == null) errs.tripCalc = t('da_tripCalcRequired');
+    }
     return errs;
   }
 
@@ -525,6 +679,15 @@ export default function DailyActivities() {
       date, project, site_id, governate: governate.trim(),
       activity_type: activityType, status, notes: notes.trim(),
       team_member_ids: memberIds, team_member_names: memberNames,
+      car_id: carTripEnabled ? (carId || null) : null,
+      driver_id: carTripEnabled ? (driverId || null) : null,
+      start_point_name: carTripEnabled ? (startPointName.trim() || null) : null,
+      start_lat: carTripEnabled && startLat ? parseFloat(startLat) : null,
+      start_lng: carTripEnabled && startLng ? parseFloat(startLng) : null,
+      trip_distance_km: carTripEnabled ? tripDistanceKm : null,
+      trip_rate_iqd: carTripEnabled && tripCostIqd != null ? getCarKmRate() : null,
+      trip_cost_iqd: carTripEnabled ? tripCostIqd : null,
+      trip_distance_source: carTripEnabled ? tripDistanceSource : null,
     };
 
     const byUser = currentUser?.full_name || currentUser?.username || '';
@@ -548,7 +711,10 @@ export default function DailyActivities() {
         .from('daily_activities').insert(payload).select().single();
       if (error) { showToast(error.message, false); setSaving(false); return; }
       showToast(t('da_activitySaved'), true);
-      if (inserted?.id) ftCreateTrip(inserted.id, v, byUser).catch(() => {});
+      if (inserted?.id) {
+        ftCreateTrip(inserted.id, v, byUser).catch(() => {});
+        if (v.car_id) ftCreateCarClaim(inserted.id, v, byUser).catch(() => {});
+      }
     }
 
     setSaving(false);
@@ -572,6 +738,14 @@ export default function DailyActivities() {
     setNotes('');
     setSelectedMemberIds(new Set());
     setMemberSearch('');
+    setCarTripEnabled(false);
+    setCarId('');
+    setDriverId('');
+    setStartPointId('');
+    setStartPointName('');
+    setStartLat('');
+    setStartLng('');
+    resetCarTripCalc();
   }
 
   // ── Edit ──
@@ -590,6 +764,17 @@ export default function DailyActivities() {
     setNotes(a.notes || '');
     setSelectedMemberIds(new Set(a.team_member_ids || []));
     setMemberSearch('');
+    setCarTripEnabled(!!a.car_id);
+    setCarId(a.car_id || '');
+    setDriverId(a.driver_id || '');
+    setStartPointId('');
+    setStartPointName(a.start_point_name || '');
+    setStartLat(a.start_lat != null ? String(a.start_lat) : '');
+    setStartLng(a.start_lng != null ? String(a.start_lng) : '');
+    setTripDistanceKm(a.trip_distance_km ?? null);
+    setTripCostIqd(a.trip_cost_iqd ?? null);
+    setTripDistanceSource((a.trip_distance_source as 'road' | 'straight' | null) ?? null);
+    setTripCalcError('');
     formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     showToast(t('da_editingNotice'), true);
   }
@@ -1296,6 +1481,127 @@ export default function DailyActivities() {
                   })}
                 </div>
               </div>
+            </div>
+
+            {/* ── Sub-card 4: Car Trip ── */}
+            <div className={`${styles.subCard} ${styles.subCardFull}`}>
+              <div className={styles.subCardHdr}>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 17h14M5 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm14 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM5 17l1.5-6.5A2 2 0 0 1 8.43 9h7.14a2 2 0 0 1 1.93 1.5L19 17M5 17H3v-3a1 1 0 0 1 1-1h1"/>
+                </svg>
+                <div className={styles.subCardTitle}>{t('da_carTripLabel')}</div>
+                <label className={styles.carTripToggle}>
+                  <input
+                    type="checkbox"
+                    checked={carTripEnabled}
+                    onChange={e => {
+                      setCarTripEnabled(e.target.checked);
+                      if (!e.target.checked) resetCarTripCalc();
+                    }}
+                  />
+                  <span>{t('da_includeCarTrip')}</span>
+                </label>
+              </div>
+
+              {carTripEnabled && (
+                <div className={styles.subCardBody}>
+                  <div className={styles.fieldsGrid}>
+                    <div className={styles.field}>
+                      <label>{t('da_tripCar')} <span className={styles.req}>*</span></label>
+                      <select
+                        className={fieldErrors.carId ? styles.inputError : ''}
+                        value={carId}
+                        onChange={e => { onCarChange(e.target.value); setFieldErrors(fe => ({ ...fe, carId: '' })); }}
+                      >
+                        <option value="">{t('da_selectCar')}</option>
+                        {cars.map(c => <option key={c.id} value={c.id}>{c.name}{c.plate_number ? ` – ${c.plate_number}` : ''}</option>)}
+                      </select>
+                      {fieldErrors.carId && <span className={styles.fieldErrMsg}>{fieldErrors.carId}</span>}
+                    </div>
+                    <div className={styles.field}>
+                      <label>{t('da_tripDriver')} <span className={styles.req}>*</span></label>
+                      <select
+                        className={fieldErrors.driverId ? styles.inputError : ''}
+                        value={driverId}
+                        onChange={e => { setDriverId(e.target.value); setFieldErrors(fe => ({ ...fe, driverId: '' })); }}
+                      >
+                        <option value="">{t('da_selectDriver')}</option>
+                        {teamMembers.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                      </select>
+                      {fieldErrors.driverId && <span className={styles.fieldErrMsg}>{fieldErrors.driverId}</span>}
+                    </div>
+                    <div className={styles.field}>
+                      <label>{t('da_tripSavedPoint')}</label>
+                      <select
+                        value={startPointId}
+                        onChange={e => { onStartPointChange(e.target.value); resetCarTripCalc(); }}
+                      >
+                        <option value="">{t('da_tripSavedPointOptional')}</option>
+                        {savedPoints.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className={styles.field}>
+                      <label>{t('da_tripStartName')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('da_tripStartNamePh')}
+                        value={startPointName}
+                        onChange={e => setStartPointName(e.target.value)}
+                      />
+                    </div>
+                    <div className={styles.field}>
+                      <label>{t('da_tripStartLat')} <span className={styles.req}>*</span></label>
+                      <input
+                        className={fieldErrors.startLat ? styles.inputError : ''}
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="33.3152"
+                        value={startLat}
+                        onChange={e => { setStartLat(e.target.value); setFieldErrors(fe => ({ ...fe, startLat: '' })); resetCarTripCalc(); }}
+                      />
+                      {fieldErrors.startLat && <span className={styles.fieldErrMsg}>{fieldErrors.startLat}</span>}
+                    </div>
+                    <div className={styles.field}>
+                      <label>{t('da_tripStartLng')} <span className={styles.req}>*</span></label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="44.3661"
+                        value={startLng}
+                        onChange={e => { setStartLng(e.target.value); resetCarTripCalc(); }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className={styles.tripCalcRow}>
+                    <button type="button" className={styles.btnGhost} onClick={calcCarTrip} disabled={tripCalculating}>
+                      {tripCalculating ? t('da_tripCalculating') : t('da_tripCalculate')}
+                    </button>
+                    {fieldErrors.tripCalc && <span className={styles.fieldErrMsg}>{fieldErrors.tripCalc}</span>}
+                    {tripCalcError && <span className={styles.fieldErrMsg}>{tripCalcError}</span>}
+                  </div>
+
+                  {tripDistanceKm != null && tripCostIqd != null && (
+                    <div className={styles.tripResultBox}>
+                      <div className={styles.tripResultRow}>
+                        <span className={styles.tripResultLabel}>{t('da_tripDistance')}</span>
+                        <span className={styles.tripResultValue}>{tripDistanceKm.toFixed(2)} km</span>
+                      </div>
+                      <div className={styles.tripResultRow}>
+                        <span className={styles.tripResultLabel}>{t('da_tripRate')}</span>
+                        <span className={styles.tripResultValue}>{getCarKmRate().toLocaleString()} IQD/km</span>
+                      </div>
+                      <div className={styles.tripResultRow}>
+                        <span className={styles.tripResultLabel}>{t('da_tripCost')}</span>
+                        <span className={styles.tripResultValueStrong}>{tripCostIqd.toLocaleString()} IQD</span>
+                      </div>
+                      <div className={styles.tripResultSource}>
+                        {tripDistanceSource === 'road' ? t('da_tripSourceRoad') : t('da_tripSourceStraight')}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
           </div>{/* end formCardsGrid */}

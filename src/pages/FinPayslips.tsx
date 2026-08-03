@@ -426,6 +426,7 @@ export default function FinPayslips() {
       supabase.from('expense_claims')
         .select('id,member_id,activity_date,total_amount,transport_amount,food_amount,extra_categories,project_name,site_id')
         .eq('status', 'approved')
+        .or('is_car_trip.is.null,is_car_trip.eq.false')
         .gte('activity_date', first)
         .lte('activity_date', last),
     ]);

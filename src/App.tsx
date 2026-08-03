@@ -25,6 +25,7 @@ import FinReport from './pages/FinReport';
 import FinClients from './pages/FinClients';
 import FinInvoices from './pages/FinInvoices';
 import FinExpClaims from './pages/FinExpClaims';
+import FinCars from './pages/FinCars';
 import FinPayslips from './pages/FinPayslips';
 import FinPerformance from './pages/FinPerformance';
 import ActivityLog from './pages/ActivityLog';
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/finance/clients"            element={<FinClients />} />
             <Route path="/finance/invoices"           element={<FinInvoices />} />
             <Route path="/finance/expense-claims"     element={<FinExpClaims />} />
+            <Route path="/finance/cars"               element={<FinCars />} />
             <Route path="/finance/payslips"           element={<FinPayslips />} />
             <Route path="/finance/performance"        element={<FinPerformance />} />
             <Route path="/activity-log"              element={<ActivityLog />} />

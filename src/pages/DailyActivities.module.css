@@ -972,6 +972,70 @@
   margin-top: 2px;
 }
 
+/* ── Car Trip sub-card ── */
+.subCardFull {
+  grid-column: 1 / -1;
+}
+
+.carTripToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate-600);
+  cursor: pointer;
+  user-select: none;
+}
+.carTripToggle input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.tripCalcRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tripResultBox {
+  background: var(--blue-50);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tripResultRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+.tripResultLabel {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.tripResultValue {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.tripResultValueStrong {
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 14px;
+}
+.tripResultSource {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
 /* ── Loading skeleton rows ── */
 .skeletonCell {
   height: 14px;

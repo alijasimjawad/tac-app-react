@@ -268,6 +268,17 @@ export const ACTION_SCOPES: ActionScope[] = [
       { key: 'live_trips_force_complete', label: 'Force Complete Trip' },
     ],
   },
+  {
+    id: 'fin_cars',
+    label: 'Cars & Trips',
+    actions: [
+      { key: 'fin_cars_add',            label: 'Add Car' },
+      { key: 'fin_cars_edit',           label: 'Edit Car' },
+      { key: 'fin_cars_delete',         label: 'Delete Car' },
+      { key: 'fin_cars_manage_points',  label: 'Manage Saved Points' },
+      { key: 'fin_cars_edit_rate',      label: 'Edit KM Rate' },
+    ],
+  },
 ];
 
 // Flattened list of every scoped action key — used where a page just needs

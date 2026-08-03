@@ -308,6 +308,7 @@ export default function MyWork() {
               .from('expense_claims')
               .select('id,member_id,activity_date,submitted_at,project_name,site_id,description,status,total_amount,rejection_reason')
               .eq('member_id', mid)
+              .or('is_car_trip.is.null,is_car_trip.eq.false')
               .order('submitted_at', { ascending: false })
               .limit(20)
           : Promise.resolve({ data: [] as ExpenseClaim[], error: null }),
