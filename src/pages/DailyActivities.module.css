@@ -1036,6 +1036,37 @@
   text-align: right;
 }
 
+/* ── Target Point sub-section ── */
+.tripTargetSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+}
+.tripTargetHeader {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.targetStatus {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: var(--radius-sm);
+  width: fit-content;
+}
+.targetStatusFound {
+  color: var(--green-700);
+  background: var(--green-50);
+}
+.targetStatusMissing {
+  color: var(--amber-600);
+  background: var(--amber-50);
+}
+
 /* ── Loading skeleton rows ── */
 .skeletonCell {
   height: 14px;
