@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { haversineKm } from '../lib/sitesNearest';
 import { cacheOk, getAllSites, ensureFullLoad } from '../lib/sitesCache';
-import { getRoadRoute, hasOrsToken } from '../lib/orsRouting';
+import { getRoadRoute, hasRoadRoutingToken } from '../lib/roadRouting';
 import { addBaseLayer, createStyleToggleControl } from '../lib/mapboxTiles';
 import styles from './RoutePlanner.module.css';
 
@@ -614,7 +614,7 @@ export default function RoutePlanner() {
   // background; if a request fails or there's no ORS token configured, that
   // day's straight-line estimate is simply left as-is.
   async function enrichRoadRoutes(p: RoutePlan) {
-    if (!hasOrsToken()) { setRoadStatus('idle'); return; }
+    if (!hasRoadRoutingToken()) { setRoadStatus('idle'); return; }
     const runId = ++roadRunIdRef.current;
     setRoadStatus('loading');
 

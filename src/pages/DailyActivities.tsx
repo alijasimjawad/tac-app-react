@@ -10,7 +10,7 @@ import { FIN_MONTHS, getYears } from '../lib/finHelpers';
 import { ensureCarsLoaded, getCars, getCarOwnerId, type CarMeta } from '../lib/carsCache';
 import { ensureSavedPointsLoaded, getSavedPoints, type SavedPointMeta } from '../lib/savedPointsCache';
 import { ensureCarKmRateLoaded, getCarKmRate } from '../lib/carSettingsCache';
-import { getRoadRoute } from '../lib/orsRouting';
+import { getRoadRoute } from '../lib/roadRouting';
 import { haversineKm } from '../lib/sitesNearest';
 import styles from './DailyActivities.module.css';
 

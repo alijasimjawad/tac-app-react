@@ -16,7 +16,7 @@ import {
   pickPrimaryPosition,
 } from '../lib/tripTypes';
 import { haversineKm } from '../lib/sitesNearest';
-import { getRoadRoute } from '../lib/orsRouting';
+import { getRoadRoute } from '../lib/roadRouting';
 import TripDetailModal from '../components/TripDetailModal';
 import styles from './MyTrips.module.css';
 
@@ -249,7 +249,7 @@ function ActiveTripHero({
     if (routeLineRef.current) { mapRef.current.removeLayer(routeLineRef.current); routeLineRef.current = null; }
 
     if (!route) {
-      console.warn('[ActiveTripHero] getRoadRoute() returned null — falling back to straight line. Check VITE_ORS_TOKEN is set for this environment.');
+      console.warn('[ActiveTripHero] getRoadRoute() returned null — falling back to straight line. Check VITE_MAPBOX_TOKEN is set for this environment.');
       routeLineRef.current = L.polyline([[lat, lng], [site.lat, site.lng]], {
         color: '#94a3b8', weight: 3, opacity: 0.7, dashArray: '4,8', lineCap: 'round',
       }).addTo(mapRef.current);
