@@ -1391,6 +1391,69 @@
   margin-bottom: 16px;
 }
 
+.mapSearchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.mapSearchIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.mapSearchInput {
+  width: 100%;
+  height: 38px;
+  padding: 0 32px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.mapSearchInput:focus { border-color: var(--accent); }
+
+.mapSearchSpinner {
+  position: absolute;
+  right: 10px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--slate-200);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: mapSearchSpin .7s linear infinite;
+}
+
+@keyframes mapSearchSpin {
+  to { transform: rotate(360deg); }
+}
+
+.mapSearchResults {
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  overflow: hidden;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+
+.mapSearchResultRow {
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-bottom: 1px solid var(--slate-50);
+  transition: background .1s;
+}
+.mapSearchResultRow:last-child { border-bottom: none; }
+.mapSearchResultRow:hover { background: var(--blue-50); }
+
 /* ── View Modal ── */
 .viewGrid {
   display: grid;

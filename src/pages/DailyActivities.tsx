@@ -15,6 +15,7 @@ import { haversineKm } from '../lib/sitesNearest';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { addBaseLayer } from '../lib/mapboxTiles';
+import { searchPlaces, type GeocodeResult } from '../lib/mapboxGeocoding';
 import styles from './DailyActivities.module.css';
 
 const ACTIVITY_TYPES = ['Installation', 'Maintenance', 'Survey', 'Testing', 'Commissioning', 'Integration', 'Clearance'];
@@ -337,6 +338,10 @@ export default function DailyActivities() {
   const mapPickerContainerRef = useRef<HTMLDivElement>(null);
   const mapPickerMapRef = useRef<L.Map | null>(null);
   const mapPickerMarkerRef = useRef<L.Marker | null>(null);
+  const [mapSearchQuery, setMapSearchQuery] = useState('');
+  const [mapSearchResults, setMapSearchResults] = useState<GeocodeResult[]>([]);
+  const [mapSearching, setMapSearching] = useState(false);
+  const mapSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tripDistanceKm, setTripDistanceKm] = useState<number | null>(null);
   const [tripCostIqd, setTripCostIqd] = useState<number | null>(null);
   const [tripDistanceSource, setTripDistanceSource] = useState<'road' | 'straight' | null>(null);
@@ -676,6 +681,8 @@ export default function DailyActivities() {
     const initLng = !isNaN(sLng) ? sLng : 44.3661;
     setMapPickedLat(initLat);
     setMapPickedLng(initLng);
+    setMapSearchQuery('');
+    setMapSearchResults([]);
     setMapPickerOpen(true);
   }
 
@@ -687,6 +694,32 @@ export default function DailyActivities() {
     setFieldErrors(fe => ({ ...fe, startLat: '' }));
     resetCarTripCalc();
     setMapPickerOpen(false);
+  }
+
+  function onMapSearchChange(q: string) {
+    setMapSearchQuery(q);
+    if (mapSearchDebounceRef.current) clearTimeout(mapSearchDebounceRef.current);
+    if (!q.trim()) { setMapSearchResults([]); setMapSearching(false); return; }
+    setMapSearching(true);
+    mapSearchDebounceRef.current = setTimeout(async () => {
+      const results = await searchPlaces(q);
+      setMapSearchResults(results);
+      setMapSearching(false);
+    }, 400);
+  }
+
+  function selectMapSearchResult(r: GeocodeResult) {
+    setMapPickedLat(r.lat);
+    setMapPickedLng(r.lng);
+    setMapSearchQuery(r.placeName);
+    setMapSearchResults([]);
+    if (!startPointName.trim()) setStartPointName(r.placeName.split(',')[0]);
+    const map = mapPickerMapRef.current;
+    const marker = mapPickerMarkerRef.current;
+    if (map && marker) {
+      marker.setLatLng([r.lat, r.lng]);
+      map.setView([r.lat, r.lng], 15);
+    }
   }
 
   useEffect(() => {
@@ -2247,6 +2280,30 @@ export default function DailyActivities() {
           <div className={styles.modal} style={{ width: 560 }}>
             <div className={styles.modalTitle}>{t('da_tripPickOnMap')}</div>
             <div className={styles.modalSub}>{t('da_tripPickOnMapHint')}</div>
+
+            <div className={styles.mapSearchWrap}>
+              <svg className={styles.mapSearchIcon} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                className={styles.mapSearchInput}
+                placeholder={t('da_tripSearchLocationPh')}
+                value={mapSearchQuery}
+                onChange={e => onMapSearchChange(e.target.value)}
+              />
+              {mapSearching && <span className={styles.mapSearchSpinner} />}
+            </div>
+            {mapSearchResults.length > 0 && (
+              <div className={styles.mapSearchResults}>
+                {mapSearchResults.map(r => (
+                  <div key={r.id} className={styles.mapSearchResultRow} onClick={() => selectMapSearchResult(r)}>
+                    {r.placeName}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div ref={mapPickerContainerRef} className={styles.mapPickerMap} />
             <div className={styles.mapPickerCoords}>
               {mapPickedLat != null && mapPickedLng != null

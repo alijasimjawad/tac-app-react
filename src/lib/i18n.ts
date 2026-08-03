@@ -707,6 +707,7 @@ const en = {
   da_tripPickOnMap:          'Choose on Map',
   da_tripPickOnMapHint:      'Click anywhere on the map, or drag the pin, to set the trip start point.',
   da_tripUseThisPoint:       'Use This Point',
+  da_tripSearchLocationPh:   'Search for a place or address…',
   da_cancel:                 'Cancel',
 
   // ── My Trips (additional) ─────────────────────────────────────────────────
@@ -1452,6 +1453,7 @@ const ar: typeof en = {
   da_tripPickOnMap:          'اختر من الخريطة',
   da_tripPickOnMapHint:      'انقر في أي مكان على الخريطة، أو اسحب العلامة، لتحديد نقطة بداية الرحلة.',
   da_tripUseThisPoint:       'استخدم هذه النقطة',
+  da_tripSearchLocationPh:   'ابحث عن مكان أو عنوان…',
   da_cancel:                 'إلغاء',
 
   // ── My Trips (additional) ─────────────────────────────────────────────────
