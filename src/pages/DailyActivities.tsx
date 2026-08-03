@@ -215,7 +215,7 @@ async function ftSyncCarClaim(daId: string, v: FormVals, submittedBy: string, ca
     food_amount: 0,
     accommodation: null,
     total_amount: v.trip_cost_iqd,
-    notes: `Auto-generated from car trip: ${carName} driven by ${driverName} (${v.trip_distance_km ?? '—'} km @ ${v.trip_rate_iqd ?? '—'} IQD/km).`,
+    notes: `Auto-generated from car trip: ${carName} driven by ${driverName} (${v.trip_distance_km ?? '—'} km @ ${v.trip_rate_iqd ?? '—'} IQD/km). Logged by ${submittedBy || '—'}.`,
     is_car_trip: true,
     car_id: v.car_id,
     car_trip_distance_km: v.trip_distance_km,
@@ -239,7 +239,6 @@ async function ftSyncCarClaim(daId: string, v: FormVals, submittedBy: string, ca
     const { error } = await supabase.from('expense_claims').insert({
       ...claimFields,
       submitted_at: new Date().toISOString(),
-      submitted_by: submittedBy,
       status: 'pending',
       daily_activity_id: daId,
     });
