@@ -197,8 +197,12 @@ async function ftCreateTrip(daId: string, v: FormVals, createdBy: string) {
 // instead of inserting a duplicate. If the claim has already moved past
 // "pending" (approved/rejected by Finance), we leave it alone rather than
 // silently rewriting a decision that's already been made.
-async function ftSyncCarClaim(daId: string, v: FormVals, submittedBy: string, carName: string, driverName: string) {
-  if (!v.car_id || !v.driver_id || v.trip_cost_iqd == null) return;
+// Returns true if the claim was created/updated, false if it was skipped
+// or the write failed (callers use this to warn the user instead of
+// letting a DB error disappear silently, which is what made this function
+// hard to debug before — every failure just looked like nothing happened).
+async function ftSyncCarClaim(daId: string, v: FormVals, submittedBy: string, carName: string, driverName: string): Promise<boolean> {
+  if (!v.car_id || !v.driver_id || v.trip_cost_iqd == null) return false;
 
   const claimFields = {
     member_id: v.driver_id,
@@ -209,7 +213,7 @@ async function ftSyncCarClaim(daId: string, v: FormVals, submittedBy: string, ca
     activity_date: v.date,
     transport_amount: v.trip_cost_iqd,
     food_amount: 0,
-    accommodation: '',
+    accommodation: null,
     total_amount: v.trip_cost_iqd,
     notes: `Auto-generated from car trip: ${carName} driven by ${driverName} (${v.trip_distance_km ?? '—'} km @ ${v.trip_rate_iqd ?? '—'} IQD/km).`,
     is_car_trip: true,
@@ -218,24 +222,29 @@ async function ftSyncCarClaim(daId: string, v: FormVals, submittedBy: string, ca
     car_trip_rate_iqd: v.trip_rate_iqd,
   };
 
-  const { data: existing } = await supabase
+  const { data: existing, error: selErr } = await supabase
     .from('expense_claims')
     .select('id,status')
     .eq('daily_activity_id', daId)
     .eq('is_car_trip', true)
     .maybeSingle();
+  if (selErr) { console.error('[ftSyncCarClaim] lookup failed', selErr); return false; }
 
   if (existing) {
-    if (existing.status && existing.status !== 'pending') return;
-    await supabase.from('expense_claims').update(claimFields).eq('id', existing.id);
+    if (existing.status && existing.status !== 'pending') return false;
+    const { error } = await supabase.from('expense_claims').update(claimFields).eq('id', existing.id);
+    if (error) { console.error('[ftSyncCarClaim] update failed', error); return false; }
+    return true;
   } else {
-    await supabase.from('expense_claims').insert({
+    const { error } = await supabase.from('expense_claims').insert({
       ...claimFields,
       submitted_at: new Date().toISOString(),
       submitted_by: submittedBy,
       status: 'pending',
       daily_activity_id: daId,
     });
+    if (error) { console.error('[ftSyncCarClaim] insert failed', error); return false; }
+    return true;
   }
 }
 
@@ -762,7 +771,11 @@ export default function DailyActivities() {
       if (error) { showToast(error.message, false); setSaving(false); return; }
       showToast(t('da_activityUpdated'), true);
       ftSyncTrip(editingId, v, byUser).catch(() => {});
-      ftSyncCarClaim(editingId, v, byUser, carName, driverName).catch(() => {});
+      if (v.car_id) {
+        ftSyncCarClaim(editingId, v, byUser, carName, driverName)
+          .then(ok => { if (!ok) showToast(t('da_carClaimSyncFailed'), false); })
+          .catch(err => { console.error('[ftSyncCarClaim] threw', err); showToast(t('da_carClaimSyncFailed'), false); });
+      }
       setEditingId(null);
     } else {
       const payload = { ...v, created_by: byUser };
@@ -772,7 +785,11 @@ export default function DailyActivities() {
       showToast(t('da_activitySaved'), true);
       if (inserted?.id) {
         ftCreateTrip(inserted.id, v, byUser).catch(() => {});
-        ftSyncCarClaim(inserted.id, v, byUser, carName, driverName).catch(() => {});
+        if (v.car_id) {
+          ftSyncCarClaim(inserted.id, v, byUser, carName, driverName)
+            .then(ok => { if (!ok) showToast(t('da_carClaimSyncFailed'), false); })
+            .catch(err => { console.error('[ftSyncCarClaim] threw', err); showToast(t('da_carClaimSyncFailed'), false); });
+        }
       }
     }
 
