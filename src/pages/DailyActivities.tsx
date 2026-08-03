@@ -140,6 +140,21 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
+// Trip info for the WhatsApp "Car Trip Details" section — the route is
+// rendered start → stop 1 → stop 2 → … just like the Route Planner shows a
+// day's stop sequence, with the same total distance/rate/cost fields used
+// throughout the Car Trip feature (see calcCarTrip()).
+interface WaTripDetails {
+  carType: string | null;
+  driverName: string | null;
+  startPointName: string | null;
+  stopSites: string[];
+  distanceKm: number | null;
+  costIqd: number | null;
+  rateIqd: number | null;
+  source: 'road' | 'straight' | null;
+}
+
 function buildWaMsg(
   date: string,
   project: string,
@@ -150,8 +165,7 @@ function buildWaMsg(
   activityType: string,
   status: string,
   notes: string,
-  carType?: string | null,
-  driverName?: string | null,
+  trip?: WaTripDetails | null,
 ) {
   const d = date ? fmtDate(date) : '—';
   const projLine = sectionLabel && !sectionLabel.startsWith('—')
@@ -160,27 +174,32 @@ function buildWaMsg(
   const teamLines = teamNames.length
     ? teamNames.map(n => `  › ${n}`).join('\n')
     : '  › —';
-  const carLine = (carType || driverName)
-    ? `\n◆ *Car:* ${carType || '—'}  |  ◆ *Driver:* ${driverName || '—'}\n`
+
+  const tripBlock = trip && (trip.carType || trip.driverName)
+    ? (() => {
+        const route = [trip.startPointName?.trim() || 'Start', ...trip.stopSites].join(' → ');
+        const distLine = trip.distanceKm != null
+          ? `\n◆ *Distance:* ${trip.distanceKm.toFixed(2)} km${trip.source ? ` (${trip.source === 'road' ? 'Road' : 'Straight-line'})` : ''}`
+          : '';
+        const rateLine = trip.rateIqd != null ? `\n◆ *Rate:* ${trip.rateIqd.toLocaleString()} IQD/km` : '';
+        const costLine = trip.costIqd != null ? `\n◆ *Cost:* ${trip.costIqd.toLocaleString()} IQD` : '';
+        return `\n\n━━━━━━━━━━━━\n◆ *Car Trip Details*\n◆ *Car:* ${trip.carType || '—'}  |  ◆ *Driver:* ${trip.driverName || '—'}\n◆ *Route:* ${route}${distLine}${rateLine}${costLine}`;
+      })()
     : '';
-  return `◆ *TAC Network Tracker*\n━━━━━━━━━━━━\n◆ *DAILY ACTIVITY REPORT*\n━━━━━━━━━━━━\n\n◆ *Date:* ${d}\n◆ *Project:* ${projLine}\n◆ *Site ID:* ${site_id || '—'}  |  ◆ *Gov:* ${governate || '—'}\n\n━━━━━━━━━━━━\n◆ *Team*\n${teamLines}\n\n◆ *Activity:* ${activityType || '—'}\n◆ *Status:* ${status || '—'}${carLine}\n\n◆ *Notes*\n${notes || '—'}\n━━━━━━━━━━━━\n_◆ TAC Network Operations Center_`;
+
+  return `◆ *TAC Network Tracker*\n━━━━━━━━━━━━\n◆ *DAILY ACTIVITY REPORT*\n━━━━━━━━━━━━\n\n◆ *Date:* ${d}\n◆ *Project:* ${projLine}\n◆ *Site ID:* ${site_id || '—'}  |  ◆ *Gov:* ${governate || '—'}\n\n━━━━━━━━━━━━\n◆ *Team*\n${teamLines}\n\n◆ *Activity:* ${activityType || '—'}\n◆ *Status:* ${status || '—'}\n\n◆ *Notes*\n${notes || '—'}${tripBlock}\n━━━━━━━━━━━━\n_◆ TAC Network Operations Center_`;
 }
 
-// Auto-managed "Car Trip" block appended to the end of the Notes text
-// whenever a car trip is attached to the activity, so the car + driver
-// are visible directly in the activity text (not just in the dedicated
-// car-trip fields). Idempotent: re-saving strips any previous block
-// before appending the current one, so edits never pile up duplicates.
+// Car/driver info now lives only in the dedicated Car Trip fields and the
+// WhatsApp "Car Trip Details" section (see buildWaMsg) — it is never
+// written into the Notes/description text. This strips the old
+// "—— Car Trip ——" block that earlier versions of the app used to append,
+// so previously-saved activities get cleaned up automatically the next
+// time they're edited and re-saved.
 const CAR_TRIP_NOTE_RE = /\n*—— Car Trip ——[\s\S]*$/;
 
 function stripCarTripNote(text: string): string {
   return text.replace(CAR_TRIP_NOTE_RE, '').trim();
-}
-
-function withCarTripNote(text: string, carName: string, driverName: string): string {
-  const base = stripCarTripNote(text);
-  const block = `—— Car Trip ——\nCar: ${carName}\nDriver: ${driverName}`;
-  return base ? `${base}\n\n${block}` : block;
 }
 
 async function ftCreateTrip(daId: string, v: FormVals, createdBy: string) {
@@ -965,11 +984,11 @@ export default function DailyActivities() {
     const driverName = effectiveDriverId
       ? (teamMembers.find(m => m.id === effectiveDriverId)?.full_name || effectiveDriverId)
       : '';
-    // Keep the Car/Driver line in the Notes text in sync with the car-trip
-    // fields — added when a car trip is attached, removed when it isn't.
-    const finalNotes = effectiveCarId && effectiveDriverId
-      ? withCarTripNote(notes.trim(), carName, driverName)
-      : stripCarTripNote(notes.trim());
+    // Car/driver info lives only in the dedicated Car Trip fields and the
+    // WhatsApp Car Trip Details section — never duplicated into Notes.
+    // stripCarTripNote() also cleans up the old auto-appended block from
+    // any activity saved before this change.
+    const finalNotes = stripCarTripNote(notes.trim());
 
     // Persist every stop (jsonb) plus, for backward compat with older
     // reads/queries that only knew about a single destination, the last
@@ -1149,7 +1168,19 @@ export default function DailyActivities() {
     const memberNames = memberIds.map(id => teamMembers.find(m => m.id === id)?.full_name || id);
     const carType = carTripEnabled && carId ? getCarName(carId) : null;
     const driverName = carTripEnabled && driverId ? (teamMembers.find(m => m.id === driverId)?.full_name || driverId) : null;
-    const msg = buildWaMsg(date, project, sectionLabel, allTags.join(', '), governate, memberNames, activityType, status, notes, carType, driverName);
+    const trip: WaTripDetails | null = carTripEnabled && (carType || driverName)
+      ? {
+          carType,
+          driverName,
+          startPointName: startPointName.trim() || null,
+          stopSites: stops.map(s => s.site),
+          distanceKm: tripDistanceKm,
+          costIqd: tripCostIqd,
+          rateIqd: tripCostIqd != null ? getCarKmRate() : null,
+          source: tripDistanceSource,
+        }
+      : null;
+    const msg = buildWaMsg(date, project, sectionLabel, allTags.join(', '), governate, memberNames, activityType, status, notes, trip);
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   }
 
@@ -1157,7 +1188,22 @@ export default function DailyActivities() {
     const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names : [];
     const carType = a.car_id ? getCarName(a.car_id) : null;
     const driverName = a.driver_id ? (teamMembers.find(m => m.id === a.driver_id)?.full_name || a.driver_id) : null;
-    const msg = buildWaMsg(a.date, a.project, '', a.site_id || '', a.governate || '', teamNames, a.activity_type || '', a.status || '', a.notes || '', carType, driverName);
+    const stopSites = a.trip_stops && a.trip_stops.length
+      ? a.trip_stops.map(s => s.site)
+      : (a.target_lat != null ? String(a.site_id || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 1) : []);
+    const trip: WaTripDetails | null = (carType || driverName)
+      ? {
+          carType,
+          driverName,
+          startPointName: a.start_point_name || null,
+          stopSites,
+          distanceKm: a.trip_distance_km ?? null,
+          costIqd: a.trip_cost_iqd ?? null,
+          rateIqd: a.trip_rate_iqd ?? null,
+          source: (a.trip_distance_source as 'road' | 'straight' | null) ?? null,
+        }
+      : null;
+    const msg = buildWaMsg(a.date, a.project, '', a.site_id || '', a.governate || '', teamNames, a.activity_type || '', a.status || '', a.notes || '', trip);
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   }
 
