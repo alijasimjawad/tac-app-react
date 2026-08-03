@@ -31,11 +31,20 @@ export interface RoadRoutePoint {
   longitude: number;
 }
 
+export interface RoadRouteLeg {
+  distanceKm: number;
+  minutes: number;
+}
+
 export interface RoadRoute {
   distanceKm: number;
   minutes: number;
   /** [lat, lng] pairs, ready to hand straight to Leaflet's L.polyline(). */
   geometry: [number, number][];
+  /** Per-leg breakdown between each consecutive pair of input waypoints,
+   *  in the same order (legs.length === points.length - 1) — used to show
+   *  point-to-point distance/time (e.g. the Car Trip WhatsApp route line). */
+  legs: RoadRouteLeg[];
 }
 
 /** True if a road-routing token (Mapbox) is configured for this environment. */
@@ -73,10 +82,17 @@ export async function getRoadRoute(points: RoadRoutePoint[]): Promise<RoadRoute 
       return null;
     }
 
+    const rawLegs: { distance?: number; duration?: number }[] = route.legs || [];
+    const legs: RoadRouteLeg[] = rawLegs.map((l) => ({
+      distanceKm: (l.distance ?? 0) / 1000,
+      minutes: (l.duration ?? 0) / 60,
+    }));
+
     return {
       distanceKm: route.distance / 1000,
       minutes: route.duration / 60,
       geometry: coords.map(([lng, lat]: [number, number]) => [lat, lng]),
+      legs,
     };
   } catch (err) {
     console.warn('[Mapbox Directions] request threw', err);

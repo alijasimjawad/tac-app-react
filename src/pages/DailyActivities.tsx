@@ -62,6 +62,7 @@ interface DailyActivity {
   target_lat: number | null;
   target_lng: number | null;
   trip_stops: TripStopSaved[] | null;
+  trip_legs: TripLegSaved[] | null;
   trip_distance_km: number | null;
   trip_rate_iqd: number | null;
   trip_cost_iqd: number | null;
@@ -83,6 +84,15 @@ interface TripStopSaved {
   site: string;
   lat: number;
   lng: number;
+}
+
+// Persisted shape of a leg inside daily_activities.trip_legs (jsonb) — one
+// entry per consecutive pair of route points (start→stop1, stop1→stop2, …),
+// so trip_legs.length === trip_stops.length. minutes is null when the leg
+// only has a straight-line distance (no road-routing token/response).
+interface TripLegSaved {
+  distanceKm: number;
+  minutes: number | null;
 }
 
 interface TeamMember {
@@ -153,6 +163,11 @@ interface WaTripDetails {
   costIqd: number | null;
   rateIqd: number | null;
   source: 'road' | 'straight' | null;
+  /** Point-to-point breakdown, one entry per leg (start→stop1, stop1→stop2,
+   *  …). null/wrong-length falls back to a single "A → B → C" route line
+   *  with no per-leg figures — covers activities saved before this field
+   *  existed. */
+  legs: { distanceKm: number; minutes: number | null }[] | null;
 }
 
 function buildWaMsg(
@@ -177,13 +192,20 @@ function buildWaMsg(
 
   const tripBlock = trip && (trip.carType || trip.driverName)
     ? (() => {
-        const route = [trip.startPointName?.trim() || 'Start', ...trip.stopSites].join(' → ');
+        const points = [trip.startPointName?.trim() || 'Start', ...trip.stopSites];
+        const legsValid = !!trip.legs && trip.legs.length === points.length - 1;
+        const routeSection = legsValid
+          ? `\n◆ *Route:*\n${trip.legs!.map((leg, i) => {
+              const timePart = leg.minutes != null ? `, ${Math.round(leg.minutes)} min` : '';
+              return `  ${points[i]} → ${points[i + 1]}  (${leg.distanceKm.toFixed(2)} km${timePart})`;
+            }).join('\n')}`
+          : `\n◆ *Route:* ${points.join(' → ')}`;
         const distLine = trip.distanceKm != null
-          ? `\n◆ *Distance:* ${trip.distanceKm.toFixed(2)} km${trip.source ? ` (${trip.source === 'road' ? 'Road' : 'Straight-line'})` : ''}`
+          ? `\n◆ *Total Distance:* ${trip.distanceKm.toFixed(2)} km${trip.source ? ` (${trip.source === 'road' ? 'Road' : 'Straight-line'})` : ''}`
           : '';
         const rateLine = trip.rateIqd != null ? `\n◆ *Rate:* ${trip.rateIqd.toLocaleString()} IQD/km` : '';
         const costLine = trip.costIqd != null ? `\n◆ *Cost:* ${trip.costIqd.toLocaleString()} IQD` : '';
-        return `\n\n━━━━━━━━━━━━\n◆ *Car Trip Details*\n◆ *Car:* ${trip.carType || '—'}  |  ◆ *Driver:* ${trip.driverName || '—'}\n◆ *Route:* ${route}${distLine}${rateLine}${costLine}`;
+        return `\n\n━━━━━━━━━━━━\n◆ *Car Trip Details*\n◆ *Car:* ${trip.carType || '—'}  |  ◆ *Driver:* ${trip.driverName || '—'}${routeSection}${distLine}${rateLine}${costLine}`;
       })()
     : '';
 
@@ -330,6 +352,7 @@ interface FormVals {
   target_lat: number | null;
   target_lng: number | null;
   trip_stops: TripStopSaved[] | null;
+  trip_legs: TripLegSaved[] | null;
   trip_distance_km: number | null;
   trip_rate_iqd: number | null;
   trip_cost_iqd: number | null;
@@ -395,6 +418,7 @@ export default function DailyActivities() {
   const [tripDistanceKm, setTripDistanceKm] = useState<number | null>(null);
   const [tripCostIqd, setTripCostIqd] = useState<number | null>(null);
   const [tripDistanceSource, setTripDistanceSource] = useState<'road' | 'straight' | null>(null);
+  const [tripLegs, setTripLegs] = useState<TripLegSaved[] | null>(null);
   const [tripCalculating, setTripCalculating] = useState(false);
   const [tripCalcError, setTripCalcError] = useState('');
 
@@ -765,6 +789,7 @@ export default function DailyActivities() {
     setTripDistanceKm(null);
     setTripCostIqd(null);
     setTripDistanceSource(null);
+    setTripLegs(null);
     setTripCalcError('');
   }
 
@@ -886,16 +911,22 @@ export default function DailyActivities() {
     setTripDistanceKm(null);
     setTripCostIqd(null);
     setTripDistanceSource(null);
+    setTripLegs(null);
     try {
       const road = await getRoadRoute(legPoints);
       let km: number;
+      let legs: TripLegSaved[];
       const source: 'road' | 'straight' = road ? 'road' : 'straight';
       if (road) {
         km = road.distanceKm;
+        legs = road.legs.map(l => ({ distanceKm: Math.round(l.distanceKm * 100) / 100, minutes: Math.round(l.minutes) }));
       } else {
         km = 0;
+        legs = [];
         for (let i = 0; i < legPoints.length - 1; i++) {
-          km += haversineKm(legPoints[i].latitude, legPoints[i].longitude, legPoints[i + 1].latitude, legPoints[i + 1].longitude);
+          const legKm = haversineKm(legPoints[i].latitude, legPoints[i].longitude, legPoints[i + 1].latitude, legPoints[i + 1].longitude);
+          km += legKm;
+          legs.push({ distanceKm: Math.round(legKm * 100) / 100, minutes: null });
         }
       }
       const rate = getCarKmRate();
@@ -905,6 +936,7 @@ export default function DailyActivities() {
       setTripDistanceKm(roundedKm);
       setTripCostIqd(cost);
       setTripDistanceSource(source);
+      setTripLegs(legs);
     } catch {
       setTripCalcError(t('da_tripCalcFailed'));
     } finally {
@@ -1011,6 +1043,7 @@ export default function DailyActivities() {
       target_lat: lastStop ? lastStop.lat : null,
       target_lng: lastStop ? lastStop.lng : null,
       trip_stops: carTripEnabled ? tripStopsPayload : null,
+      trip_legs: carTripEnabled ? tripLegs : null,
       trip_distance_km: carTripEnabled ? tripDistanceKm : null,
       trip_rate_iqd: carTripEnabled && tripCostIqd != null ? getCarKmRate() : null,
       trip_cost_iqd: carTripEnabled ? tripCostIqd : null,
@@ -1099,7 +1132,10 @@ export default function DailyActivities() {
     setGovernate(a.governate || '');
     setActivityType(a.activity_type || ACTIVITY_TYPES[0]);
     setStatus(a.status || STATUS_OPTIONS[0]);
-    setNotes(a.notes || '');
+    // stripCarTripNote() cleans up the old auto-appended "—— Car Trip ——"
+    // block from activities saved before that behavior was removed, so the
+    // edit form (and the next save) never show/persist it again.
+    setNotes(stripCarTripNote(a.notes || ''));
     setSelectedMemberIds(new Set(a.team_member_ids || []));
     setMemberSearch('');
     setCarTripEnabled(!!a.car_id);
@@ -1126,6 +1162,7 @@ export default function DailyActivities() {
     setTripDistanceKm(a.trip_distance_km ?? null);
     setTripCostIqd(a.trip_cost_iqd ?? null);
     setTripDistanceSource((a.trip_distance_source as 'road' | 'straight' | null) ?? null);
+    setTripLegs(a.trip_legs && a.trip_legs.length ? a.trip_legs : null);
     setTripCalcError('');
     formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     showToast(t('da_editingNotice'), true);
@@ -1178,9 +1215,10 @@ export default function DailyActivities() {
           costIqd: tripCostIqd,
           rateIqd: tripCostIqd != null ? getCarKmRate() : null,
           source: tripDistanceSource,
+          legs: tripLegs,
         }
       : null;
-    const msg = buildWaMsg(date, project, sectionLabel, allTags.join(', '), governate, memberNames, activityType, status, notes, trip);
+    const msg = buildWaMsg(date, project, sectionLabel, allTags.join(', '), governate, memberNames, activityType, status, stripCarTripNote(notes), trip);
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   }
 
@@ -1201,9 +1239,10 @@ export default function DailyActivities() {
           costIqd: a.trip_cost_iqd ?? null,
           rateIqd: a.trip_rate_iqd ?? null,
           source: (a.trip_distance_source as 'road' | 'straight' | null) ?? null,
+          legs: a.trip_legs && a.trip_legs.length ? a.trip_legs : null,
         }
       : null;
-    const msg = buildWaMsg(a.date, a.project, '', a.site_id || '', a.governate || '', teamNames, a.activity_type || '', a.status || '', a.notes || '', trip);
+    const msg = buildWaMsg(a.date, a.project, '', a.site_id || '', a.governate || '', teamNames, a.activity_type || '', a.status || '', stripCarTripNote(a.notes || ''), trip);
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   }
 
