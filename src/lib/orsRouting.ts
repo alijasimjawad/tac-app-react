@@ -60,20 +60,28 @@ export async function getRoadRoute(points: RoadRoutePoint[]): Promise<RoadRoute 
         coordinates: points.map(p => [p.longitude, p.latitude]),
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.warn(`[ORS] request failed: HTTP ${res.status} ${res.statusText}`, body);
+      return null;
+    }
 
     const data = await res.json();
     const feature = data?.features?.[0];
     const summary = feature?.properties?.summary;
     const coords: [number, number][] | undefined = feature?.geometry?.coordinates;
-    if (!summary || !coords?.length) return null;
+    if (!summary || !coords?.length) {
+      console.warn('[ORS] response missing summary/geometry', data);
+      return null;
+    }
 
     return {
       distanceKm: summary.distance / 1000,
       minutes: summary.duration / 60,
       geometry: coords.map(([lng, lat]: [number, number]) => [lat, lng]),
     };
-  } catch {
+  } catch (err) {
+    console.warn('[ORS] request threw', err);
     return null;
   }
 }
