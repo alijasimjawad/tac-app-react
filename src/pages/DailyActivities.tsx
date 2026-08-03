@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import { ensureProjectsLoaded, getProjectNames, getProjectNameToKeyMap } from '../lib/projectsCache';
 import { FIN_MONTHS, getYears } from '../lib/finHelpers';
-import { ensureCarsLoaded, getCars, getCarOwnerId, type CarMeta } from '../lib/carsCache';
+import { ensureCarsLoaded, getCars, getCarOwnerId, getCarName, type CarMeta } from '../lib/carsCache';
 import { ensureSavedPointsLoaded, getSavedPoints, type SavedPointMeta } from '../lib/savedPointsCache';
 import { ensureCarKmRateLoaded, getCarKmRate } from '../lib/carSettingsCache';
 import { getRoadRoute } from '../lib/roadRouting';
@@ -126,6 +126,8 @@ function buildWaMsg(
   activityType: string,
   status: string,
   notes: string,
+  carType?: string | null,
+  driverName?: string | null,
 ) {
   const d = date ? fmtDate(date) : '—';
   const projLine = sectionLabel && !sectionLabel.startsWith('—')
@@ -134,7 +136,27 @@ function buildWaMsg(
   const teamLines = teamNames.length
     ? teamNames.map(n => `  › ${n}`).join('\n')
     : '  › —';
-  return `◆ *TAC Network Tracker*\n━━━━━━━━━━━━\n◆ *DAILY ACTIVITY REPORT*\n━━━━━━━━━━━━\n\n◆ *Date:* ${d}\n◆ *Project:* ${projLine}\n◆ *Site ID:* ${site_id || '—'}  |  ◆ *Gov:* ${governate || '—'}\n\n━━━━━━━━━━━━\n◆ *Team*\n${teamLines}\n\n◆ *Activity:* ${activityType || '—'}\n◆ *Status:* ${status || '—'}\n\n◆ *Notes*\n${notes || '—'}\n━━━━━━━━━━━━\n_◆ TAC Network Operations Center_`;
+  const carLine = (carType || driverName)
+    ? `\n◆ *Car:* ${carType || '—'}  |  ◆ *Driver:* ${driverName || '—'}\n`
+    : '';
+  return `◆ *TAC Network Tracker*\n━━━━━━━━━━━━\n◆ *DAILY ACTIVITY REPORT*\n━━━━━━━━━━━━\n\n◆ *Date:* ${d}\n◆ *Project:* ${projLine}\n◆ *Site ID:* ${site_id || '—'}  |  ◆ *Gov:* ${governate || '—'}\n\n━━━━━━━━━━━━\n◆ *Team*\n${teamLines}\n\n◆ *Activity:* ${activityType || '—'}\n◆ *Status:* ${status || '—'}${carLine}\n\n◆ *Notes*\n${notes || '—'}\n━━━━━━━━━━━━\n_◆ TAC Network Operations Center_`;
+}
+
+// Auto-managed "Car Trip" block appended to the end of the Notes text
+// whenever a car trip is attached to the activity, so the car + driver
+// are visible directly in the activity text (not just in the dedicated
+// car-trip fields). Idempotent: re-saving strips any previous block
+// before appending the current one, so edits never pile up duplicates.
+const CAR_TRIP_NOTE_RE = /\n*—— Car Trip ——[\s\S]*$/;
+
+function stripCarTripNote(text: string): string {
+  return text.replace(CAR_TRIP_NOTE_RE, '').trim();
+}
+
+function withCarTripNote(text: string, carName: string, driverName: string): string {
+  const base = stripCarTripNote(text);
+  const block = `—— Car Trip ——\nCar: ${carName}\nDriver: ${driverName}`;
+  return base ? `${base}\n\n${block}` : block;
 }
 
 async function ftCreateTrip(daId: string, v: FormVals, createdBy: string) {
@@ -164,33 +186,57 @@ async function ftCreateTrip(daId: string, v: FormVals, createdBy: string) {
 }
 
 // Fire-and-forget: when a Daily Activity is saved with a car trip attached,
-// auto-create a linked "pending" Expense Claim so it shows up in Finance >
-// Expense Claims for awareness/approval into Project Expenses (company
-// cost). is_car_trip = true keeps it out of the driver's personal expense
-// views/totals and out of Payslips — see react_migration_phase17_sql.sql.
-async function ftCreateCarClaim(daId: string, v: FormVals, submittedBy: string) {
+// auto-create (or, on edit/re-save, update) a linked Expense Claim so it
+// shows up in Finance > Expense Claims for awareness/approval into Project
+// Expenses (company cost). is_car_trip = true keeps it out of the driver's
+// personal expense views/totals and out of Payslips — see
+// react_migration_phase17_sql.sql.
+//
+// Idempotent by daily_activity_id: re-saving the same activity (e.g. after
+// editing distance, driver, or car) updates the existing linked claim
+// instead of inserting a duplicate. If the claim has already moved past
+// "pending" (approved/rejected by Finance), we leave it alone rather than
+// silently rewriting a decision that's already been made.
+async function ftSyncCarClaim(daId: string, v: FormVals, submittedBy: string, carName: string, driverName: string) {
   if (!v.car_id || !v.driver_id || v.trip_cost_iqd == null) return;
-  await supabase.from('expense_claims').insert({
+
+  const claimFields = {
     member_id: v.driver_id,
     project_name: v.project,
     site_id: v.site_id,
     governorate: v.governate || null,
-    description: 'Car Trip',
+    description: `Car Trip – ${carName}`,
     activity_date: v.date,
-    submitted_at: new Date().toISOString(),
-    submitted_by: submittedBy,
     transport_amount: v.trip_cost_iqd,
     food_amount: 0,
     accommodation: '',
     total_amount: v.trip_cost_iqd,
-    status: 'pending',
-    notes: `Auto-generated from car trip (${v.trip_distance_km ?? '—'} km @ ${v.trip_rate_iqd ?? '—'} IQD/km).`,
+    notes: `Auto-generated from car trip: ${carName} driven by ${driverName} (${v.trip_distance_km ?? '—'} km @ ${v.trip_rate_iqd ?? '—'} IQD/km).`,
     is_car_trip: true,
-    daily_activity_id: daId,
     car_id: v.car_id,
     car_trip_distance_km: v.trip_distance_km,
     car_trip_rate_iqd: v.trip_rate_iqd,
-  });
+  };
+
+  const { data: existing } = await supabase
+    .from('expense_claims')
+    .select('id,status')
+    .eq('daily_activity_id', daId)
+    .eq('is_car_trip', true)
+    .maybeSingle();
+
+  if (existing) {
+    if (existing.status && existing.status !== 'pending') return;
+    await supabase.from('expense_claims').update(claimFields).eq('id', existing.id);
+  } else {
+    await supabase.from('expense_claims').insert({
+      ...claimFields,
+      submitted_at: new Date().toISOString(),
+      submitted_by: submittedBy,
+      status: 'pending',
+      daily_activity_id: daId,
+    });
+  }
 }
 
 async function ftSyncTrip(daId: string, v: FormVals, createdBy: string) {
@@ -675,12 +721,24 @@ export default function DailyActivities() {
     const memberIds = [...selectedMemberIds];
     const memberNames = memberIds.map(id => teamMembers.find(m => m.id === id)?.full_name || id);
 
+    const effectiveCarId = carTripEnabled ? (carId || null) : null;
+    const effectiveDriverId = carTripEnabled ? (driverId || null) : null;
+    const carName = effectiveCarId ? getCarName(effectiveCarId) : '';
+    const driverName = effectiveDriverId
+      ? (teamMembers.find(m => m.id === effectiveDriverId)?.full_name || effectiveDriverId)
+      : '';
+    // Keep the Car/Driver line in the Notes text in sync with the car-trip
+    // fields — added when a car trip is attached, removed when it isn't.
+    const finalNotes = effectiveCarId && effectiveDriverId
+      ? withCarTripNote(notes.trim(), carName, driverName)
+      : stripCarTripNote(notes.trim());
+
     const v: FormVals = {
       date, project, site_id, governate: governate.trim(),
-      activity_type: activityType, status, notes: notes.trim(),
+      activity_type: activityType, status, notes: finalNotes,
       team_member_ids: memberIds, team_member_names: memberNames,
-      car_id: carTripEnabled ? (carId || null) : null,
-      driver_id: carTripEnabled ? (driverId || null) : null,
+      car_id: effectiveCarId,
+      driver_id: effectiveDriverId,
       start_point_name: carTripEnabled ? (startPointName.trim() || null) : null,
       start_lat: carTripEnabled && startLat ? parseFloat(startLat) : null,
       start_lng: carTripEnabled && startLng ? parseFloat(startLng) : null,
@@ -704,6 +762,7 @@ export default function DailyActivities() {
       if (error) { showToast(error.message, false); setSaving(false); return; }
       showToast(t('da_activityUpdated'), true);
       ftSyncTrip(editingId, v, byUser).catch(() => {});
+      ftSyncCarClaim(editingId, v, byUser, carName, driverName).catch(() => {});
       setEditingId(null);
     } else {
       const payload = { ...v, created_by: byUser };
@@ -713,7 +772,7 @@ export default function DailyActivities() {
       showToast(t('da_activitySaved'), true);
       if (inserted?.id) {
         ftCreateTrip(inserted.id, v, byUser).catch(() => {});
-        if (v.car_id) ftCreateCarClaim(inserted.id, v, byUser).catch(() => {});
+        ftSyncCarClaim(inserted.id, v, byUser, carName, driverName).catch(() => {});
       }
     }
 
@@ -814,13 +873,17 @@ export default function DailyActivities() {
       ? [...siteTags, siteInput.trim()] : siteTags;
     const memberIds = [...selectedMemberIds];
     const memberNames = memberIds.map(id => teamMembers.find(m => m.id === id)?.full_name || id);
-    const msg = buildWaMsg(date, project, sectionLabel, allTags.join(', '), governate, memberNames, activityType, status, notes);
+    const carType = carTripEnabled && carId ? getCarName(carId) : null;
+    const driverName = carTripEnabled && driverId ? (teamMembers.find(m => m.id === driverId)?.full_name || driverId) : null;
+    const msg = buildWaMsg(date, project, sectionLabel, allTags.join(', '), governate, memberNames, activityType, status, notes, carType, driverName);
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   }
 
   function shareWa(a: DailyActivity) {
     const teamNames = Array.isArray(a.team_member_names) ? a.team_member_names : [];
-    const msg = buildWaMsg(a.date, a.project, '', a.site_id || '', a.governate || '', teamNames, a.activity_type || '', a.status || '', a.notes || '');
+    const carType = a.car_id ? getCarName(a.car_id) : null;
+    const driverName = a.driver_id ? (teamMembers.find(m => m.id === a.driver_id)?.full_name || a.driver_id) : null;
+    const msg = buildWaMsg(a.date, a.project, '', a.site_id || '', a.governate || '', teamNames, a.activity_type || '', a.status || '', a.notes || '', carType, driverName);
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
   }
 
