@@ -704,6 +704,10 @@ const en = {
   da_tripCalcRequired:       'Click Calculate to compute distance and cost.',
   da_tripSiteCoordsMissing:  'Could not find coordinates for site {{site}}.',
   da_tripCalcFailed:         'Could not calculate distance. Please try again.',
+  da_tripPickOnMap:          'Choose on Map',
+  da_tripPickOnMapHint:      'Click anywhere on the map, or drag the pin, to set the trip start point.',
+  da_tripUseThisPoint:       'Use This Point',
+  da_cancel:                 'Cancel',
 
   // ── My Trips (additional) ─────────────────────────────────────────────────
   trips_phase_meeting:       'Meeting Point',
@@ -1445,6 +1449,10 @@ const ar: typeof en = {
   da_tripCalcRequired:       'اضغط احسب لحساب المسافة والتكلفة.',
   da_tripSiteCoordsMissing:  'تعذّر العثور على إحداثيات للموقع {{site}}.',
   da_tripCalcFailed:         'تعذّر حساب المسافة. حاول مرة أخرى.',
+  da_tripPickOnMap:          'اختر من الخريطة',
+  da_tripPickOnMapHint:      'انقر في أي مكان على الخريطة، أو اسحب العلامة، لتحديد نقطة بداية الرحلة.',
+  da_tripUseThisPoint:       'استخدم هذه النقطة',
+  da_cancel:                 'إلغاء',
 
   // ── My Trips (additional) ─────────────────────────────────────────────────
   trips_phase_meeting:       'نقطة الاجتماع',

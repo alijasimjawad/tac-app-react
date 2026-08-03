@@ -12,6 +12,9 @@ import { ensureSavedPointsLoaded, getSavedPoints, type SavedPointMeta } from '..
 import { ensureCarKmRateLoaded, getCarKmRate } from '../lib/carSettingsCache';
 import { getRoadRoute } from '../lib/roadRouting';
 import { haversineKm } from '../lib/sitesNearest';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { addBaseLayer } from '../lib/mapboxTiles';
 import styles from './DailyActivities.module.css';
 
 const ACTIVITY_TYPES = ['Installation', 'Maintenance', 'Survey', 'Testing', 'Commissioning', 'Integration', 'Clearance'];
@@ -328,6 +331,12 @@ export default function DailyActivities() {
   const [startPointName, setStartPointName] = useState('');
   const [startLat, setStartLat] = useState('');
   const [startLng, setStartLng] = useState('');
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  const [mapPickedLat, setMapPickedLat] = useState<number | null>(null);
+  const [mapPickedLng, setMapPickedLng] = useState<number | null>(null);
+  const mapPickerContainerRef = useRef<HTMLDivElement>(null);
+  const mapPickerMapRef = useRef<L.Map | null>(null);
+  const mapPickerMarkerRef = useRef<L.Marker | null>(null);
   const [tripDistanceKm, setTripDistanceKm] = useState<number | null>(null);
   const [tripCostIqd, setTripCostIqd] = useState<number | null>(null);
   const [tripDistanceSource, setTripDistanceSource] = useState<'road' | 'straight' | null>(null);
@@ -658,6 +667,55 @@ export default function DailyActivities() {
     setTripDistanceSource(null);
     setTripCalcError('');
   }
+
+  // ── Map picker for Car Trip start point ──
+  function openMapPicker() {
+    const sLat = parseFloat(startLat);
+    const sLng = parseFloat(startLng);
+    const initLat = !isNaN(sLat) ? sLat : 33.3152;
+    const initLng = !isNaN(sLng) ? sLng : 44.3661;
+    setMapPickedLat(initLat);
+    setMapPickedLng(initLng);
+    setMapPickerOpen(true);
+  }
+
+  function confirmMapPicker() {
+    if (mapPickedLat == null || mapPickedLng == null) { setMapPickerOpen(false); return; }
+    setStartLat(String(mapPickedLat.toFixed(6)));
+    setStartLng(String(mapPickedLng.toFixed(6)));
+    setStartPointId('');
+    setFieldErrors(fe => ({ ...fe, startLat: '' }));
+    resetCarTripCalc();
+    setMapPickerOpen(false);
+  }
+
+  useEffect(() => {
+    if (!mapPickerOpen || !mapPickerContainerRef.current) return;
+    const initLat = mapPickedLat ?? 33.3152;
+    const initLng = mapPickedLng ?? 44.3661;
+    const map = L.map(mapPickerContainerRef.current).setView([initLat, initLng], 12);
+    addBaseLayer(map, 'streets');
+    const marker = L.marker([initLat, initLng], { draggable: true }).addTo(map);
+    marker.on('dragend', () => {
+      const pos = marker.getLatLng();
+      setMapPickedLat(pos.lat);
+      setMapPickedLng(pos.lng);
+    });
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      marker.setLatLng(e.latlng);
+      setMapPickedLat(e.latlng.lat);
+      setMapPickedLng(e.latlng.lng);
+    });
+    mapPickerMapRef.current = map;
+    mapPickerMarkerRef.current = marker;
+    setTimeout(() => map.invalidateSize(), 60);
+    return () => {
+      map.remove();
+      mapPickerMapRef.current = null;
+      mapPickerMarkerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapPickerOpen]);
 
   async function calcCarTrip() {
     setTripCalcError('');
@@ -1730,6 +1788,13 @@ export default function DailyActivities() {
                   </div>
 
                   <div className={styles.tripCalcRow}>
+                    <button type="button" className={styles.btnGhost} onClick={openMapPicker}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5, verticalAlign: -2 }}>
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      {t('da_tripPickOnMap')}
+                    </button>
                     <button type="button" className={styles.btnGhost} onClick={calcCarTrip} disabled={tripCalculating}>
                       {tripCalculating ? t('da_tripCalculating') : t('da_tripCalculate')}
                     </button>
@@ -2172,6 +2237,25 @@ export default function DailyActivities() {
                 {t('da_shareWhatsApp')}
               </button>
               <button className={styles.btnPrimary} onClick={() => setViewActivity(null)}>{t('da_close')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mapPickerOpen && (
+        <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setMapPickerOpen(false); }}>
+          <div className={styles.modal} style={{ width: 560 }}>
+            <div className={styles.modalTitle}>{t('da_tripPickOnMap')}</div>
+            <div className={styles.modalSub}>{t('da_tripPickOnMapHint')}</div>
+            <div ref={mapPickerContainerRef} className={styles.mapPickerMap} />
+            <div className={styles.mapPickerCoords}>
+              {mapPickedLat != null && mapPickedLng != null
+                ? `${mapPickedLat.toFixed(6)}, ${mapPickedLng.toFixed(6)}`
+                : '—'}
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" className={styles.btnGhost} onClick={() => setMapPickerOpen(false)}>{t('da_cancel')}</button>
+              <button type="button" className={styles.btnPrimary} onClick={confirmMapPicker}>{t('da_tripUseThisPoint')}</button>
             </div>
           </div>
         </div>
