@@ -356,6 +356,9 @@ export default function DailyActivities() {
   const formCardRef = useRef<HTMLDivElement>(null);
   const memberSearchInputRef = useRef<HTMLInputElement>(null);
   const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
+  const carSearchInputRef = useRef<HTMLInputElement>(null);
+  const [carDropdownOpen, setCarDropdownOpen] = useState(false);
+  const [carSearch, setCarSearch] = useState('');
 
   // Inline form validation + unsaved-changes tracking
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -602,6 +605,21 @@ export default function DailyActivities() {
     setSelectedMemberIds(next);
   }
 
+  function getBusyCarMap() {
+    const busyIds = new Set<string>();
+    const busyInfo: Record<string, string[]> = {};
+    activities
+      .filter(a => a.date === date && a.id !== editingId)
+      .forEach(a => {
+        if (a.car_id) {
+          busyIds.add(a.car_id);
+          if (!busyInfo[a.car_id]) busyInfo[a.car_id] = [];
+          busyInfo[a.car_id].push(`${a.project || '—'} – ${a.activity_type || 'an activity'} (Site ${a.site_id || '—'})`);
+        }
+      });
+    return { busyIds, busyInfo };
+  }
+
   // ── Car Trip ──
   function onCarChange(id: string) {
     setCarId(id);
@@ -609,6 +627,18 @@ export default function DailyActivities() {
       const ownerId = getCarOwnerId(id);
       if (ownerId) setDriverId(ownerId);
     }
+  }
+
+  function selectCar(id: string, carLabel: string, isBusy: boolean, busyInfo: string[]) {
+    if (isBusy) {
+      const list = busyInfo.map((s, i) => `${i + 1}. ${s}`).join('\n');
+      const ok = window.confirm(`${carLabel} is already assigned to:\n${list}\n\nUse it for this activity as well?`);
+      if (!ok) return;
+    }
+    onCarChange(id);
+    setFieldErrors(fe => ({ ...fe, carId: '' }));
+    setCarDropdownOpen(false);
+    setCarSearch('');
   }
 
   function onStartPointChange(id: string) {
@@ -930,6 +960,7 @@ export default function DailyActivities() {
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
 
   const { busyIds, busyInfo } = getBusyMap();
+  const { busyIds: busyCarIds, busyInfo: busyCarInfo } = getBusyCarMap();
 
   const filteredNonSelected = teamMembers
     .filter(m => !selectedMemberIds.has(m.id) && m.full_name.toLowerCase().includes(memberSearch.trim().toLowerCase()));
@@ -1587,14 +1618,60 @@ export default function DailyActivities() {
                   <div className={styles.fieldsGrid}>
                     <div className={styles.field}>
                       <label>{t('da_tripCar')} <span className={styles.req}>*</span></label>
-                      <select
-                        className={fieldErrors.carId ? styles.inputError : ''}
-                        value={carId}
-                        onChange={e => { onCarChange(e.target.value); setFieldErrors(fe => ({ ...fe, carId: '' })); }}
+                      <div
+                        className={styles.memberSearchWrap}
+                        onClick={() => carSearchInputRef.current?.focus()}
                       >
-                        <option value="">{t('da_selectCar')}</option>
-                        {cars.map(c => <option key={c.id} value={c.id}>{c.name}{c.plate_number ? ` – ${c.plate_number}` : ''}</option>)}
-                      </select>
+                        <svg className={styles.memberSearchIcon} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input
+                          ref={carSearchInputRef}
+                          className={`${styles.memberSearchInput} ${fieldErrors.carId ? styles.inputError : ''}`}
+                          type="text"
+                          placeholder={t('da_selectCar')}
+                          value={carDropdownOpen ? carSearch : (carId ? getCarName(carId) : '')}
+                          onFocus={() => { setCarDropdownOpen(true); setCarSearch(''); }}
+                          onBlur={() => setTimeout(() => { setCarDropdownOpen(false); setCarSearch(''); }, 150)}
+                          onChange={e => setCarSearch(e.target.value)}
+                        />
+                        <svg className={styles.memberSearchChevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </div>
+
+                      {(carDropdownOpen || carSearch.trim()) && (
+                        <div className={styles.memberSearchResults}>
+                          {(() => {
+                            const q = carSearch.trim().toLowerCase();
+                            const filteredCars = q
+                              ? cars.filter(c => c.name.toLowerCase().includes(q) || (c.plate_number || '').toLowerCase().includes(q))
+                              : cars;
+                            if (filteredCars.length === 0) {
+                              return <div className={styles.memberSearchEmpty}>{t('da_noCarsFound')}</div>;
+                            }
+                            return filteredCars.map(c => {
+                              const isBusy = busyCarIds.has(c.id);
+                              const label = `${c.name}${c.plate_number ? ` – ${c.plate_number}` : ''}`;
+                              return (
+                                <div
+                                  key={c.id}
+                                  className={styles.memberSearchRow}
+                                  onClick={() => selectCar(c.id, label, isBusy, busyCarInfo[c.id] || [])}
+                                >
+                                  <span className={styles.memberSearchName}>{label}</span>
+                                  {isBusy && <span className={styles.chipBusyTag}>{t('da_assigned')}</span>}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      )}
+
+                      {carId && !carDropdownOpen && !carSearch.trim() && busyCarIds.has(carId) && (
+                        <span className={styles.chipBusyTag} style={{ alignSelf: 'flex-start', marginTop: 4 }}>{t('da_assigned')}</span>
+                      )}
+
                       {fieldErrors.carId && <span className={styles.fieldErrMsg}>{fieldErrors.carId}</span>}
                     </div>
                     <div className={styles.field}>
