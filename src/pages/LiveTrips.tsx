@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import { addBaseLayer } from '../lib/mapboxTiles';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -224,7 +225,7 @@ function LiveTripCard({
     const t = setTimeout(() => {
       if (!mapDivRef.current || mapRef.current) return;
       const map = L.map(mapDivRef.current, { zoomControl: false, attributionControl: false }).setView([33.3, 44.4], 7);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      addBaseLayer(map, 'streets', { attributionControl: false });
       mapRef.current = map;
       const bounds: [number, number][] = [];
       pp.forEach(p => {

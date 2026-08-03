@@ -10,6 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { logActivity } from '../lib/activityLog';
 import { cacheOk, getSitesByOperator, loadPreview as loadSitePreview, ensureFullLoad as ensureSitesFullLoad, invalidateCache } from '../lib/sitesCache';
 import { haversineKm, fmtDist } from '../lib/sitesNearest';
+import { addBaseLayer, createStyleToggleControl } from '../lib/mapboxTiles';
 import styles from './SitesDB.module.css';
 
 delete (L.Icon.Default.prototype as any)._getIconUrl; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -160,10 +161,8 @@ function SiteMapView({ sites, onViewSite }: SiteMapViewProps) {
   useEffect(() => {
     if (!containerRef.current) return;
     const map = L.map(containerRef.current).setView([33.3152, 44.3661], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
+    const baseLayer = { layer: addBaseLayer(map, 'streets') };
+    createStyleToggleControl(map, baseLayer);
     const cluster = L.markerClusterGroup();
     map.addLayer(cluster);
     mapRef.current = map; clusterRef.current = cluster;
@@ -213,10 +212,7 @@ function SiteMiniMap({ lat, lng }: SiteMiniMapProps) {
       zoomControl: false, dragging: false, scrollWheelZoom: false,
       doubleClickZoom: false, boxZoom: false, keyboard: false, touchZoom: false,
     }).setView([lat, lng], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
+    addBaseLayer(map, 'streets');
     L.marker([lat, lng]).addTo(map);
     mapRef.current = map;
     setTimeout(() => map.invalidateSize(), 50);

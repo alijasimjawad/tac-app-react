@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import L from 'leaflet';
+import { addBaseLayer } from '../lib/mapboxTiles';
 import 'leaflet/dist/leaflet.css';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -204,7 +205,7 @@ function ActiveTripHero({
     const timer = setTimeout(() => {
       if (!mapDivRef.current || mapRef.current) return;
       const map = L.map(mapDivRef.current, { zoomControl: false, attributionControl: false }).setView([33.3, 44.4], 7);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      addBaseLayer(map, 'streets', { attributionControl: false });
       mapRef.current = map;
       setTimeout(() => map.invalidateSize(), 200);
     }, 150);

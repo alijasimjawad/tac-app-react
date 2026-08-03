@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { haversineKm } from '../lib/sitesNearest';
 import { cacheOk, getAllSites, ensureFullLoad } from '../lib/sitesCache';
 import { getRoadRoute, hasOrsToken } from '../lib/orsRouting';
+import { addBaseLayer, createStyleToggleControl } from '../lib/mapboxTiles';
 import styles from './RoutePlanner.module.css';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -499,10 +500,8 @@ export default function RoutePlanner() {
       if (!mapDivRef.current) return;
       if (!mapRef.current) {
         const map = L.map(mapDivRef.current).setView([33.3152, 44.3661], 6);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        }).addTo(map);
+        const baseLayer = { layer: addBaseLayer(map, 'streets') };
+        createStyleToggleControl(map, baseLayer);
         mapRef.current = map;
         layerGroupRef.current = L.layerGroup().addTo(map);
       }
