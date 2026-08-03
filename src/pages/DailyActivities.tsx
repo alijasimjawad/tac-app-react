@@ -61,10 +61,28 @@ interface DailyActivity {
   start_lng: number | null;
   target_lat: number | null;
   target_lng: number | null;
+  trip_stops: TripStopSaved[] | null;
   trip_distance_km: number | null;
   trip_rate_iqd: number | null;
   trip_cost_iqd: number | null;
   trip_distance_source: string | null;
+}
+
+// A single destination leg of a car trip route, one per Site ID tag, in
+// visit order — the full route is start point → stops[0] → stops[1] → …
+interface TripStop {
+  site: string;
+  lat: string;
+  lng: string;
+  found: boolean | null;   // true = auto-filled from Sites DB, false = site not in Sites DB, null = not looked up yet
+  manual: boolean;         // true once the user edits/map-picks this stop — blocks the Sites DB auto-fill from overwriting it
+}
+
+// Persisted shape of a stop inside daily_activities.trip_stops (jsonb).
+interface TripStopSaved {
+  site: string;
+  lat: number;
+  lng: number;
 }
 
 interface TeamMember {
@@ -292,6 +310,7 @@ interface FormVals {
   start_lng: number | null;
   target_lat: number | null;
   target_lng: number | null;
+  trip_stops: TripStopSaved[] | null;
   trip_distance_km: number | null;
   trip_rate_iqd: number | null;
   trip_cost_iqd: number | null;
@@ -336,15 +355,15 @@ export default function DailyActivities() {
   const [startPointName, setStartPointName] = useState('');
   const [startLat, setStartLat] = useState('');
   const [startLng, setStartLng] = useState('');
-  // Target point (trip destination) — auto-filled from Sites DB when the
-  // current Site ID matches a known site_code, otherwise left for the user
-  // to fill in manually or via the map picker (for sites not yet in Sites DB).
-  const [targetLat, setTargetLat] = useState('');
-  const [targetLng, setTargetLng] = useState('');
-  const [targetSiteFound, setTargetSiteFound] = useState<boolean | null>(null);
-  const targetManualRef = useRef(false);
+  // Target points (trip stops) — one per Site ID tag, in the order the tags
+  // were added, summed into a single route just like the Route Planner does
+  // for multi-site days. Each stop is auto-filled from Sites DB when its
+  // site matches a known site_code, otherwise left for the user to fill in
+  // manually or via the map picker (for sites not yet in Sites DB). A stop
+  // marked `manual` is never overwritten by the Sites DB auto-fill effect.
+  const [stops, setStops] = useState<TripStop[]>([]);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
-  const [mapPickerMode, setMapPickerMode] = useState<'start' | 'target'>('start');
+  const [mapPickerMode, setMapPickerMode] = useState<'start' | number>('start');
   const [mapPickedLat, setMapPickedLat] = useState<number | null>(null);
   const [mapPickedLng, setMapPickedLng] = useState<number | null>(null);
   const mapPickerContainerRef = useRef<HTMLDivElement>(null);
@@ -472,39 +491,52 @@ export default function DailyActivities() {
   useEffect(() => {
     if (suppressDirty.current) { suppressDirty.current = false; return; }
     setFormTouched(true);
-  }, [date, project, sectionId, siteTags, siteInput, governate, activityType, status, notes, selectedMemberIds, carTripEnabled, carId, driverId, startPointName, startLat, startLng, targetLat, targetLng]);
+  }, [date, project, sectionId, siteTags, siteInput, governate, activityType, status, notes, selectedMemberIds, carTripEnabled, carId, driverId, startPointName, startLat, startLng, stops]);
 
-  // Auto-fill the Target Point from Sites DB whenever the current Site ID
-  // matches a known site_code. If the site isn't found (e.g. a new site not
-  // yet added to Sites DB), leave the fields for manual/map entry instead.
-  // Never overwrite a value the user set manually or picked on the map.
+  // Keep the `stops` array (one route leg per Site ID tag, in order) in sync
+  // with siteTags/siteInput whenever the Car Trip section is enabled.
+  // Existing stops are preserved by site name so in-progress lat/lng edits,
+  // manual flags, and found/missing status survive tag reordering/adding.
   useEffect(() => {
     if (!carTripEnabled) return;
-    const site = siteTags[0] || siteInput.trim();
-    if (!site) { setTargetSiteFound(null); return; }
+    const sites = siteTags.length > 0 ? siteTags : (siteInput.trim() ? [siteInput.trim()] : []);
+    setStops(prev => {
+      if (sites.length === 0) return prev.length === 0 ? prev : [];
+      const bySite = new Map(prev.map(s => [s.site, s]));
+      return sites.map(site => bySite.get(site) || { site, lat: '', lng: '', found: null, manual: false });
+    });
+  }, [carTripEnabled, siteTags, siteInput]);
+
+  // Auto-fill each non-manual stop's lat/lng from Sites DB whenever its site
+  // matches a known site_code. If the site isn't found (e.g. a new site not
+  // yet added to Sites DB), leave it for manual/map entry instead. Never
+  // overwrites a stop the user has edited manually or picked on the map.
+  // Keyed off the site list (not the whole `stops` array) so this doesn't
+  // re-run every time a lat/lng is filled in by this same effect.
+  const stopSitesKey = stops.map(s => s.site).join('|');
+  useEffect(() => {
+    if (!carTripEnabled) return;
+    const toFetch = stops.filter(s => !s.manual).map(s => s.site);
+    if (toFetch.length === 0) return;
     let cancelled = false;
     (async () => {
       const { data } = await supabase
-        .from('sites').select('latitude, longitude').eq('site_code', site).maybeSingle();
+        .from('sites').select('site_code, latitude, longitude').in('site_code', toFetch);
       if (cancelled) return;
-      if (data?.latitude != null && data?.longitude != null) {
-        setTargetSiteFound(true);
-        if (!targetManualRef.current) {
-          setTargetLat(String(data.latitude));
-          setTargetLng(String(data.longitude));
-          resetCarTripCalc();
+      const bySite = new Map((data || []).map(r => [r.site_code, r]));
+      setStops(prev => prev.map(s => {
+        if (s.manual) return s;
+        const rec = bySite.get(s.site);
+        if (rec?.latitude != null && rec?.longitude != null) {
+          return { ...s, lat: String(rec.latitude), lng: String(rec.longitude), found: true };
         }
-      } else {
-        setTargetSiteFound(false);
-        if (!targetManualRef.current) {
-          setTargetLat('');
-          setTargetLng('');
-        }
-      }
+        return { ...s, lat: '', lng: '', found: false };
+      }));
+      resetCarTripCalc();
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carTripEnabled, siteTags, siteInput]);
+  }, [carTripEnabled, stopSitesKey]);
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok });
@@ -717,10 +749,18 @@ export default function DailyActivities() {
     setTripCalcError('');
   }
 
-  // ── Map picker for Car Trip start/target point ──
-  function openMapPicker(mode: 'start' | 'target' = 'start') {
-    const curLat = parseFloat(mode === 'start' ? startLat : targetLat);
-    const curLng = parseFloat(mode === 'start' ? startLng : targetLng);
+  // Update one stop's lat/lng (by index) and mark it manual so the Sites DB
+  // auto-fill effect leaves it alone from now on.
+  function setStopLatLng(idx: number, lat: string, lng: string) {
+    setStops(prev => prev.map((s, i) => i === idx ? { ...s, lat, lng, manual: true } : s));
+  }
+
+  // ── Map picker for Car Trip start point / a stop ──
+  // mode is 'start' for the start point, or the stop's index for a stop.
+  function openMapPicker(mode: 'start' | number = 'start') {
+    const cur = mode === 'start' ? { lat: startLat, lng: startLng } : { lat: stops[mode]?.lat || '', lng: stops[mode]?.lng || '' };
+    const curLat = parseFloat(cur.lat);
+    const curLng = parseFloat(cur.lng);
     const initLat = !isNaN(curLat) ? curLat : 33.3152;
     const initLng = !isNaN(curLng) ? curLng : 44.3661;
     setMapPickerMode(mode);
@@ -733,11 +773,9 @@ export default function DailyActivities() {
 
   function confirmMapPicker() {
     if (mapPickedLat == null || mapPickedLng == null) { setMapPickerOpen(false); return; }
-    if (mapPickerMode === 'target') {
-      targetManualRef.current = true;
-      setTargetLat(String(mapPickedLat.toFixed(6)));
-      setTargetLng(String(mapPickedLng.toFixed(6)));
-      setFieldErrors(fe => ({ ...fe, targetLat: '' }));
+    if (typeof mapPickerMode === 'number') {
+      setStopLatLng(mapPickerMode, String(mapPickedLat.toFixed(6)), String(mapPickedLng.toFixed(6)));
+      setFieldErrors(fe => ({ ...fe, [`stopLat${mapPickerMode}`]: '' }));
     } else {
       setStartLat(String(mapPickedLat.toFixed(6)));
       setStartLng(String(mapPickedLng.toFixed(6)));
@@ -802,18 +840,27 @@ export default function DailyActivities() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapPickerOpen]);
 
+  // Calculates the full route: start point → stop 1 → stop 2 → … → last
+  // stop, in Site ID tag order — same "sum the whole route" approach as the
+  // Route Planner for multi-site days. getRoadRoute() already accepts and
+  // sums an arbitrary number of waypoints, so a 1-stop trip and a 5-stop
+  // trip go through the exact same code path.
   async function calcCarTrip() {
     setTripCalcError('');
     const sLat = parseFloat(startLat);
     const sLng = parseFloat(startLng);
     if (isNaN(sLat) || isNaN(sLng)) { setTripCalcError(t('da_tripStartRequired')); return; }
-    const targetSite = siteTags[0] || siteInput.trim();
-    if (!targetSite) { setTripCalcError(t('da_siteRequired')); return; }
-    const destLat = parseFloat(targetLat);
-    const destLng = parseFloat(targetLng);
-    if (isNaN(destLat) || isNaN(destLng)) {
-      setTripCalcError(t('da_tripTargetRequired'));
-      return;
+    if (stops.length === 0) { setTripCalcError(t('da_siteRequired')); return; }
+
+    const legPoints: { latitude: number; longitude: number }[] = [{ latitude: sLat, longitude: sLng }];
+    for (const s of stops) {
+      const lat = parseFloat(s.lat);
+      const lng = parseFloat(s.lng);
+      if (isNaN(lat) || isNaN(lng)) {
+        setTripCalcError(t('da_tripTargetRequired'));
+        return;
+      }
+      legPoints.push({ latitude: lat, longitude: lng });
     }
 
     setTripCalculating(true);
@@ -821,9 +868,17 @@ export default function DailyActivities() {
     setTripCostIqd(null);
     setTripDistanceSource(null);
     try {
-      const road = await getRoadRoute([{ latitude: sLat, longitude: sLng }, { latitude: destLat, longitude: destLng }]);
-      const km = road ? road.distanceKm : haversineKm(sLat, sLng, destLat, destLng);
+      const road = await getRoadRoute(legPoints);
+      let km: number;
       const source: 'road' | 'straight' = road ? 'road' : 'straight';
+      if (road) {
+        km = road.distanceKm;
+      } else {
+        km = 0;
+        for (let i = 0; i < legPoints.length - 1; i++) {
+          km += haversineKm(legPoints[i].latitude, legPoints[i].longitude, legPoints[i + 1].latitude, legPoints[i + 1].longitude);
+        }
+      }
       const rate = getCarKmRate();
       const roundedKm = Math.round(km * 100) / 100;
       const cost = Math.round(roundedKm * rate);
@@ -877,9 +932,11 @@ export default function DailyActivities() {
       const sLat = parseFloat(startLat);
       const sLng = parseFloat(startLng);
       if (isNaN(sLat) || isNaN(sLng)) errs.startLat = t('da_tripStartRequired');
-      const tLat = parseFloat(targetLat);
-      const tLng = parseFloat(targetLng);
-      if (isNaN(tLat) || isNaN(tLng)) errs.targetLat = t('da_tripTargetRequired');
+      stops.forEach((s, i) => {
+        const lat = parseFloat(s.lat);
+        const lng = parseFloat(s.lng);
+        if (isNaN(lat) || isNaN(lng)) errs[`stopLat${i}`] = t('da_tripTargetRequired');
+      });
       if (tripDistanceKm == null || tripCostIqd == null) errs.tripCalc = t('da_tripCalcRequired');
     }
     return errs;
@@ -914,6 +971,15 @@ export default function DailyActivities() {
       ? withCarTripNote(notes.trim(), carName, driverName)
       : stripCarTripNote(notes.trim());
 
+    // Persist every stop (jsonb) plus, for backward compat with older
+    // reads/queries that only knew about a single destination, the last
+    // stop's coordinates in target_lat/target_lng (the final destination of
+    // the route).
+    const tripStopsPayload: TripStopSaved[] = carTripEnabled
+      ? stops.map(s => ({ site: s.site, lat: parseFloat(s.lat), lng: parseFloat(s.lng) })).filter(s => !isNaN(s.lat) && !isNaN(s.lng))
+      : [];
+    const lastStop = tripStopsPayload[tripStopsPayload.length - 1] || null;
+
     const v: FormVals = {
       date, project, site_id, governate: governate.trim(),
       activity_type: activityType, status, notes: finalNotes,
@@ -923,8 +989,9 @@ export default function DailyActivities() {
       start_point_name: carTripEnabled ? (startPointName.trim() || null) : null,
       start_lat: carTripEnabled && startLat ? parseFloat(startLat) : null,
       start_lng: carTripEnabled && startLng ? parseFloat(startLng) : null,
-      target_lat: carTripEnabled && targetLat ? parseFloat(targetLat) : null,
-      target_lng: carTripEnabled && targetLng ? parseFloat(targetLng) : null,
+      target_lat: lastStop ? lastStop.lat : null,
+      target_lng: lastStop ? lastStop.lng : null,
+      trip_stops: carTripEnabled ? tripStopsPayload : null,
       trip_distance_km: carTripEnabled ? tripDistanceKm : null,
       trip_rate_iqd: carTripEnabled && tripCostIqd != null ? getCarKmRate() : null,
       trip_cost_iqd: carTripEnabled ? tripCostIqd : null,
@@ -995,10 +1062,7 @@ export default function DailyActivities() {
     setStartPointName('');
     setStartLat('');
     setStartLng('');
-    targetManualRef.current = false;
-    setTargetLat('');
-    setTargetLng('');
-    setTargetSiteFound(null);
+    setStops([]);
     resetCarTripCalc();
   }
 
@@ -1010,7 +1074,8 @@ export default function DailyActivities() {
     setEditingId(a.id);
     setDate(a.date || today());
     setProject(a.project || projectNames[0] || '');
-    setSiteTags(String(a.site_id || '').split(',').map(s => s.trim()).filter(Boolean));
+    const siteTagsArr = String(a.site_id || '').split(',').map(s => s.trim()).filter(Boolean);
+    setSiteTags(siteTagsArr);
     setSiteInput('');
     setGovernate(a.governate || '');
     setActivityType(a.activity_type || ACTIVITY_TYPES[0]);
@@ -1025,13 +1090,20 @@ export default function DailyActivities() {
     setStartPointName(a.start_point_name || '');
     setStartLat(a.start_lat != null ? String(a.start_lat) : '');
     setStartLng(a.start_lng != null ? String(a.start_lng) : '');
-    // Treat a restored target point as "manual" so the Sites DB auto-fill
-    // effect doesn't overwrite it — the saved value is already correct,
-    // whether it originally came from Sites DB, manual entry, or the map.
-    targetManualRef.current = a.target_lat != null || a.target_lng != null;
-    setTargetLat(a.target_lat != null ? String(a.target_lat) : '');
-    setTargetLng(a.target_lng != null ? String(a.target_lng) : '');
-    setTargetSiteFound(null);
+    // Restore every saved stop as "manual" so the Sites DB auto-fill effect
+    // doesn't overwrite it — the saved value is already correct, whether it
+    // originally came from Sites DB, manual entry, or the map. Older rows
+    // saved before multi-stop only have a single target_lat/target_lng —
+    // seed that onto the first site tag and let any other tags auto-fill.
+    if (a.trip_stops && a.trip_stops.length > 0) {
+      setStops(a.trip_stops.map(s => ({ site: s.site, lat: String(s.lat), lng: String(s.lng), found: null, manual: true })));
+    } else if (a.target_lat != null && a.target_lng != null) {
+      setStops(siteTagsArr.map((site, i) => i === 0
+        ? { site, lat: String(a.target_lat), lng: String(a.target_lng), found: null, manual: true }
+        : { site, lat: '', lng: '', found: null, manual: false }));
+    } else {
+      setStops([]);
+    }
     setTripDistanceKm(a.trip_distance_km ?? null);
     setTripCostIqd(a.trip_cost_iqd ?? null);
     setTripDistanceSource((a.trip_distance_source as 'road' | 'straight' | null) ?? null);
@@ -1901,49 +1973,62 @@ export default function DailyActivities() {
                     </button>
                   </div>
 
-                  <div className={`${styles.tripPointSection} ${styles.tripPointSectionTarget}`}>
-                    <div className={styles.tripPointHeader}>
-                      <span className={`${styles.tripPointHeaderDot} ${styles.tripPointHeaderDotTarget}`} />
-                      {t('da_tripTargetPoint')}
-                    </div>
-                    {targetSiteFound === true && (
-                      <div className={`${styles.targetStatus} ${styles.targetStatusFound}`}>{t('da_tripTargetFoundInDb')}</div>
-                    )}
-                    {targetSiteFound === false && (
-                      <div className={`${styles.targetStatus} ${styles.targetStatusMissing}`}>{t('da_tripTargetNotInDb')}</div>
-                    )}
-                    <div className={styles.fieldsGrid}>
-                      <div className={styles.field}>
-                        <label>{t('da_tripTargetLat')} <span className={styles.req}>*</span></label>
-                        <input
-                          className={fieldErrors.targetLat ? styles.inputError : ''}
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="33.3152"
-                          value={targetLat}
-                          onChange={e => { targetManualRef.current = true; setTargetLat(e.target.value); setFieldErrors(fe => ({ ...fe, targetLat: '' })); resetCarTripCalc(); }}
-                        />
-                        {fieldErrors.targetLat && <span className={styles.fieldErrMsg}>{fieldErrors.targetLat}</span>}
+                  {stops.length === 0 && (
+                    <div className={`${styles.tripPointSection} ${styles.tripPointSectionTarget}`}>
+                      <div className={styles.tripPointHeader}>
+                        <span className={`${styles.tripPointHeaderDot} ${styles.tripPointHeaderDotTarget}`} />
+                        {t('da_tripTargetPoint')}
                       </div>
-                      <div className={styles.field}>
-                        <label>{t('da_tripTargetLng')} <span className={styles.req}>*</span></label>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="44.3661"
-                          value={targetLng}
-                          onChange={e => { targetManualRef.current = true; setTargetLng(e.target.value); resetCarTripCalc(); }}
-                        />
-                      </div>
+                      <div className={`${styles.targetStatus} ${styles.targetStatusMissing}`}>{t('da_siteRequired')}</div>
                     </div>
-                    <button type="button" className={styles.btnGhost} onClick={() => openMapPicker('target')}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5, verticalAlign: -2 }}>
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                      </svg>
-                      {t('da_tripPickOnMap')}
-                    </button>
-                  </div>
+                  )}
+                  {stops.map((stop, idx) => (
+                    <div key={stop.site} className={`${styles.tripPointSection} ${styles.tripPointSectionTarget}`}>
+                      <div className={styles.tripPointHeader}>
+                        <span className={`${styles.tripPointHeaderDot} ${styles.tripPointHeaderDotTarget}`} />
+                        {stops.length > 1
+                          ? `${t('da_tripTargetPoint')} ${idx + 1}/${stops.length} — ${stop.site}`
+                          : `${t('da_tripTargetPoint')} — ${stop.site}`}
+                      </div>
+                      {stop.found === true && (
+                        <div className={`${styles.targetStatus} ${styles.targetStatusFound}`}>{t('da_tripTargetFoundInDb')}</div>
+                      )}
+                      {stop.found === false && (
+                        <div className={`${styles.targetStatus} ${styles.targetStatusMissing}`}>{t('da_tripTargetNotInDb')}</div>
+                      )}
+                      <div className={styles.fieldsGrid}>
+                        <div className={styles.field}>
+                          <label>{t('da_tripTargetLat')} <span className={styles.req}>*</span></label>
+                          <input
+                            className={fieldErrors[`stopLat${idx}`] ? styles.inputError : ''}
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="33.3152"
+                            value={stop.lat}
+                            onChange={e => { setStopLatLng(idx, e.target.value, stop.lng); setFieldErrors(fe => ({ ...fe, [`stopLat${idx}`]: '' })); resetCarTripCalc(); }}
+                          />
+                          {fieldErrors[`stopLat${idx}`] && <span className={styles.fieldErrMsg}>{fieldErrors[`stopLat${idx}`]}</span>}
+                        </div>
+                        <div className={styles.field}>
+                          <label>{t('da_tripTargetLng')} <span className={styles.req}>*</span></label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="44.3661"
+                            value={stop.lng}
+                            onChange={e => { setStopLatLng(idx, stop.lat, e.target.value); resetCarTripCalc(); }}
+                          />
+                        </div>
+                      </div>
+                      <button type="button" className={styles.btnGhost} onClick={() => openMapPicker(idx)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5, verticalAlign: -2 }}>
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                          <circle cx="12" cy="10" r="3"/>
+                        </svg>
+                        {t('da_tripPickOnMap')}
+                      </button>
+                    </div>
+                  ))}
 
                   <div className={styles.tripCalcRow}>
                     <button type="button" className={styles.btnPrimary} onClick={calcCarTrip} disabled={tripCalculating}>
@@ -2397,7 +2482,9 @@ export default function DailyActivities() {
         <div className={styles.modalOverlay} onClick={e => { if (e.target === e.currentTarget) setMapPickerOpen(false); }}>
           <div className={styles.modal} style={{ width: 560 }}>
             <div className={styles.modalTitle}>
-              {mapPickerMode === 'target' ? t('da_tripPickTargetOnMap') : t('da_tripPickOnMap')}
+              {typeof mapPickerMode === 'number'
+                ? `${t('da_tripPickTargetOnMap')}${stops[mapPickerMode]?.site ? ` — ${stops[mapPickerMode].site}` : ''}`
+                : t('da_tripPickOnMap')}
             </div>
             <div className={styles.modalSub}>{t('da_tripPickOnMapHint')}</div>
 
