@@ -67,6 +67,7 @@ interface DailyActivity {
   trip_rate_iqd: number | null;
   trip_cost_iqd: number | null;
   trip_distance_source: string | null;
+  round_trip: boolean | null;
 }
 
 // A single destination leg of a car trip route, one per Site ID tag, in
@@ -168,6 +169,10 @@ interface WaTripDetails {
    *  with no per-leg figures — covers activities saved before this field
    *  existed. */
   legs: { distanceKm: number; minutes: number | null }[] | null;
+  /** True when the route includes a final leg back from the last stop to
+   *  the start point (see calcCarTrip()) — used to append the start label
+   *  again at the end of the Route line and show a "round trip" note. */
+  roundTrip: boolean;
 }
 
 function buildWaMsg(
@@ -192,14 +197,20 @@ function buildWaMsg(
 
   const tripBlock = trip && (trip.carType || trip.driverName)
     ? (() => {
-        const points = [trip.startPointName?.trim() || 'Start', ...trip.stopSites];
+        const startLabel = trip.startPointName?.trim() || 'Start';
+        // Round trip: the final leg returns to the start point, so tack the
+        // start label back on as the last waypoint — matches the extra leg
+        // calcCarTrip() adds to trip_legs when roundTrip is on.
+        const points = trip.roundTrip
+          ? [startLabel, ...trip.stopSites, startLabel]
+          : [startLabel, ...trip.stopSites];
         const legsValid = !!trip.legs && trip.legs.length === points.length - 1;
         const routeSection = legsValid
           ? `\n◆ *Route:*\n${trip.legs!.map((leg, i) => {
               const timePart = leg.minutes != null ? `, ${Math.round(leg.minutes)} min` : '';
               return `  ${points[i]} → ${points[i + 1]}  (${leg.distanceKm.toFixed(2)} km${timePart})`;
             }).join('\n')}`
-          : `\n◆ *Route:* ${points.join(' → ')}`;
+          : `\n◆ *Route:* ${points.join(' → ')}${trip.roundTrip ? ' (round trip)' : ''}`;
         const distLine = trip.distanceKm != null
           ? `\n◆ *Total Distance:* ${trip.distanceKm.toFixed(2)} km${trip.source ? ` (${trip.source === 'road' ? 'Road' : 'Straight-line'})` : ''}`
           : '';
@@ -357,6 +368,7 @@ interface FormVals {
   trip_rate_iqd: number | null;
   trip_cost_iqd: number | null;
   trip_distance_source: string | null;
+  round_trip: boolean | null;
 }
 
 export default function DailyActivities() {
@@ -419,6 +431,11 @@ export default function DailyActivities() {
   const [tripCostIqd, setTripCostIqd] = useState<number | null>(null);
   const [tripDistanceSource, setTripDistanceSource] = useState<'road' | 'straight' | null>(null);
   const [tripLegs, setTripLegs] = useState<TripLegSaved[] | null>(null);
+  // Trip setting (not a calc result) — whether the route includes a final
+  // leg back from the last stop to the start point. Persists across
+  // recalculations, only reset on a brand-new activity (resetForm) or
+  // restored from a saved one (startEdit).
+  const [roundTrip, setRoundTrip] = useState(false);
   const [tripCalculating, setTripCalculating] = useState(false);
   const [tripCalcError, setTripCalcError] = useState('');
 
@@ -906,6 +923,10 @@ export default function DailyActivities() {
       }
       legPoints.push({ latitude: lat, longitude: lng });
     }
+    // Round trip: tack the start point back on as a final waypoint, so the
+    // return leg goes through the exact same road/straight-line summation
+    // below as every other leg — no separate calculation path needed.
+    if (roundTrip) legPoints.push({ latitude: sLat, longitude: sLng });
 
     setTripCalculating(true);
     setTripDistanceKm(null);
@@ -1048,6 +1069,7 @@ export default function DailyActivities() {
       trip_rate_iqd: carTripEnabled && tripCostIqd != null ? getCarKmRate() : null,
       trip_cost_iqd: carTripEnabled ? tripCostIqd : null,
       trip_distance_source: carTripEnabled ? tripDistanceSource : null,
+      round_trip: carTripEnabled ? roundTrip : null,
     };
 
     const byUser = currentUser?.full_name || currentUser?.username || '';
@@ -1115,6 +1137,7 @@ export default function DailyActivities() {
     setStartLat('');
     setStartLng('');
     setStops([]);
+    setRoundTrip(false);
     resetCarTripCalc();
   }
 
@@ -1163,6 +1186,7 @@ export default function DailyActivities() {
     setTripCostIqd(a.trip_cost_iqd ?? null);
     setTripDistanceSource((a.trip_distance_source as 'road' | 'straight' | null) ?? null);
     setTripLegs(a.trip_legs && a.trip_legs.length ? a.trip_legs : null);
+    setRoundTrip(!!a.round_trip);
     setTripCalcError('');
     formCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     showToast(t('da_editingNotice'), true);
@@ -1216,6 +1240,7 @@ export default function DailyActivities() {
           rateIqd: tripCostIqd != null ? getCarKmRate() : null,
           source: tripDistanceSource,
           legs: tripLegs,
+          roundTrip,
         }
       : null;
     const msg = buildWaMsg(date, project, sectionLabel, allTags.join(', '), governate, memberNames, activityType, status, stripCarTripNote(notes), trip);
@@ -1240,6 +1265,7 @@ export default function DailyActivities() {
           rateIqd: a.trip_rate_iqd ?? null,
           source: (a.trip_distance_source as 'road' | 'straight' | null) ?? null,
           legs: a.trip_legs && a.trip_legs.length ? a.trip_legs : null,
+          roundTrip: !!a.round_trip,
         }
       : null;
     const msg = buildWaMsg(a.date, a.project, '', a.site_id || '', a.governate || '', teamNames, a.activity_type || '', a.status || '', stripCarTripNote(a.notes || ''), trip);
@@ -2115,6 +2141,15 @@ export default function DailyActivities() {
                     </div>
                   ))}
 
+                  <label className={styles.roundTripToggle}>
+                    <input
+                      type="checkbox"
+                      checked={roundTrip}
+                      onChange={e => { setRoundTrip(e.target.checked); resetCarTripCalc(); }}
+                    />
+                    <span>{t('da_tripRoundTrip')}</span>
+                  </label>
+
                   <div className={styles.tripCalcRow}>
                     <button type="button" className={styles.btnPrimary} onClick={calcCarTrip} disabled={tripCalculating}>
                       {tripCalculating ? t('da_tripCalculating') : t('da_tripCalculate')}
@@ -2125,6 +2160,12 @@ export default function DailyActivities() {
 
                   {tripDistanceKm != null && tripCostIqd != null && (
                     <div className={styles.tripResultBox}>
+                      {roundTrip && (
+                        <div className={styles.tripResultRow}>
+                          <span className={styles.tripResultLabel}>{t('da_tripRoundTrip')}</span>
+                          <span className={styles.tripResultValue}>{t('da_tripRoundTripIncluded')}</span>
+                        </div>
+                      )}
                       <div className={styles.tripResultRow}>
                         <span className={styles.tripResultLabel}>{t('da_tripDistance')}</span>
                         <span className={styles.tripResultValue}>{tripDistanceKm.toFixed(2)} km</span>
