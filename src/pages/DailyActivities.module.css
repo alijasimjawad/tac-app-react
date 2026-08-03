@@ -1036,20 +1036,43 @@
   text-align: right;
 }
 
-/* ── Target Point sub-section ── */
-.tripTargetSection {
+/* ── Start/Target Point sub-sections ── */
+.tripPointSection {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
-  padding: 12px;
-  border: 1.5px dashed var(--border);
+  padding: 14px;
+  background: var(--slate-50, #f8fafc);
+  border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
-  margin-top: 4px;
 }
-.tripTargetHeader {
+.tripPointSection .fieldsGrid {
+  width: 100%;
+}
+.tripPointSection + .tripPointSection {
+  margin-top: 12px;
+}
+.tripPointSectionTarget {
+  border-style: dashed;
+}
+.tripPointHeader {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tripPointHeaderDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.tripPointHeaderDotTarget {
+  background: var(--amber-600);
 }
 .targetStatus {
   font-size: 11.5px;

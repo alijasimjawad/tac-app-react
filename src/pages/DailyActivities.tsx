@@ -1842,51 +1842,70 @@ export default function DailyActivities() {
                       </select>
                       {fieldErrors.driverId && <span className={styles.fieldErrMsg}>{fieldErrors.driverId}</span>}
                     </div>
-                    <div className={styles.field}>
-                      <label>{t('da_tripSavedPoint')}</label>
-                      <select
-                        value={startPointId}
-                        onChange={e => { onStartPointChange(e.target.value); resetCarTripCalc(); }}
-                      >
-                        <option value="">{t('da_tripSavedPointOptional')}</option>
-                        {savedPoints.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    </div>
-                    <div className={styles.field}>
-                      <label>{t('da_tripStartName')}</label>
-                      <input
-                        type="text"
-                        placeholder={t('da_tripStartNamePh')}
-                        value={startPointName}
-                        onChange={e => setStartPointName(e.target.value)}
-                      />
-                    </div>
-                    <div className={styles.field}>
-                      <label>{t('da_tripStartLat')} <span className={styles.req}>*</span></label>
-                      <input
-                        className={fieldErrors.startLat ? styles.inputError : ''}
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="33.3152"
-                        value={startLat}
-                        onChange={e => { setStartLat(e.target.value); setFieldErrors(fe => ({ ...fe, startLat: '' })); resetCarTripCalc(); }}
-                      />
-                      {fieldErrors.startLat && <span className={styles.fieldErrMsg}>{fieldErrors.startLat}</span>}
-                    </div>
-                    <div className={styles.field}>
-                      <label>{t('da_tripStartLng')} <span className={styles.req}>*</span></label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="44.3661"
-                        value={startLng}
-                        onChange={e => { setStartLng(e.target.value); resetCarTripCalc(); }}
-                      />
-                    </div>
                   </div>
 
-                  <div className={styles.tripTargetSection}>
-                    <div className={styles.tripTargetHeader}>{t('da_tripTargetPoint')}</div>
+                  <div className={styles.tripPointSection}>
+                    <div className={styles.tripPointHeader}>
+                      <span className={styles.tripPointHeaderDot} />
+                      {t('da_tripStartPoint')}
+                    </div>
+                    <div className={styles.fieldsGrid}>
+                      <div className={styles.field}>
+                        <label>{t('da_tripSavedPoint')}</label>
+                        <select
+                          value={startPointId}
+                          onChange={e => { onStartPointChange(e.target.value); resetCarTripCalc(); }}
+                        >
+                          <option value="">{t('da_tripSavedPointOptional')}</option>
+                          {savedPoints.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                      <div className={styles.field}>
+                        <label>{t('da_tripStartName')}</label>
+                        <input
+                          type="text"
+                          placeholder={t('da_tripStartNamePh')}
+                          value={startPointName}
+                          onChange={e => setStartPointName(e.target.value)}
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <label>{t('da_tripStartLat')} <span className={styles.req}>*</span></label>
+                        <input
+                          className={fieldErrors.startLat ? styles.inputError : ''}
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="33.3152"
+                          value={startLat}
+                          onChange={e => { setStartLat(e.target.value); setFieldErrors(fe => ({ ...fe, startLat: '' })); resetCarTripCalc(); }}
+                        />
+                        {fieldErrors.startLat && <span className={styles.fieldErrMsg}>{fieldErrors.startLat}</span>}
+                      </div>
+                      <div className={styles.field}>
+                        <label>{t('da_tripStartLng')} <span className={styles.req}>*</span></label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="44.3661"
+                          value={startLng}
+                          onChange={e => { setStartLng(e.target.value); resetCarTripCalc(); }}
+                        />
+                      </div>
+                    </div>
+                    <button type="button" className={styles.btnGhost} onClick={() => openMapPicker('start')}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5, verticalAlign: -2 }}>
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      {t('da_tripPickOnMap')}
+                    </button>
+                  </div>
+
+                  <div className={`${styles.tripPointSection} ${styles.tripPointSectionTarget}`}>
+                    <div className={styles.tripPointHeader}>
+                      <span className={`${styles.tripPointHeaderDot} ${styles.tripPointHeaderDotTarget}`} />
+                      {t('da_tripTargetPoint')}
+                    </div>
                     {targetSiteFound === true && (
                       <div className={`${styles.targetStatus} ${styles.targetStatusFound}`}>{t('da_tripTargetFoundInDb')}</div>
                     )}
@@ -1927,14 +1946,7 @@ export default function DailyActivities() {
                   </div>
 
                   <div className={styles.tripCalcRow}>
-                    <button type="button" className={styles.btnGhost} onClick={() => openMapPicker('start')}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 5, verticalAlign: -2 }}>
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                      </svg>
-                      {t('da_tripPickOnMap')}
-                    </button>
-                    <button type="button" className={styles.btnGhost} onClick={calcCarTrip} disabled={tripCalculating}>
+                    <button type="button" className={styles.btnPrimary} onClick={calcCarTrip} disabled={tripCalculating}>
                       {tripCalculating ? t('da_tripCalculating') : t('da_tripCalculate')}
                     </button>
                     {fieldErrors.tripCalc && <span className={styles.fieldErrMsg}>{fieldErrors.tripCalc}</span>}
