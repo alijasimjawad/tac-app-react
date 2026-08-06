@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useProject } from '../context/ProjectContext';
 import { useTranslation } from 'react-i18next';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import { ensureProjectsLoaded, getProjectKeyToNameMap } from '../lib/projectsCache';
@@ -138,6 +139,7 @@ function parseToDateInput(v: string): string {
 export default function NetworkScopes() {
   const { proj, sec } = useParams<{ proj: string; sec: string }>();
   const { hasPerm, currentUser } = useAuth();
+  const { selectedProjectId } = useProject();
   const { t } = useTranslation();
 
   // Grid data
@@ -221,11 +223,17 @@ export default function NetworkScopes() {
       c => !LEGACY_DEFAULT_COLS.has(c) || customCols.has(c),
     );
 
-    const { data: rowData, error: rowErr } = await supabase
+    // The scopes/sections tree (secMeta above) is always shown regardless of
+    // the selected capex project/year — only the row data within a section
+    // is filtered, so switching projects shows the same section with
+    // different (or no) rows.
+    let rowQuery = supabase
       .from('rows')
       .select('id, data, row_order')
       .eq('section_id', secMeta.id)
       .order('row_order', { ascending: true });
+    if (selectedProjectId) rowQuery = rowQuery.eq('capex_project_id', selectedProjectId);
+    const { data: rowData, error: rowErr } = await rowQuery;
 
     if (rowErr) { setError(rowErr.message); setLoading(false); return; }
 
@@ -237,7 +245,7 @@ export default function NetworkScopes() {
     setColumns(cols);
     setRows(gridRows);
     setLoading(false);
-  }, [proj, sec]);
+  }, [proj, sec, selectedProjectId]);
 
   useEffect(() => {
     setDropFilters({});
@@ -306,8 +314,10 @@ export default function NetworkScopes() {
 
     let saveErr: { message: string } | null = null;
     if (modal.rowId === null) {
+      // New sites are stamped with the currently-selected capex
+      // project/year so they only show up under that selection.
       const { error } = await supabase.from('rows').insert({
-        section_id: secMeta.id, data, row_order: rows.length,
+        section_id: secMeta.id, data, row_order: rows.length, capex_project_id: selectedProjectId,
       });
       saveErr = error;
     } else {
@@ -456,10 +466,13 @@ export default function NetworkScopes() {
       const { error: delErr } = await supabase.from('rows').delete().eq('section_id', secMeta.id);
       if (delErr) throw new Error('Row delete failed: ' + delErr.message);
 
+      // Imported rows are stamped with the currently-selected capex
+      // project/year, same as manually-added sites.
       const toInsert = allRowCells.map((cells, i) => ({
         section_id: secMeta.id,
         data: Object.fromEntries(finalHeaders.map((col, ci) => [col, cells[ci] ?? ''])),
         row_order: i,
+        capex_project_id: selectedProjectId,
       }));
       for (let i = 0; i < toInsert.length; i += 500) {
         const { error: insErr } = await supabase.from('rows').insert(toInsert.slice(i, i + 500));

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useProject } from '../context/ProjectContext';
 import { ensureSectionsLoaded, getSections, type SectionMeta } from '../lib/sectionsCache';
 import { PROJ_NAMES, SEC_LABELS } from './NetworkScopes';
 import styles from './SiteLookup.module.css';
@@ -561,6 +562,7 @@ function ResultsTable({ results, onView }: { results: MatchResult[]; onView: (r:
 
 export default function SiteLookup() {
   const { hasPerm } = useAuth();
+  const { selectedProjectId } = useProject();
   const navigate = useNavigate();
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -656,10 +658,14 @@ export default function SiteLookup() {
 
       const rowsBySecId: Record<string, Record<string, string>[]> = {};
       if (sectionIds.length > 0) {
-        const { data, error: dbErr } = await supabase
+        // Site Lookup searches only within the selected capex project/year;
+        // the sections/scopes list above stays unfiltered.
+        let rowsQuery = supabase
           .from('rows')
           .select('section_id, data')
           .in('section_id', sectionIds);
+        if (selectedProjectId) rowsQuery = rowsQuery.eq('capex_project_id', selectedProjectId);
+        const { data, error: dbErr } = await rowsQuery;
         if (dbErr) throw dbErr;
         for (const r of data ?? []) {
           if (!rowsBySecId[r.section_id]) rowsBySecId[r.section_id] = [];

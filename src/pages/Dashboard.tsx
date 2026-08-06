@@ -723,21 +723,20 @@ export default function Dashboard() {
     try {
       await Promise.all([ensureSectionsLoaded(), ensureProjectsLoaded()]);
       const allSections    = getSections();
-      // Top-bar project selector: a section with no capex_project_id is
-      // "unassigned" and stays visible under every capex project, so the
-      // dashboard doesn't change for anyone until sections are explicitly
-      // tagged to a capex project (see react_migration_phase22_sql.sql).
-      const activeSections = allSections.filter(
-        s => !s.is_deleted && (!s.capex_project_id || !selectedProjectId || s.capex_project_id === selectedProjectId),
-      );
-      const sectionIds     = activeSections.map(s => s.id).filter(Boolean);
+      // Top-bar project selector: the scopes/sections tree itself is never
+      // filtered by the selected capex project — every section is always
+      // shown. Only the underlying row data is filtered, so switching
+      // projects shows the same sections with different (or no) rows.
+      const sectionIds     = allSections.filter(s => !s.is_deleted).map(s => s.id).filter(Boolean);
       const rowsBySecId: Record<string, Record<string, string>[]> = {};
 
       if (sectionIds.length > 0) {
-        const { data: rowsData, error: rowsError } = await supabase
+        let rowsQuery = supabase
           .from('rows')
           .select('section_id, data')
           .in('section_id', sectionIds);
+        if (selectedProjectId) rowsQuery = rowsQuery.eq('capex_project_id', selectedProjectId);
+        const { data: rowsData, error: rowsError } = await rowsQuery;
 
         if (rowsError) throw rowsError;
 
