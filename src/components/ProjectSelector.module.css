@@ -85,20 +85,52 @@
 .item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
   width: 100%;
-  padding: 8px 10px;
-  border: none;
-  background: transparent;
   border-radius: 8px;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
   transition: background .1s ease;
 }
 .item:hover { background: #F8FAFC; }
 .itemSelected { background: #EFF6FF; }
 .itemSelected:hover { background: #DBEAFE; }
+
+.itemMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-right: 6px;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94A3B8;
+  cursor: pointer;
+  transition: background .1s ease, color .1s ease;
+}
+.iconBtn:hover:not(:disabled) { background: #E2E8F0; color: #475569; }
+.iconBtn:disabled { opacity: .35; cursor: not-allowed; }
 
 .itemCheck {
   width: 13px;
@@ -132,6 +164,68 @@
   text-transform: uppercase;
   letter-spacing: .02em;
 }
+
+/* ── Inline rename / delete-confirm rows ─────────────────────────────────────── */
+
+.editRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.cancelBtn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 7px;
+  background: #fff;
+  color: #64748B;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cancelBtn:hover:not(:disabled) { background: #F1F5F9; }
+.cancelBtn:disabled { opacity: .55; cursor: not-allowed; }
+
+.deleteConfirmRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin: 2px 0;
+  border-radius: 8px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+}
+
+.deleteConfirmText {
+  font-size: 12px;
+  line-height: 1.4;
+  color: #991B1B;
+}
+
+.deleteConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.dangerBtn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 7px;
+  background: #DC2626;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dangerBtn:hover:not(:disabled) { background: #B91C1C; }
+.dangerBtn:disabled { opacity: .55; cursor: not-allowed; }
 
 /* ── Footer: manage/new link + inline add form ───────────────────────────────── */
 

@@ -28,18 +28,48 @@ const PlusIcon = () => (
   </svg>
 );
 
+const PencilIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export default function ProjectSelector() {
-  const { projects, loading, selectedProjectId, selectedProject, setSelectedProjectId, createProject } = useProject();
+  const {
+    projects, loading, selectedProjectId, selectedProject,
+    setSelectedProjectId, createProject, renameProject, deleteProject,
+  } = useProject();
 
   const [open,       setOpen]       = useState(false);
   const [adding,     setAdding]     = useState(false);
   const [newName,    setNewName]    = useState('');
   const [saving,     setSaving]     = useState(false);
 
+  const [editingId,  setEditingId]  = useState<string | null>(null);
+  const [editName,   setEditName]   = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting,        setDeleting]        = useState(false);
+
   const wrapRef  = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  function resetRowState() {
+    setEditingId(null);
+    setEditName('');
+    setConfirmDeleteId(null);
+  }
 
   // Outside-click to close — same pattern as NotificationBell.tsx
   useEffect(() => {
@@ -49,6 +79,7 @@ export default function ProjectSelector() {
         setOpen(false);
         setAdding(false);
         setNewName('');
+        resetRowState();
       }
     }
     document.addEventListener('mousedown', onDown);
@@ -58,6 +89,10 @@ export default function ProjectSelector() {
   useEffect(() => {
     if (adding) inputRef.current?.focus();
   }, [adding]);
+
+  useEffect(() => {
+    if (editingId) editInputRef.current?.focus();
+  }, [editingId]);
 
   if (loading && projects.length === 0) return null; // nothing to pick yet
 
@@ -72,6 +107,37 @@ export default function ProjectSelector() {
       setNewName('');
       setOpen(false);
     }
+  }
+
+  function startEdit(e: React.MouseEvent, id: string, currentName: string) {
+    e.stopPropagation();
+    setConfirmDeleteId(null);
+    setEditingId(id);
+    setEditName(currentName);
+  }
+
+  async function handleRename() {
+    if (!editingId || editSaving) return;
+    const name = editName.trim();
+    if (!name) return;
+    setEditSaving(true);
+    const ok = await renameProject(editingId, name);
+    setEditSaving(false);
+    if (ok) resetRowState();
+  }
+
+  function startDelete(e: React.MouseEvent, id: string) {
+    e.stopPropagation();
+    setEditingId(null);
+    setConfirmDeleteId(id);
+  }
+
+  async function handleDelete(id: string) {
+    if (deleting) return;
+    setDeleting(true);
+    const ok = await deleteProject(id);
+    setDeleting(false);
+    if (ok) resetRowState();
   }
 
   return (
@@ -101,18 +167,78 @@ export default function ProjectSelector() {
               <div className={styles.empty}>No projects yet</div>
             ) : projects.map(p => {
               const isSelected = p.id === selectedProjectId;
+
+              if (editingId === p.id) {
+                return (
+                  <div key={p.id} className={styles.editRow}>
+                    <input
+                      ref={editInputRef}
+                      type="text"
+                      className={styles.addInput}
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') void handleRename();
+                        if (e.key === 'Escape') resetRowState();
+                      }}
+                      disabled={editSaving}
+                    />
+                    <button type="button" className={styles.addSaveBtn} onClick={() => void handleRename()} disabled={editSaving || !editName.trim()}>
+                      {editSaving ? '…' : 'Save'}
+                    </button>
+                    <button type="button" className={styles.cancelBtn} onClick={resetRowState} disabled={editSaving}>
+                      Cancel
+                    </button>
+                  </div>
+                );
+              }
+
+              if (confirmDeleteId === p.id) {
+                return (
+                  <div key={p.id} className={styles.deleteConfirmRow}>
+                    <span className={styles.deleteConfirmText}>
+                      Delete "{p.name}"? Its site data stays but won't be tied to any project.
+                    </span>
+                    <div className={styles.deleteConfirmActions}>
+                      <button type="button" className={styles.cancelBtn} onClick={resetRowState} disabled={deleting}>
+                        Cancel
+                      </button>
+                      <button type="button" className={styles.dangerBtn} onClick={() => void handleDelete(p.id)} disabled={deleting}>
+                        {deleting ? '…' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="listitem"
-                  className={`${styles.item} ${isSelected ? styles.itemSelected : ''}`}
-                  onClick={() => { setSelectedProjectId(p.id); setOpen(false); }}
-                >
-                  <span className={styles.itemCheck}>{isSelected && <CheckIcon />}</span>
-                  <span className={styles.itemName}>{p.name}</span>
-                  {p.is_current && <span className={styles.currentBadge}>current</span>}
-                </button>
+                <div key={p.id} className={`${styles.item} ${isSelected ? styles.itemSelected : ''}`}>
+                  <button
+                    type="button"
+                    role="listitem"
+                    className={styles.itemMain}
+                    onClick={() => { setSelectedProjectId(p.id); setOpen(false); }}
+                  >
+                    <span className={styles.itemCheck}>{isSelected && <CheckIcon />}</span>
+                    <span className={styles.itemName}>{p.name}</span>
+                    {p.is_current && <span className={styles.currentBadge}>current</span>}
+                  </button>
+                  <span className={styles.itemActions}>
+                    <button type="button" className={styles.iconBtn} onClick={e => startEdit(e, p.id, p.name)} aria-label={`Rename ${p.name}`} title="Rename">
+                      <PencilIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      onClick={e => startDelete(e, p.id)}
+                      aria-label={`Delete ${p.name}`}
+                      title={projects.length <= 1 ? "Can't delete the only project" : 'Delete'}
+                      disabled={projects.length <= 1}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </span>
+                </div>
               );
             })}
           </div>

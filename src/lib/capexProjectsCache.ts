@@ -57,3 +57,31 @@ export async function addCapexProject(name: string): Promise<CapexProject | null
   await ensureCapexProjectsLoaded();
   return data as CapexProject;
 }
+
+/** Renames a capex project row and refreshes the local cache. */
+export async function renameCapexProject(id: string, name: string): Promise<boolean> {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  const { error } = await supabase
+    .from('capex_projects')
+    .update({ name: trimmed })
+    .eq('id', id);
+  if (error) return false;
+  invalidateCapexProjects();
+  await ensureCapexProjectsLoaded();
+  return true;
+}
+
+/** Deletes a capex project row. Rows tagged to it are NOT deleted — the
+ *  `rows.capex_project_id` FK is ON DELETE SET NULL, so that site data
+ *  simply becomes untagged rather than being destroyed. */
+export async function deleteCapexProject(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('capex_projects')
+    .delete()
+    .eq('id', id);
+  if (error) return false;
+  invalidateCapexProjects();
+  await ensureCapexProjectsLoaded();
+  return true;
+}

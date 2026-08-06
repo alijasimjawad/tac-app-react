@@ -6,6 +6,8 @@ import {
   getCapexProjects,
   getDefaultCapexProject,
   addCapexProject,
+  renameCapexProject,
+  deleteCapexProject,
   type CapexProject,
 } from '../lib/capexProjectsCache';
 
@@ -19,6 +21,8 @@ interface ProjectContextValue {
   selectedProject: CapexProject | null;
   setSelectedProjectId: (id: string) => void;
   createProject: (name: string) => Promise<CapexProject | null>;
+  renameProject: (id: string, name: string) => Promise<boolean>;
+  deleteProject: (id: string) => Promise<boolean>;
 }
 
 const ProjectContext = createContext<ProjectContextValue | null>(null);
@@ -81,11 +85,35 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     return created;
   }, [setSelectedProjectId]);
 
+  const renameProject = useCallback(async (id: string, name: string) => {
+    const ok = await renameCapexProject(id, name);
+    if (ok) setProjects(getCapexProjects());
+    return ok;
+  }, []);
+
+  const deleteProject = useCallback(async (id: string) => {
+    const ok = await deleteCapexProject(id);
+    if (ok) {
+      const remaining = getCapexProjects();
+      setProjects(remaining);
+      // If the deleted project was the active selection, fall back to
+      // whichever one is flagged is_current, or the first remaining one.
+      if (selectedProjectId === id) {
+        const next = getDefaultCapexProject()?.id ?? remaining[0]?.id ?? null;
+        if (next) setSelectedProjectId(next);
+      }
+    }
+    return ok;
+  }, [selectedProjectId, setSelectedProjectId]);
+
   const selectedProject = projects.find(p => p.id === selectedProjectId) ?? null;
 
   return (
     <ProjectContext.Provider
-      value={{ projects, loading, selectedProjectId, selectedProject, setSelectedProjectId, createProject }}
+      value={{
+        projects, loading, selectedProjectId, selectedProject,
+        setSelectedProjectId, createProject, renameProject, deleteProject,
+      }}
     >
       {children}
     </ProjectContext.Provider>
