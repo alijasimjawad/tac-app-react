@@ -12,6 +12,7 @@ import {
   fmtTime,
   initials,
   getGps,
+  getLiveGps,
   buildTimeline,
   pickPrimaryPosition,
 } from '../lib/tripTypes';
@@ -260,17 +261,15 @@ export default function TripDetailModal({ tripId, memberId, currentUser, onClose
     if (!mid) return;
     const myPp = fresh.find(p => p.member_id === mid);
     if (myPp && ['joined', 'departed'].includes(myPp.status)) {
-      navigator.geolocation?.getCurrentPosition(
-        pos => {
+      getLiveGps()
+        .then(pos => {
           const { latitude, longitude } = pos.coords;
           supabase.from('trip_participants').update({
             last_lat: latitude, last_lng: longitude, last_location_at: new Date().toISOString(),
           }).eq('id', myPp.id).then(() => {});
           void drawRouteToSite(latitude, longitude);
-        },
-        () => {},
-        { timeout: 8000, enableHighAccuracy: true },
-      );
+        })
+        .catch(() => {});
     }
   }, [tripId]);
 

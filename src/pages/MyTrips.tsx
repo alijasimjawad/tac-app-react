@@ -14,6 +14,7 @@ import {
   initials,
   buildTimeline,
   pickPrimaryPosition,
+  getLiveGps,
 } from '../lib/tripTypes';
 import { haversineKm } from '../lib/sitesNearest';
 import { getRoadRoute } from '../lib/roadRouting';
@@ -744,16 +745,14 @@ export default function MyTrips() {
     if (!memberId) return;
     const myPp = fresh.find(p => p.member_id === memberId);
     if (myPp && ['joined', 'departed'].includes(myPp.status)) {
-      navigator.geolocation?.getCurrentPosition(
-        pos => {
+      getLiveGps()
+        .then(pos => {
           const { latitude, longitude } = pos.coords;
           void supabase.from('trip_participants').update({
             last_lat: latitude, last_lng: longitude, last_location_at: new Date().toISOString(),
           }).eq('id', myPp.id);
-        },
-        () => {},
-        { timeout: 8000, enableHighAccuracy: true },
-      );
+        })
+        .catch(() => {});
     }
   }, [activeTripId, memberId]);
 

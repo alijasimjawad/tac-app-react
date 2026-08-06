@@ -58,6 +58,29 @@ export function getGps(): Promise<GeolocationPosition> {
   );
 }
 
+/** Best-effort location fetch for the 10s live-tracking polls (not the
+ *  explicit Start/Join actions — those use getGps() and show the user an
+ *  error if it fails). Tries a high-accuracy GPS fix first with a short
+ *  timeout, then falls back to a lower-accuracy (network/wifi) fix if that
+ *  times out or errors — high-accuracy fixes can easily take longer than
+ *  one 10s poll cycle while driving or with a weak signal, and without this
+ *  fallback the failure is silent, leaving a participant's marker frozen at
+ *  whatever position was captured when they started/joined the trip. */
+export function getLiveGps(): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(new Error('Geolocation not available')); return; }
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      () => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 8000, enableHighAccuracy: false, maximumAge: 30000,
+        });
+      },
+      { timeout: 6000, enableHighAccuracy: true },
+    );
+  });
+}
+
 /** Picks the most-recently-updated joined/departed participant's live position. */
 export function pickPrimaryPosition(pp: TripParticipant[]): { lat: number; lng: number } | null {
   const candidates = pp.filter(p => p.last_lat != null && p.last_lng != null && ['joined', 'departed'].includes(p.status));
