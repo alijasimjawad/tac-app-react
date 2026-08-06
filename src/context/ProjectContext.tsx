@@ -8,6 +8,7 @@ import {
   addCapexProject,
   renameCapexProject,
   deleteCapexProject,
+  setCurrentCapexProject,
   type CapexProject,
 } from '../lib/capexProjectsCache';
 
@@ -64,6 +65,13 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const setSelectedProjectId = useCallback((id: string) => {
     setSelectedProjectIdState(id);
     persist(id);
+    // "Current" tracks whichever project is selected — org-wide, so the
+    // badge follows the most recent explicit pick from anyone's dropdown.
+    // Fire-and-forget: selection feels instant, the badge updates once the
+    // flag change round-trips.
+    void setCurrentCapexProject(id).then(ok => {
+      if (ok) setProjects(getCapexProjects());
+    });
   }, [persist]);
 
   // Keeps the URL in sync once the initial project resolves — covers the

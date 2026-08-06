@@ -85,3 +85,24 @@ export async function deleteCapexProject(id: string): Promise<boolean> {
   await ensureCapexProjectsLoaded();
   return true;
 }
+
+/** Marks a project as "current" (org-wide, shown as the CURRENT badge for
+ *  every user) and clears the flag on every other project. Called whenever
+ *  someone explicitly picks a project in the top-bar dropdown, so "current"
+ *  always tracks the most recently selected project rather than being a
+ *  separately-managed setting. */
+export async function setCurrentCapexProject(id: string): Promise<boolean> {
+  const { error: clearErr } = await supabase
+    .from('capex_projects')
+    .update({ is_current: false })
+    .neq('id', id);
+  if (clearErr) return false;
+  const { error: setErr } = await supabase
+    .from('capex_projects')
+    .update({ is_current: true })
+    .eq('id', id);
+  if (setErr) return false;
+  invalidateCapexProjects();
+  await ensureCapexProjectsLoaded();
+  return true;
+}
