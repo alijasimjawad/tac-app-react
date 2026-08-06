@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ProjectProvider } from './context/ProjectContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppLayout from './components/AppLayout';
 import Login from './pages/Login';
@@ -46,6 +47,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ProjectProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -90,6 +92,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ProjectProvider>
       </BrowserRouter>
     </AuthProvider>
   );

@@ -10,6 +10,7 @@ import {
 import { Doughnut } from 'react-chartjs-2';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useProject } from '../context/ProjectContext';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import type { SectionMeta } from '../lib/sectionsCache';
 import { ensureProjectsLoaded, getProjectKeys } from '../lib/projectsCache';
@@ -689,6 +690,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 
 export default function Dashboard() {
   const { hasPerm }   = useAuth();
+  const { selectedProjectId } = useProject();
   const navigate      = useNavigate();
   const { t }         = useTranslation();
 
@@ -721,7 +723,13 @@ export default function Dashboard() {
     try {
       await Promise.all([ensureSectionsLoaded(), ensureProjectsLoaded()]);
       const allSections    = getSections();
-      const activeSections = allSections.filter(s => !s.is_deleted);
+      // Top-bar project selector: a section with no capex_project_id is
+      // "unassigned" and stays visible under every capex project, so the
+      // dashboard doesn't change for anyone until sections are explicitly
+      // tagged to a capex project (see react_migration_phase22_sql.sql).
+      const activeSections = allSections.filter(
+        s => !s.is_deleted && (!s.capex_project_id || !selectedProjectId || s.capex_project_id === selectedProjectId),
+      );
       const sectionIds     = activeSections.map(s => s.id).filter(Boolean);
       const rowsBySecId: Record<string, Record<string, string>[]> = {};
 
@@ -770,8 +778,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (!hasPerm('view_dashboard')) { setLoading(false); return; }
     loadData();
+  // Re-run whenever the top-bar project selection changes so the dashboard
+  // reflects the newly-selected capex project without a page reload.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedProjectId]);
 
   // ── Permission gate ──────────────────────────────────────────────────────────
 

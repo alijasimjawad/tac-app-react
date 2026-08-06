@@ -10,6 +10,10 @@ export interface SectionMeta {
   is_custom: boolean;
   is_deleted: boolean;
   created_at: string;
+  /** FK into public.capex_projects — null means "unassigned", which the
+   *  Dashboard's top-bar project selector treats as visible under every
+   *  capex project (see react_migration_phase22_sql.sql). */
+  capex_project_id: string | null;
 }
 
 let _sections: SectionMeta[] = [];

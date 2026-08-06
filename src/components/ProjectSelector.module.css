@@ -1,0 +1,205 @@
+/* ── Wrapper (positioning anchor) ────────────────────────────────────────────── */
+
+.wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ── Trigger button ──────────────────────────────────────────────────────────── */
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1.5px solid var(--border, #E2E8F0);
+  background: transparent;
+  color: var(--text-primary, #1E293B);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+  max-width: 200px;
+}
+.trigger:hover { background: var(--slate-100, #F1F5F9); border-color: var(--slate-300, #CBD5E1); }
+.trigger svg:first-child { color: var(--slate-500, #64748B); flex-shrink: 0; }
+.trigger svg:last-child { color: var(--slate-400, #94A3B8); flex-shrink: 0; }
+
+.triggerLabel {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .trigger { max-width: 120px; padding: 0 8px; }
+}
+
+/* ── Dropdown panel ──────────────────────────────────────────────────────────── */
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 260px;
+  background: #ffffff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.06);
+  z-index: 200;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropHeader {
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.dropTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0F172A;
+}
+
+/* ── Project list ─────────────────────────────────────────────────────────────── */
+
+.list {
+  overflow-y: auto;
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+.empty {
+  padding: 20px 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted, #94A3B8);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background .1s ease;
+}
+.item:hover { background: #F8FAFC; }
+.itemSelected { background: #EFF6FF; }
+.itemSelected:hover { background: #DBEAFE; }
+
+.itemCheck {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: #2563EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.itemName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1E293B;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.currentBadge {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #DCFCE7;
+  color: #16A34A;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+}
+
+/* ── Footer: manage/new link + inline add form ───────────────────────────────── */
+
+.footer {
+  border-top: 1px solid #F1F5F9;
+  padding: 8px;
+}
+
+.manageLink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: #2563EB;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .1s ease;
+}
+.manageLink:hover { background: #EFF6FF; }
+
+.addRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.addInput {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: #1E293B;
+  background: #fff;
+}
+.addInput:focus { outline: none; border-color: #2563EB; }
+.addInput:disabled { opacity: .6; }
+
+.addSaveBtn {
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 7px;
+  background: #2563EB;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.addSaveBtn:hover:not(:disabled) { background: #1D4ED8; }
+.addSaveBtn:disabled { opacity: .55; cursor: not-allowed; }
+
+/* ── Narrow viewports ────────────────────────────────────────────────────────── */
+
+@media (max-width: 480px) {
+  .dropdown {
+    position: fixed;
+    top: 62px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+}

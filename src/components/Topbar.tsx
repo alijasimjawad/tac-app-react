@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
+import ProjectSelector from './ProjectSelector';
 import styles from './Topbar.module.css';
 
 interface TopbarProps {
@@ -50,6 +51,7 @@ export default function Topbar({ title, subtitle, onMenuOpen, onRefresh, refresh
         <span className={styles.title}>{title}</span>
         {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
       </div>
+      <ProjectSelector />
       <div className={styles.right}>
         <button
           className={`${styles.refreshBtn} ${refreshing ? styles.refreshBtnSpinning : ''}`}
