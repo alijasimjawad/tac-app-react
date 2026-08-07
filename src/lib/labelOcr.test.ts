@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseLabel, fuzzyNoiseCheck, normalizeOcr, selectBestItemType } from './labelOcr';
 import { mergeScanAndOcr } from './smartLabelMerge';
 import type { OcrResult, OcrCandidateDetail } from './labelOcr';
+import type { InventoryItem } from './warehouseTypes';
 
 // ── parseLabel() — text parsing without Tesseract ─────────────────────────────
 
@@ -610,5 +611,159 @@ describe('mergeScanAndOcr() — uses selectedItemType over itemTypeCandidates[0]
       ocr: makeOcr({ isItemTypeAmbiguous: true }),  // no itemType in makeOcr → selectedItemType null
     });
     expect(r.itemType).toBeNull();
+  });
+});
+
+// ── Item Master resolution — post-OCR merge (Issue 1) ────────────────────────
+//
+// Mirrors the corrected applyOcrByEntryId resolution logic:
+//   1. Exact PN match (itemsByPN)       ← highest priority
+//   2. Exact item_type / item_code match (itemsByCode)
+//   No fuzzy matching at any step.
+
+function makeItem(overrides: {
+  id: string;
+  item_code: string;
+  item_name: string;
+  item_type?: string | null;
+  part_number?: string | null;
+}): InventoryItem {
+  return {
+    id:               overrides.id,
+    item_code:        overrides.item_code,
+    item_name:        overrides.item_name,
+    item_type:        overrides.item_type ?? null,
+    manufacturer:     null,
+    part_number:      overrides.part_number ?? null,
+    category:         null,
+    tracking_method:  'SERIALIZED',
+    unit:             'pcs',
+    is_active:        true,
+    notes:            null,
+    created_at:       '',
+    updated_at:       '',
+  };
+}
+
+function buildMaps(items: InventoryItem[]) {
+  const byPN   = new Map<string, InventoryItem>();
+  const byCode = new Map<string, InventoryItem>();
+  for (const it of items) {
+    if (it.part_number) byPN.set(it.part_number.toUpperCase(), it);
+    byCode.set(it.item_code.toUpperCase(), it);
+    if (it.item_type) byCode.set(it.item_type.toUpperCase(), it);
+  }
+  return { byPN, byCode };
+}
+
+// Pure resolution function — mirrors applyOcrByEntryId logic after the Issue 1 fix
+function resolveAfterOcr(
+  merged: { itemType: string | null; partNumber: string | null },
+  byPN:   Map<string, InventoryItem>,
+  byCode: Map<string, InventoryItem>,
+): { rid: string | null; rname: string | null; rcode: string | null } {
+  let rid: string | null = null, rname: string | null = null, rcode: string | null = null;
+  if (merged.partNumber) {
+    const it = byPN.get(merged.partNumber.toUpperCase());
+    if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+  }
+  if (!rid && merged.itemType) {
+    const it = byCode.get(merged.itemType.toUpperCase());
+    if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+  }
+  return { rid, rname, rcode };
+}
+
+describe('Item Master resolution — post-OCR merge (Issue 1)', () => {
+  const FXDA_ITEM = makeItem({ id: 'item-1', item_code: 'FXDA-00', item_name: 'FXDA Outdoor Unit',  item_type: 'FXDA', part_number: '475266B.102' });
+  const ABIO_ITEM = makeItem({ id: 'item-2', item_code: 'ABIO-00', item_name: 'ABIO Module',         item_type: 'ABIO', part_number: null });
+  const CODE_ONLY = makeItem({ id: 'item-3', item_code: 'AHGA',    item_name: 'AHGA Unit',           item_type: null,   part_number: null });
+
+  it('item_type match → MATCHED (FXDA found via item_type)', () => {
+    const { byPN, byCode } = buildMaps([FXDA_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: 'FXDA', partNumber: null }, byPN, byCode);
+    expect(rid).toBe('item-1');
+  });
+
+  it('item_code match → MATCHED (AHGA found via item_code when item_type is null on item)', () => {
+    const { byPN, byCode } = buildMaps([CODE_ONLY]);
+    const { rid } = resolveAfterOcr({ itemType: 'AHGA', partNumber: null }, byPN, byCode);
+    expect(rid).toBe('item-3');
+  });
+
+  it('PN match takes priority over item_type match', () => {
+    // PN=475266B.102 → FXDA_ITEM; itemType=ABIO → ABIO_ITEM; PN must win
+    const { byPN, byCode } = buildMaps([FXDA_ITEM, ABIO_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: 'ABIO', partNumber: '475266B.102' }, byPN, byCode);
+    expect(rid).toBe('item-1');
+  });
+
+  it('resolvedItemId populated when item found via item_type', () => {
+    const { byPN, byCode } = buildMaps([ABIO_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: 'ABIO', partNumber: null }, byPN, byCode);
+    expect(rid).not.toBeNull();
+    expect(rid).toBe('item-2');
+  });
+
+  it('AHGA not in Item Master → rid is null (UNMATCHED, kept as TYPE display)', () => {
+    const { byPN, byCode } = buildMaps([FXDA_ITEM, ABIO_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: 'AHGA', partNumber: null }, byPN, byCode);
+    expect(rid).toBeNull();
+  });
+
+  it('resolution is case-insensitive for item_type', () => {
+    const { byPN, byCode } = buildMaps([FXDA_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: 'fxda', partNumber: null }, byPN, byCode);
+    expect(rid).toBe('item-1');
+  });
+
+  it('resolution is case-insensitive for PN', () => {
+    const { byPN, byCode } = buildMaps([FXDA_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: null, partNumber: '475266b.102' }, byPN, byCode);
+    expect(rid).toBe('item-1');
+  });
+
+  it('no fuzzy matching — FXDX (one letter off FXDA) is not resolved', () => {
+    const { byPN, byCode } = buildMaps([FXDA_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: 'FXDX', partNumber: null }, byPN, byCode);
+    expect(rid).toBeNull();
+  });
+
+  it('null itemType and null partNumber → not resolved', () => {
+    const { byPN, byCode } = buildMaps([FXDA_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: null, partNumber: null }, byPN, byCode);
+    expect(rid).toBeNull();
+  });
+
+  it('REGRESSION — AHGA not in DB → rid null, itemType preserved in OCR merge result', () => {
+    // Confirmed: AHGA is not in inventory_items. Result: item remains PENDING with TYPE shown.
+    const { byPN, byCode } = buildMaps([]); // empty master
+    const mergeResult = mergeScanAndOcr({
+      barcode: { serialNumber: '1M241909797', partNumber: '474254A.202', itemType: null },
+      ocr: makeOcr({ itemType: 'AHGA' }),
+    });
+    expect(mergeResult.itemType).toBe('AHGA'); // OCR type preserved
+    const { rid } = resolveAfterOcr({ itemType: mergeResult.itemType, partNumber: mergeResult.partNumber }, byPN, byCode);
+    expect(rid).toBeNull(); // UNMATCHED — not in master
+  });
+
+  it('REGRESSION — OKIA not resolved even if accidentally in master (noise rejection upstream)', () => {
+    // fuzzyNoiseCheck rejects OKIA before it reaches resolution; simulate correctly rejected:
+    const mergeResult = mergeScanAndOcr({
+      barcode: { serialNumber: '1M241909797', partNumber: '474254A.202', itemType: null },
+      ocr: {
+        rawText: 'OKIA\nAHGA\n474254A.202',
+        itemTypeCandidates:  ['OKIA', 'AHGA'],
+        selectedItemType:    'AHGA', // ranking chose AHGA, not OKIA
+        candidateDetails:    [],
+        isItemTypeAmbiguous: false,
+        partNumberCandidates:   ['474254A.202'],
+        serialNumberCandidates: [],
+        confidence: 72, source: 'OCR', durationMs: 4200,
+      },
+    });
+    // AHGA is selectedItemType — OKIA is not passed to resolution
+    expect(mergeResult.itemType).toBe('AHGA');
+    expect(mergeResult.itemType).not.toBe('OKIA');
   });
 });

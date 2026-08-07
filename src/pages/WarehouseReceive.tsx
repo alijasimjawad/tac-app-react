@@ -227,12 +227,13 @@ export default function WarehouseReceive() {
     const merged = mergeScanAndOcr({ barcode, ocr });
 
     let rid: string | null = null, rname: string | null = null, rcode: string | null = null;
-    if (merged.itemType) {
-      const it = itemsByCode.current.get(merged.itemType.toUpperCase());
+    // PN has highest priority (deterministic, no fuzzy)
+    if (merged.partNumber) {
+      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
       if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
     }
-    if (!rid && merged.partNumber) {
-      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
+    if (!rid && merged.itemType) {
+      const it = itemsByCode.current.get(merged.itemType.toUpperCase());
       if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
     }
 
@@ -252,7 +253,9 @@ export default function WarehouseReceive() {
         resolvedItemName: newRname,
         resolvedItemCode: newRcode,
         status:           newRid ? 'VALID' as const : 'PENDING' as const,
-        statusMsg:        newRid ? null : 'Item not matched — select manually',
+        statusMsg:        newRid ? null : merged.itemType
+          ? `${merged.itemType} not in Item Master — assign manually`
+          : 'Item not matched — select manually',
         matchStatus,
         ocrRawText:       ocr.rawText.substring(0, 500),
         ocrItemType:      merged.source.itemType    === 'OCR' ? merged.itemType     : null,
@@ -347,12 +350,13 @@ export default function WarehouseReceive() {
     const raw   = parts.length > 0 ? parts.join(';') : ocr.rawText.substring(0, 100);
 
     let rid: string | null = null, rname: string | null = null, rcode: string | null = null;
-    if (merged.itemType) {
-      const it = itemsByCode.current.get(merged.itemType.toUpperCase());
+    // PN has highest priority (deterministic, no fuzzy)
+    if (merged.partNumber) {
+      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
       if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
     }
-    if (!rid && merged.partNumber) {
-      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
+    if (!rid && merged.itemType) {
+      const it = itemsByCode.current.get(merged.itemType.toUpperCase());
       if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
     }
 
@@ -373,7 +377,9 @@ export default function WarehouseReceive() {
       resolvedItemName: rname,
       resolvedItemCode: rcode,
       status:           rid ? 'VALID' : 'PENDING',
-      statusMsg:        rid ? null : 'Item not matched — select manually',
+      statusMsg:        rid ? null : merged.itemType
+        ? `${merged.itemType} not in Item Master — assign manually`
+        : 'Item not matched — select manually',
       scannedAt:        new Date().toISOString(),
       manually:         false,
       parsingProfile:   'ocr',
@@ -1038,6 +1044,11 @@ export default function WarehouseReceive() {
                         {e.itemTypeRaw && !e.resolvedItemCode && !e.ocrAmbiguous && (
                           <div style={{ fontSize: 12, fontWeight: 700, color: '#818cf8', marginTop: 2 }}>
                             TYPE: {e.itemTypeRaw}{e.ocrItemType ? ' [OCR]' : ''}
+                          </div>
+                        )}
+                        {e.itemTypeRaw && !e.resolvedItemCode && !e.ocrAmbiguous && e.ocrStatus === 'DONE' && (
+                          <div style={{ fontSize: 10, color: '#64748b', marginTop: 1 }}>
+                            Not in Item Master
                           </div>
                         )}
                         {e.ocrAmbiguous && !e.resolvedItemCode && (

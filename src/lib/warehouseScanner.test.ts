@@ -329,3 +329,105 @@ describe('classifyScan()', () => {
     expect(classifyScan(parsed)).not.toBe('AUXILIARY_CODE');
   });
 });
+
+// ── Nokia alt-PN barcode (474254A.202) — Issue 2 fix ─────────────────────────
+
+describe('Nokia alt-PN barcode — letter format (Issue 2 fix)', () => {
+  it('474254A.202 → parsingProfile = nokia-pn-only, partNumber extracted, no SN', () => {
+    const result = parseScan('474254A.202', 'CODE_128');
+    expect(result.parsingProfile).toBe('nokia-pn-only');
+    expect(result.partNumber).toBe('474254A.202');
+    expect(result.serialNumber).toBeNull();
+    expect(result.manufacturer).toBe('Nokia');
+  });
+
+  it('474254A.202 → classifyScan returns AUXILIARY_CODE', () => {
+    const parsed = parseScan('474254A.202', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('474254A.202 has no SN → does not pollute sessionSNs (serialNumber is null)', () => {
+    const parsed = parseScan('474254A.202', 'CODE_128');
+    expect(parsed.serialNumber).toBeNull();
+  });
+
+  it('legacy dash-format Nokia PN still works: 474234-200.001 → nokia-pn-only, AUXILIARY_CODE', () => {
+    const parsed = parseScan('474234-200.001', 'CODE_128');
+    expect(parsed.parsingProfile).toBe('nokia-pn-only');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('letter-format PN does not match generic-sn-only profile (no fake PARTIAL_ITEM)', () => {
+    const parsed = parseScan('474254A.202', 'CODE_128');
+    expect(parsed.parsingProfile).not.toBe('generic-sn-only');
+    expect(classifyScan(parsed)).not.toBe('PARTIAL_ITEM');
+  });
+
+  it('alt-PN variants: 6-digit + uppercase letter + .3-digit all match', () => {
+    for (const pn of ['474254A.202', '123456B.001', '999999Z.999']) {
+      const parsed = parseScan(pn, 'CODE_128');
+      expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    }
+  });
+});
+
+// ── Continuous scanning — SN dedup and secondary barcode handling ─────────────
+
+describe('Continuous scanning — SN dedup and secondary barcode handling', () => {
+  it('DataMatrix SN and secondary linear SN barcode normalize to same value → both would be DUPLICATE', () => {
+    // DataMatrix gives SN=1M241909797 via S DI after stripping
+    const dm = parseScan(gs1('1P474254A.202', 'S1M241909797'), 'DATA_MATRIX');
+    // Linear SN barcode S1M241909797 → nokia-sn-di → SN=1M241909797
+    const linear = parseScan('S1M241909797', 'CODE_128');
+
+    expect(dm.serialNumber).toBe('1M241909797');
+    expect(linear.serialNumber).toBe('1M241909797');
+    // Both normalize identically → second scan hits sessionSNs.has() → DUPLICATE
+  });
+
+  it('different SN from next carton → different normalized SN → not a duplicate', () => {
+    const cartonA = parseScan(gs1('1P474254A.202', 'S1M241909797'), 'DATA_MATRIX');
+    const cartonB = parseScan(gs1('1P474254A.202', 'S1M241999999'), 'DATA_MATRIX');
+
+    expect(cartonA.serialNumber).toBe('1M241909797');
+    expect(cartonB.serialNumber).toBe('1M241999999');
+    // SNs differ → sessionSNs never collides → cartonB accepted
+  });
+
+  it('PN-only linear barcode from second carton (same model) → AUXILIARY_CODE, not DUPLICATE', () => {
+    const parsed = parseScan('474254A.202', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    expect(parsed.serialNumber).toBeNull();
+    // Filtered before reaching sessionSNs → cannot create a fake DUPLICATE
+  });
+
+  it('quantity barcode Q001 from same label → AUXILIARY_CODE', () => {
+    expect(classifyScan(parseScan('Q001', 'CODE_128'))).toBe('AUXILIARY_CODE');
+  });
+
+  it('quantity barcode Q005 from same label → AUXILIARY_CODE', () => {
+    expect(classifyScan(parseScan('Q005', 'CODE_128'))).toBe('AUXILIARY_CODE');
+  });
+
+  it('Nokia N-series SN of different carton → VALID_ITEM, different SN → not duplicate', () => {
+    const cartonA = parseScan('N912345678901', 'CODE_128');
+    const cartonB = parseScan('N912345678902', 'CODE_128');
+
+    expect(classifyScan(cartonA)).toBe('VALID_ITEM');
+    expect(classifyScan(cartonB)).toBe('VALID_ITEM');
+    expect(cartonA.serialNumber).not.toBe(cartonB.serialNumber);
+  });
+
+  it('DataMatrix carton A then DataMatrix carton B → both VALID_ITEM with distinct SNs', () => {
+    const rawA = gs1('1P474254A.202', 'S1M000001');
+    const rawB = gs1('1P474254A.202', 'S1M000002');
+
+    const parsedA = parseScan(rawA, 'DATA_MATRIX');
+    const parsedB = parseScan(rawB, 'DATA_MATRIX');
+
+    expect(classifyScan(parsedA)).toBe('VALID_ITEM');
+    expect(classifyScan(parsedB)).toBe('VALID_ITEM');
+    expect(parsedA.serialNumber).toBe('1M000001');
+    expect(parsedB.serialNumber).toBe('1M000002');
+  });
+});

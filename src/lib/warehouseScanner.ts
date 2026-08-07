@@ -219,8 +219,9 @@ const NOKIA_SN_DI_RE = /^S([A-Z0-9][A-Z0-9]{0,2}[0-9]{6,15})$/;
 // or a 12+ alphanumeric string on serialized radio units.
 // Nokia PN pattern: numeric prefix, dash, decimal suffix (e.g. 474234-200.001)
 
-const NOKIA_PN_RE = /^\d{6}-\d{3}\.\d{3}$/;
-const NOKIA_SN_RE = /^N[0-9A-Z]{8,18}$/i;  // N-series SN: N is part of the value
+const NOKIA_PN_RE     = /^\d{6}-\d{3}\.\d{3}$/;           // legacy dash format: 474234-200.001
+const NOKIA_ALT_PN_RE = /^\d{6}[A-Z]\.\d{3}$/;            // letter format: 474254A.202
+const NOKIA_SN_RE     = /^N[0-9A-Z]{8,18}$/i;             // N-series SN: N is part of the value
 
 const nokiaParser: ParserProfile = {
   name: 'nokia',
@@ -230,6 +231,8 @@ const nokiaParser: ParserProfile = {
     if (/^(ABIO|FXDA|FXEA|AHIB|ASIA|ABIA|FHEA|FGEA|FCEA|FCEB|FPGA|SRIA|AHEC|FSMF)/i.test(clean)) return true;
     // Nokia legacy PN barcode (e.g. 474234-200.001)
     if (NOKIA_PN_RE.test(clean)) return true;
+    // Nokia alt-format PN barcode (letter format: 474254A.202)
+    if (NOKIA_ALT_PN_RE.test(clean)) return true;
     // Nokia N-series SN barcode (N is part of the SN, not a DI)
     if (NOKIA_SN_RE.test(clean)) return true;
     // Nokia standalone SN with S Data Identifier prefix (e.g. SDH252030925)
@@ -269,8 +272,8 @@ const nokiaParser: ParserProfile = {
       };
     }
 
-    // Pure Nokia PN barcode (legacy format e.g. 474234-200.001)
-    if (NOKIA_PN_RE.test(clean)) {
+    // Pure Nokia PN barcode — legacy dash format (474234-200.001) or letter format (474254A.202)
+    if (NOKIA_PN_RE.test(clean) || NOKIA_ALT_PN_RE.test(clean)) {
       return {
         itemType: null, serialNumber: null, manufacturer: 'Nokia',
         partNumber: clean,
@@ -378,6 +381,8 @@ function isAuxiliaryCode(raw: string): boolean {
 
 export function classifyScan(parsed: ParsedScan): ScanClassification {
   if (isAuxiliaryCode(parsed.rawValue)) return 'AUXILIARY_CODE';
+  // Standalone Nokia PN-only barcode — auxiliary metadata, not a distinct carton
+  if (parsed.parsingProfile === 'nokia-pn-only') return 'AUXILIARY_CODE';
   if (!parsed.serialNumber && !parsed.partNumber) return 'UNKNOWN_CODE';
   if (parsed.serialNumber && parsed.confidence !== 'LOW') return 'VALID_ITEM';
   if (parsed.partNumber || parsed.serialNumber) return 'PARTIAL_ITEM';
