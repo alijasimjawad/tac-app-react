@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { GoodsReceipt, GoodsReceiptItem, InventoryItem, Warehouse } from '../lib/warehouseTypes';
+import { friendlyPostingError, formatPostingToast, type PostReceiptSuccess } from '../lib/warehousePosting';
 import css from './Warehouse.module.css';
 
 interface ReceiptRow extends GoodsReceipt {
@@ -119,20 +120,20 @@ export default function WarehouseHistory() {
 
   async function postReceipt(receiptId: string) {
     setPosting(true);
-    const { error: e } = await supabase
-      .from('goods_receipts')
-      .update({ status: 'POSTED', posted_at: new Date().toISOString() })
-      .eq('id', receiptId);
+    const { data, error: e } = await supabase.rpc('post_goods_receipt', {
+      p_receipt_id:   receiptId,
+      p_performed_by: currentUser?.id || '',
+    });
     setPosting(false);
-    if (e) { showToast(e.message, false); return; }
+    if (e) { showToast(friendlyPostingError(e.message), false); return; }
+    const result = data as PostReceiptSuccess;
     if (currentUser) {
-      const r = receipts.find(r => r.id === receiptId);
       await supabase.from('activity_log').insert({
         user_full_name: currentUser.full_name,
-        action:         `Posted goods receipt ${r?.receipt_number || receiptId}`,
+        action:         `Posted goods receipt ${result.receipt_number}`,
       });
     }
-    showToast('Receipt posted.', true);
+    showToast(formatPostingToast(result), true);
     setDetail(null);
     load(page);
   }

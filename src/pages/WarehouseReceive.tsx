@@ -992,6 +992,7 @@ export default function WarehouseReceive() {
       goods_receipt_id:  receipt.id,
       inventory_item_id: e.resolvedItemId!,
       serial_number:     e.serialNumber || e.rawValue,
+      part_number:       e.partNumber || null,
       raw_scan_value:    e.rawValue,
       barcode_symbology: e.symbology,
       scanned_manually:  e.manually,
