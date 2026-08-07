@@ -37,6 +37,7 @@ import MySites from './pages/MySites';
 import WarehouseOverview from './pages/WarehouseOverview';
 import WarehouseInventory from './pages/WarehouseInventory';
 import WarehouseReceive from './pages/WarehouseReceive';
+import WarehouseReceiveEdit from './pages/WarehouseReceiveEdit';
 import WarehouseHistory from './pages/WarehouseHistory';
 import WarehouseMovements from './pages/WarehouseMovements';
 import WarehouseStock from './pages/WarehouseStock';
@@ -97,8 +98,9 @@ export default function App() {
             <Route path="/warehouse"                element={<WarehouseOverview />} />
             <Route path="/warehouse/inventory"      element={<WarehouseStock />} />
             <Route path="/warehouse/item-master"    element={<WarehouseInventory />} />
-            <Route path="/warehouse/receive"        element={<WarehouseReceive />} />
-            <Route path="/warehouse/history"        element={<WarehouseHistory />} />
+            <Route path="/warehouse/receive"                    element={<WarehouseReceive />} />
+            <Route path="/warehouse/receive/edit/:receiptId"   element={<WarehouseReceiveEdit />} />
+            <Route path="/warehouse/history"                    element={<WarehouseHistory />} />
             <Route path="/warehouse/movements"      element={<WarehouseMovements />} />
             <Route path="/"           element={<RoleRedirect />} />
           </Route>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { GoodsReceipt, GoodsReceiptItem, InventoryItem, Warehouse } from '../lib/warehouseTypes';
@@ -45,6 +46,7 @@ const PAGE_SIZE = 20;
 
 export default function WarehouseHistory() {
   const { hasPerm, currentUser } = useAuth();
+  const navigate = useNavigate();
   const [receipts,   setReceipts]   = useState<ReceiptRow[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [items,      setItems]      = useState<InventoryItem[]>([]);
@@ -70,6 +72,7 @@ export default function WarehouseHistory() {
 
   const canPost   = hasPerm('wrh_receive_post');
   const canCancel = hasPerm('wrh_receive_cancel');
+  const canEdit   = hasPerm('wrh_receive_edit');
 
   function showToast(msg: string, ok: boolean) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -386,6 +389,11 @@ export default function WarehouseHistory() {
               {canCancel && ['DRAFT', 'PENDING_REVIEW'].includes(detail.receipt.status) && (
                 <button className={css.btnDanger} onClick={() => cancelReceipt(detail.receipt.id)} disabled={canceling}>
                   {canceling ? 'Cancelling…' : 'Cancel Receipt'}
+                </button>
+              )}
+              {canEdit && detail.receipt.status === 'PENDING_REVIEW' && (
+                <button className={css.btnGhost} onClick={() => navigate(`/warehouse/receive/edit/${detail.receipt.id}`)}>
+                  Edit Receipt
                 </button>
               )}
               {canPost && detail.receipt.status === 'PENDING_REVIEW' && (

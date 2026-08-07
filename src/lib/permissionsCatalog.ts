@@ -294,6 +294,7 @@ export const ACTION_SCOPES: ActionScope[] = [
     label: 'Warehouse — Receive Materials',
     actions: [
       { key: 'wrh_receive_create', label: 'Create Receipt' },
+      { key: 'wrh_receive_edit',   label: 'Edit Receipt' },
       { key: 'wrh_receive_post',   label: 'Post to Stock' },
       { key: 'wrh_receive_cancel', label: 'Cancel Receipt' },
     ],
@@ -411,6 +412,7 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
   wrh_items_delete: 'view_warehouse_inventory',
 
   wrh_receive_create: 'view_warehouse_receive',
+  wrh_receive_edit:   'view_warehouse_history',
   wrh_receive_post:   'view_warehouse_receive',
   wrh_receive_cancel: 'view_warehouse_receive',
 
