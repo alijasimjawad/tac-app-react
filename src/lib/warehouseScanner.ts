@@ -42,7 +42,10 @@ interface ParserProfile {
   parse:    (raw: string) => Omit<ParsedScan, 'rawValue' | 'symbology'>;
 }
 
-// ── GS1 DataMatrix field parser ───────────────────────────────────────────────
+// ── Standard GS1 Application Identifier (AI) parser ─────────────────────────
+// Handles AI (01) = GTIN and AI (21) = Serial Number.
+// Used for labels conforming to the GS1 standard (retail, pharma, logistics).
+// Nokia telecom labels use Data Identifiers (DIs) instead — see parseNokiaDI().
 
 function parseGS1(fields: string[]): Omit<ParsedScan, 'rawValue' | 'symbology'> {
   let partNumber:   string | null = null;
@@ -72,6 +75,76 @@ function parseGS1(fields: string[]): Omit<ParsedScan, 'rawValue' | 'symbology'> 
   };
 }
 
+// ── Nokia / Telcordia ANSI MH10.8.2 Data Identifier (DI) parser ──────────────
+//
+// Nokia telecom equipment uses ANSI MH10.8.2 Data Identifiers — NOT GS1 AIs.
+// DI codes seen on Nokia cartons:
+//   1P  → Part Number   (e.g. 1P475266B.102  → PN = 475266B.102)
+//   S   → Serial Number (e.g. SDH252030925   → SN = DH252030925)
+//   V   → Vendor/Manufacturer (ignored for now)
+//   Q   → Quantity (ignored for now)
+//
+// The identifier characters are NEVER part of the value.
+// Fields are separated by GS (0x1D), RS (0x1E), or EOT (0x04) in the raw payload.
+//
+// This parser is invoked when the genericParser detects Nokia DI codes after
+// splitting on control-character separators.
+
+// Detect Nokia DI context: 1P is a definitive Nokia Part Number DI.
+// It is not used in standard GS1 barcodes, so its presence confirms DI encoding.
+export function hasNokiaDI(fields: string[]): boolean {
+  return fields.some(f => f.startsWith('1P'));
+}
+
+export function parseNokiaDI(fields: string[]): Omit<ParsedScan, 'rawValue' | 'symbology'> {
+  let partNumber:   string | null = null;
+  let serialNumber: string | null = null;
+
+  for (const field of fields) {
+    const f = field.trim();
+    if (!f) continue;
+
+    // Check 2-char DIs before 1-char to avoid prefix ambiguity (e.g. '1P' vs '1')
+    if (f.startsWith('1P')) {
+      partNumber = f.slice(2) || null;
+      continue;
+    }
+
+    if (f.length > 1) {
+      if (f[0] === 'S') {
+        // We are in a confirmed Nokia DI context (1P was found in this payload),
+        // so S here is unambiguously the Serial Number DI — strip it.
+        serialNumber = f.slice(1) || null;
+        continue;
+      }
+      // V=Vendor, Q=Quantity, and any unknown DIs are safely ignored.
+    }
+  }
+
+  const status: ParsingStatus =
+    serialNumber && partNumber ? 'resolved' :
+    serialNumber || partNumber ? 'partially_resolved' : 'unresolved';
+
+  return {
+    itemType: null,
+    partNumber,
+    serialNumber,
+    manufacturer: 'Nokia',
+    rawFields:    fields,
+    parsingProfile: 'nokia-gs1',
+    confidence: (partNumber || serialNumber) ? 'HIGH' : 'LOW',
+    status,
+  };
+}
+
+// Pattern for a STANDALONE Nokia SN encoded with the S Data Identifier prefix.
+// Structure: S + 1–3 uppercase letters (location/site code) + 6–15 digits.
+// Examples: SDH252030925 → SN=DH252030925  |  SN912345678 → SN=N912345678
+// NOT matched (S is part of the value):
+//   SERIAL001 (ERIAL = 5 letters > 3 — not stripped)
+//   SFULL12345 (FULL = 4 letters > 3 — not stripped)
+const NOKIA_SN_DI_RE = /^S([A-Z]{1,3}[0-9]{6,15})$/;
+
 // ── Nokia parser ──────────────────────────────────────────────────────────────
 // Nokia telecom equipment labels typically encode one of:
 //   a) Semicolon-delimited:  ABIO;474123-001.001;N90001234567
@@ -83,18 +156,20 @@ function parseGS1(fields: string[]): Omit<ParsedScan, 'rawValue' | 'symbology'> 
 // Nokia PN pattern: numeric prefix, dash, decimal suffix (e.g. 474234-200.001)
 
 const NOKIA_PN_RE = /^\d{6}-\d{3}\.\d{3}$/;
-const NOKIA_SN_RE = /^N[0-9A-Z]{8,18}$/i;
+const NOKIA_SN_RE = /^N[0-9A-Z]{8,18}$/i;  // N-series SN: N is part of the value
 
 const nokiaParser: ParserProfile = {
   name: 'nokia',
   canParse: (raw: string) => {
-    const clean = raw.trim();
+    const clean = raw.trim().toUpperCase();
     // Semicolon-delimited with Nokia item types
-    if (/^(ABIO|FXDA|FXEA|AHIB|ASIA|ABIA|FHEA|FGEA|FCEA|FCEB|FPGA|AHIB|SRIA|AHEC|FSMF)/i.test(clean)) return true;
-    // Nokia PN pattern
+    if (/^(ABIO|FXDA|FXEA|AHIB|ASIA|ABIA|FHEA|FGEA|FCEA|FCEB|FPGA|SRIA|AHEC|FSMF)/i.test(clean)) return true;
+    // Nokia legacy PN barcode (e.g. 474234-200.001)
     if (NOKIA_PN_RE.test(clean)) return true;
-    // Nokia SN pattern
+    // Nokia N-series SN barcode (N is part of the SN, not a DI)
     if (NOKIA_SN_RE.test(clean)) return true;
+    // Nokia standalone SN with S Data Identifier prefix (e.g. SDH252030925)
+    if (NOKIA_SN_DI_RE.test(clean)) return true;
     return false;
   },
   parse: (raw: string) => {
@@ -119,7 +194,18 @@ const nokiaParser: ParserProfile = {
       };
     }
 
-    // Pure Nokia PN
+    // Standalone Nokia SN with S DI prefix: strip S, return remaining as SN
+    const diMatch = NOKIA_SN_DI_RE.exec(upper);
+    if (diMatch) {
+      return {
+        itemType: null, partNumber: null, manufacturer: 'Nokia',
+        serialNumber: diMatch[1],
+        rawFields: [clean], parsingProfile: 'nokia-sn-di',
+        confidence: 'MEDIUM', status: 'partially_resolved' as const,
+      };
+    }
+
+    // Pure Nokia PN barcode (legacy format e.g. 474234-200.001)
     if (NOKIA_PN_RE.test(clean)) {
       return {
         itemType: null, serialNumber: null, manufacturer: 'Nokia',
@@ -129,7 +215,7 @@ const nokiaParser: ParserProfile = {
       };
     }
 
-    // Pure Nokia SN
+    // Nokia N-series SN (N is part of the value, NOT a DI — do not strip)
     if (NOKIA_SN_RE.test(upper)) {
       return {
         itemType: null, partNumber: null, manufacturer: 'Nokia',
@@ -157,9 +243,14 @@ const genericParser: ParserProfile = {
     const clean = raw.trim();
     const upper = clean.toUpperCase();
 
-    // GS1 DataMatrix: ASCII GS (0x1D) or RS (0x1E) or EOT (0x04) separators
+    // DataMatrix with control-character separators: GS (0x1D), RS (0x1E), EOT (0x04)
     const gsFields = clean.split(/[\x1d\x1e\x04]/).filter(Boolean);
-    if (gsFields.length > 1) return parseGS1(gsFields);
+    if (gsFields.length > 1) {
+      // Route to Nokia DI parser when Nokia Data Identifiers are present.
+      // hasNokiaDI() checks for '1P' (Part Number DI) — absent from standard GS1.
+      if (hasNokiaDI(gsFields)) return parseNokiaDI(gsFields);
+      return parseGS1(gsFields);
+    }
 
     // Parenthesised GS1: "(01)12345678(21)SN001"
     const aiFields = clean.match(/\(\d{2}\)[^(]+/g);
