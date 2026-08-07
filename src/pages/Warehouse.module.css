@@ -421,5 +421,41 @@ tr:hover td { background: #fafbff; }
 .pageBtnActive { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; font-weight: 700; }
 .pageInfo { font-size: 12px; color: #64748b; }
 
+/* ── Diagnostics panel ───────────────────────────────── */
+.diagPanel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+.diagTitle {
+  font-size: 11px; font-weight: 800; color: #475569;
+  text-transform: uppercase; letter-spacing: .5px;
+  margin-bottom: 10px;
+}
+.diagRow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.diagRow:last-child { border-bottom: none; }
+.diagDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.diagLabel { flex: 1; font-size: 12px; color: #475569; }
+.diagValue { font-size: 11px; color: #94a3b8; font-family: monospace; }
+
+/* ── Live item tally (grouped summary during scanning) ─ */
+.groupSummary {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 14px;
+}
+.groupSummaryItem {
+  display: flex; align-items: center; gap: 6px;
+  background: #ede9fe; border: 1px solid #c4b5fd;
+  border-radius: 20px; padding: 4px 12px;
+}
+.groupSummaryCode { font-size: 12px; font-weight: 700; color: #7c3aed; font-family: monospace; }
+.groupSummaryCount { font-size: 13px; font-weight: 800; color: #6d28d9; }
+
 /* ── Permission denied ───────────────────────────────── */
 .denied { padding: 40px; text-align: center; color: #94a3b8; font-size: 14px; }

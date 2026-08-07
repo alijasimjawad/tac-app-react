@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import {
   CameraScanner, UsbScanner, parseScan, checkCameraPermission,
-  type CameraPermission,
+  cameraErrorMessage, getScanDiagnostics,
+  type CameraPermission, type ScanDiagnostics,
 } from '../lib/warehouseScanner';
 import type { Warehouse, InventoryItem, ScanEntry, SessionDetails } from '../lib/warehouseTypes';
 import { normalizeSN } from '../lib/warehouseTypes';
@@ -30,22 +31,34 @@ export default function WarehouseReceive() {
   const [inputMode, setInputMode] = useState<InputMode>('camera');
   const [camPerm, setCamPerm] = useState<CameraPermission>('unknown');
   const [camActive, setCamActive] = useState(false);
+  const [camErr, setCamErr] = useState<string | null>(null);
   const [torch, setTorch] = useState(false);
+  const [showDiag, setShowDiag] = useState(false);
+  const [diagData, setDiagData] = useState<ScanDiagnostics | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [scanFlash, setScanFlash] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<CameraScanner | null>(null);
   const usbRef = useRef<UsbScanner | null>(null);
-  const [scanEntries, setScanEntries] = useState<ScanEntry[]>([]);
-  const [manualVal, setManualVal] = useState('');
-  const [manualErr, setManualErr] = useState('');
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Item master (for resolving)
+  const [scanEntries, setScanEntries] = useState<ScanEntry[]>([]);
+
+  // Manual entry — structured
+  const [manualVal, setManualVal] = useState('');
+  const [manualType, setManualType] = useState('');
+  const [manualPN, setManualPN] = useState('');
+  const [manualErr, setManualErr] = useState('');
+  const [batchMode, setBatchMode] = useState(false);
+
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
 
   // Step 3 — review
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!hasPerm('view_warehouse_receive')) return <div className={css.denied}>Access denied.</div>;
   if (!hasPerm('wrh_receive_create'))    return <div className={css.denied}>You need the "Create Receipt" permission.</div>;
@@ -71,14 +84,25 @@ export default function WarehouseReceive() {
     return () => stopCamera();
   }, []);
 
+  // ── Diagnostics ───────────────────────────────────────────────────────────
+  async function loadDiag() {
+    setDiagLoading(true);
+    const d = await getScanDiagnostics();
+    setDiagData(d);
+    setDiagLoading(false);
+  }
+
   // ── Camera ────────────────────────────────────────────────────────────────
+  // FIX: <video> is always in the DOM when inputMode === 'camera'.
+  // startCamera() now always finds videoRef.current !== null.
   async function startCamera() {
     if (!videoRef.current) return;
+    setCamErr(null);
     const scanner = new CameraScanner();
     scannerRef.current = scanner;
     try {
       await scanner.start(videoRef.current, {
-        onScan: (raw, symbology) => handleRawScan(raw, symbology, false),
+        onScan:  (raw, symbology) => handleRawScan(raw, symbology, false),
         onError: msg => showToast(msg, false),
         onStart: () => {
           setCamActive(true);
@@ -86,13 +110,14 @@ export default function WarehouseReceive() {
         },
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Camera error';
-      if (msg.includes('NotAllowedError') || msg.includes('Permission')) {
+      const msg = cameraErrorMessage(err);
+      setCamErr(msg);
+      const name = (err as DOMException).name;
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         setCamPerm('denied');
-        showToast('Camera permission denied.', false);
-      } else {
-        showToast(msg, false);
       }
+      scannerRef.current?.stop();
+      scannerRef.current = null;
     }
   }
 
@@ -105,8 +130,21 @@ export default function WarehouseReceive() {
 
   async function toggleTorch() {
     if (!scannerRef.current) return;
-    await scannerRef.current.toggleTorch();
-    setTorch(t => !t);
+    const newVal = await scannerRef.current.toggleTorch();
+    setTorch(newVal);
+  }
+
+  async function switchCamera() {
+    if (!videoRef.current || !scannerRef.current) return;
+    try {
+      await scannerRef.current.switchCamera(videoRef.current, {
+        onScan:  (raw, symbology) => handleRawScan(raw, symbology, false),
+        onError: msg => showToast(msg, false),
+        onStart: () => {},
+      });
+    } catch (err: unknown) {
+      showToast(cameraErrorMessage(err), false);
+    }
   }
 
   // ── USB scanner ────────────────────────────────────────────────────────────
@@ -121,27 +159,30 @@ export default function WarehouseReceive() {
   }, [step, inputMode]);
 
   // ── Resolve item from parsed scan ─────────────────────────────────────────
-  const resolveItem = useCallback((parsed: ReturnType<typeof parseScan>, items: InventoryItem[]) => {
-    if (!items.length) return { id: null, name: null, code: null };
-    // Match by part_number first
+  const resolveItem = useCallback((parsed: ReturnType<typeof parseScan>, itemList: InventoryItem[]) => {
+    if (!itemList.length) return { id: null, name: null, code: null };
     if (parsed.partNumber) {
       const pn = parsed.partNumber.toUpperCase();
-      const m = items.find(it => (it.part_number || '').toUpperCase() === pn);
+      const m = itemList.find(it => (it.part_number || '').toUpperCase() === pn);
       if (m) return { id: m.id, name: m.item_name, code: m.item_code };
     }
-    // Match by item_type
     if (parsed.itemType) {
       const it = parsed.itemType.toUpperCase();
-      const m = items.find(i => (i.item_type || '').toUpperCase() === it || i.item_code.toUpperCase() === it);
+      const m = itemList.find(i => (i.item_type || '').toUpperCase() === it || i.item_code.toUpperCase() === it);
       if (m) return { id: m.id, name: m.item_name, code: m.item_code };
     }
     return { id: null, name: null, code: null };
   }, []);
 
-  async function handleRawScan(raw: string, symbology: string, manually: boolean) {
-    const parsed = parseScan(raw, symbology);
-    const sn     = parsed.serialNumber;
-    const snNorm = sn ? normalizeSN(sn) : null;
+  function handleRawScan(raw: string, symbology: string, manually: boolean) {
+    // Flash the video border green on each successful scan
+    setScanFlash(true);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setScanFlash(false), 250);
+
+    const parsed   = parseScan(raw, symbology);
+    const sn       = parsed.serialNumber;
+    const snNorm   = sn ? normalizeSN(sn) : null;
     const resolved = resolveItem(parsed, items);
 
     const localId = crypto.randomUUID();
@@ -163,7 +204,6 @@ export default function WarehouseReceive() {
     };
 
     setScanEntries(prev => {
-      // Deduplicate by normalized SN within this session
       if (snNorm) {
         const dup = prev.find(e => e.serialNumberNorm === snNorm);
         if (dup) {
@@ -188,11 +228,21 @@ export default function WarehouseReceive() {
   }
 
   function manualSubmit() {
-    const val = manualVal.trim();
-    if (!val) { setManualErr('Enter a serial number or scan value.'); return; }
+    const sn   = manualVal.trim();
+    if (!sn) { setManualErr('Serial number is required.'); return; }
     setManualErr('');
+
+    // Build semicolon-delimited string if Type or PN provided
+    const type = manualType.trim();
+    const pn   = manualPN.trim();
+    const raw  = (type || pn) ? [type, pn, sn].filter(Boolean).join(';') : sn;
+
     setManualVal('');
-    handleRawScan(val, 'MANUAL', true);
+    if (!batchMode) {
+      setManualType('');
+      setManualPN('');
+    }
+    handleRawScan(raw, 'MANUAL', true);
   }
 
   function resolveEntryItem(localId: string, itemId: string) {
@@ -209,13 +259,11 @@ export default function WarehouseReceive() {
     setSessionErr('');
     if (!session.warehouseId) { setSessionErr('Select a warehouse.'); return; }
     if (!session.receiptDate) { setSessionErr('Receipt date is required.'); return; }
-    stopCamera();
     setStep(2);
   }
 
   function goStep3() {
-    const valid = scanEntries.filter(e => e.status === 'VALID');
-    if (!valid.length && !scanEntries.length) {
+    if (!scanEntries.length) {
       showToast('Scan at least one item before proceeding.', false); return;
     }
     stopCamera();
@@ -248,7 +296,6 @@ export default function WarehouseReceive() {
       return;
     }
 
-    // Insert scan session record
     await supabase.from('receiving_scan_sessions').insert({
       goods_receipt_id: receipt.id,
       operator_id:      currentUser?.id || '',
@@ -256,16 +303,14 @@ export default function WarehouseReceive() {
       valid_scans:      validEntries.length,
     });
 
-    // Group valid entries by item
-    const grouped: Record<string, { itemId: string; entries: ScanEntry[] }> = {};
+    const groupedForSave: Record<string, { itemId: string; entries: ScanEntry[] }> = {};
     for (const e of validEntries) {
       if (!e.resolvedItemId) continue;
-      if (!grouped[e.resolvedItemId]) grouped[e.resolvedItemId] = { itemId: e.resolvedItemId, entries: [] };
-      grouped[e.resolvedItemId].entries.push(e);
+      if (!groupedForSave[e.resolvedItemId]) groupedForSave[e.resolvedItemId] = { itemId: e.resolvedItemId, entries: [] };
+      groupedForSave[e.resolvedItemId].entries.push(e);
     }
 
-    // Insert receipt line items
-    const lineItems = Object.values(grouped).map(g => ({
+    const lineItems = Object.values(groupedForSave).map(g => ({
       goods_receipt_id:  receipt.id,
       inventory_item_id: g.itemId,
       quantity:          g.entries.length,
@@ -276,7 +321,6 @@ export default function WarehouseReceive() {
       if (liErr) showToast(`Warning: line items not saved — ${liErr.message}`, false);
     }
 
-    // Insert scan log rows
     const scanLogs = validEntries.map(e => ({
       goods_receipt_id:  receipt.id,
       inventory_item_id: e.resolvedItemId!,
@@ -306,21 +350,22 @@ export default function WarehouseReceive() {
   const dupCount     = scanEntries.filter(e => e.status === 'DUPLICATE').length;
   const pendingCount = scanEntries.filter(e => e.status === 'PENDING').length;
 
-  const grouped = scanEntries.filter(e => e.status === 'VALID').reduce<Record<string, ScanEntry[]>>((acc, e) => {
-    const key = e.resolvedItemCode || 'UNMATCHED';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(e);
-    return acc;
-  }, {});
+  const grouped = scanEntries
+    .filter(e => e.status === 'VALID')
+    .reduce<Record<string, ScanEntry[]>>((acc, e) => {
+      const key = e.resolvedItemCode || 'UNMATCHED';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(e);
+      return acc;
+    }, {});
 
   const warehouseName = warehouses.find(w => w.id === session.warehouseId)?.name;
 
   return (
     <div className={css.page}>
-      {/* Wizard steps */}
       <WizardHeader step={step} />
 
-      {/* ── Step 1: Session details ─────────────────────────────────────── */}
+      {/* ── Step 1: Receipt details ───────────────────────────────────────── */}
       {step === 1 && (
         <div className={css.card}>
           <div className={css.cardHdr}>
@@ -387,14 +432,26 @@ export default function WarehouseReceive() {
       {step === 2 && (
         <>
           {/* KPI strip */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <KpiChip label="Scanned" value={scanEntries.length} color="#6366f1" />
-            <KpiChip label="Valid"   value={validCount}   color="#16a34a" />
-            <KpiChip label="Pending" value={pendingCount} color="#f59e0b" />
-            <KpiChip label="Dup"     value={dupCount}     color="#dc2626" />
+            <KpiChip label="Valid"   value={validCount}         color="#16a34a" />
+            <KpiChip label="Pending" value={pendingCount}       color="#f59e0b" />
+            <KpiChip label="Dup"     value={dupCount}           color="#dc2626" />
           </div>
 
-          {/* Mode switcher */}
+          {/* Live item tally — only shown once something is scanned */}
+          {validCount > 0 && (
+            <div className={css.groupSummary}>
+              {Object.entries(grouped).map(([code, entries]) => (
+                <div key={code} className={css.groupSummaryItem}>
+                  <span className={css.groupSummaryCode}>{code}</span>
+                  <span className={css.groupSummaryCount}>{entries.length}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Input mode selector */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             {(['camera', 'usb', 'manual'] as InputMode[]).map(m => (
               <button key={m}
@@ -407,44 +464,72 @@ export default function WarehouseReceive() {
           </div>
 
           <div className={css.scanLayout}>
-            {/* Left — camera / input */}
+            {/* Left — input panel */}
             <div>
               {inputMode === 'camera' && (
-                camActive ? (
-                  <div className={css.videoWrap}>
-                    <video ref={videoRef} className={css.videoEl} playsInline muted />
-                    <div className={css.videoOverlay}>
-                      <div className={css.scanFrame} />
+                <>
+                  {/*
+                   * The <video> element is ALWAYS in the DOM when camera mode is selected.
+                   * We show/hide the wrapper div with CSS display. This ensures videoRef.current
+                   * is non-null when startCamera() is called — previously the video was
+                   * conditionally rendered which caused videoRef.current to be null at click time.
+                   */}
+                  <div style={{ display: camActive ? 'block' : 'none' }}>
+                    <div
+                      className={css.videoWrap}
+                      style={scanFlash ? { outline: '3px solid #16a34a', outlineOffset: 2 } : {}}>
+                      <video ref={videoRef} className={css.videoEl} autoPlay playsInline muted />
+                      <div className={css.videoOverlay}>
+                        <div className={css.scanFrame} />
+                      </div>
+                      <div className={css.videoActions}>
+                        {scannerRef.current?.hasTorch() && (
+                          <button className={css.videoBtn} onClick={toggleTorch} title="Toggle torch">
+                            {torch ? '🔦' : '💡'}
+                          </button>
+                        )}
+                        <button className={css.videoBtn} onClick={switchCamera} title="Switch camera (front/back)">
+                          🔄
+                        </button>
+                        <button className={css.videoBtn} onClick={stopCamera} title="Stop camera">
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                    <div className={css.videoActions}>
-                      {scannerRef.current?.hasTorch() && (
-                        <button className={css.videoBtn} onClick={toggleTorch} title="Toggle torch">
-                          {torch ? '🔦' : '💡'}
+                  </div>
+
+                  {!camActive && (
+                    <div className={css.cameraOff}>
+                      <CameraIcon size={48} />
+                      <div className={css.cameraOffTitle}>
+                        {camPerm === 'denied' ? 'Camera access denied' : 'Camera is off'}
+                      </div>
+                      {camErr && (
+                        <div style={{ fontSize: 12, color: '#dc2626', maxWidth: 280, textAlign: 'center', lineHeight: 1.5 }}>
+                          {camErr}
+                        </div>
+                      )}
+                      <div className={css.cameraOffHint}>
+                        {camPerm === 'denied'
+                          ? 'Allow camera access in your browser settings, then try again.'
+                          : 'Point the rear camera at a barcode or QR code.'}
+                      </div>
+                      {camPerm !== 'denied' && (
+                        <button className={css.btnAccent} style={{ marginTop: 8 }} onClick={startCamera}>
+                          Start Camera
                         </button>
                       )}
-                      <button className={css.videoBtn} onClick={stopCamera} title="Stop camera">
-                        ✕
+                      <button
+                        className={css.btnGhost}
+                        style={{ fontSize: 11, height: 28, marginTop: 6 }}
+                        onClick={() => { setShowDiag(d => !d); if (!diagData) loadDiag(); }}>
+                        {showDiag ? 'Hide Diagnostics' : 'Show Diagnostics'}
                       </button>
                     </div>
-                  </div>
-                ) : (
-                  <div className={css.cameraOff}>
-                    <CameraIcon size={48} />
-                    <div className={css.cameraOffTitle}>
-                      {camPerm === 'denied' ? 'Camera access denied' : 'Camera is off'}
-                    </div>
-                    <div className={css.cameraOffHint}>
-                      {camPerm === 'denied'
-                        ? 'Allow camera access in your browser settings, then try again.'
-                        : 'Point the rear camera at a barcode or QR code.'}
-                    </div>
-                    {camPerm !== 'denied' && (
-                      <button className={css.btnAccent} style={{ marginTop: 8 }} onClick={startCamera}>
-                        Start Camera
-                      </button>
-                    )}
-                  </div>
-                )
+                  )}
+
+                  {showDiag && <DiagPanel data={diagData} loading={diagLoading} />}
+                </>
               )}
 
               {inputMode === 'usb' && (
@@ -452,29 +537,84 @@ export default function WarehouseReceive() {
                   <div style={{ fontSize: 40 }}>🔌</div>
                   <div className={css.cameraOffTitle}>USB Scanner Active</div>
                   <div className={css.cameraOffHint}>
-                    Scan barcodes with your USB/Bluetooth hardware scanner. Focus stays on this page.
+                    Scan with your USB/Bluetooth hardware scanner. Focus stays on this page.
                   </div>
                   <div style={{ marginTop: 12, fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>
                     Listening for keyboard input…
                   </div>
+                  {scanFlash && (
+                    <div style={{ color: '#16a34a', fontWeight: 700, fontSize: 13, marginTop: 10 }}>
+                      ✓ Scan received!
+                    </div>
+                  )}
                 </div>
               )}
 
               {inputMode === 'manual' && (
                 <div className={css.card} style={{ padding: 18, marginBottom: 0 }}>
-                  <div style={{ marginBottom: 8, fontSize: 13, fontWeight: 700, color: '#1e293b' }}>Manual Entry</div>
-                  <div className={css.manualRow}>
-                    <input
-                      className={css.manualInput}
-                      placeholder="Type serial number or scan value…"
-                      value={manualVal}
-                      onChange={e => setManualVal(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') manualSubmit(); }}
-                      autoFocus
-                    />
-                    <button className={css.btnAccent} onClick={manualSubmit}>Add</button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>Manual Entry</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#64748b', cursor: 'pointer' }}>
+                      <span>Batch mode</span>
+                      <label className={css.switch}>
+                        <input type="checkbox" checked={batchMode} onChange={e => setBatchMode(e.target.checked)} />
+                        <span className={css.switchSlider} />
+                      </label>
+                    </label>
                   </div>
-                  {manualErr && <p className={css.formError} style={{ marginTop: 4 }}>{manualErr}</p>}
+
+                  {/* Structured fields */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.4px', display: 'block', marginBottom: 4 }}>
+                          Item Type {batchMode && <span style={{ color: '#6366f1' }}>🔒</span>}
+                        </label>
+                        <input
+                          className={css.input}
+                          style={{ height: 34, fontSize: 13 }}
+                          placeholder="ABIO, FXDA…"
+                          value={manualType}
+                          onChange={e => setManualType(e.target.value.toUpperCase())}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.4px', display: 'block', marginBottom: 4 }}>
+                          Part # {batchMode && <span style={{ color: '#6366f1' }}>🔒</span>}
+                        </label>
+                        <input
+                          className={css.input}
+                          style={{ height: 34, fontSize: 13 }}
+                          placeholder="474123-001.001"
+                          value={manualPN}
+                          onChange={e => setManualPN(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.4px', display: 'block', marginBottom: 4 }}>
+                        Serial Number *
+                      </label>
+                      <div className={css.manualRow} style={{ marginTop: 0 }}>
+                        <input
+                          className={css.manualInput}
+                          placeholder="N90001234567…"
+                          value={manualVal}
+                          onChange={e => setManualVal(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') manualSubmit(); }}
+                          autoFocus
+                        />
+                        <button className={css.btnAccent} onClick={manualSubmit}>Add</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {manualErr && <p className={css.formError} style={{ marginTop: 6 }}>{manualErr}</p>}
+                  {batchMode && (
+                    <p style={{ fontSize: 11, color: '#6366f1', marginTop: 8, fontWeight: 600 }}>
+                      Batch mode on: Item Type and Part # are locked across entries.
+                    </p>
+                  )}
                   <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
                     Press Enter or click Add. Supports plain SN, semicolon-delimited (TYPE;PN;SN), or GS1.
                   </p>
@@ -502,9 +642,9 @@ export default function WarehouseReceive() {
                   {scanEntries.map(e => (
                     <div key={e.localId}
                       className={`${css.scanEntry} ${
-                        e.status === 'VALID' ? css.scanEntryValid :
-                        e.status === 'DUPLICATE' ? css.scanEntryDup :
-                        e.status === 'ERROR' ? css.scanEntryError : css.scanEntryPending
+                        e.status === 'VALID'      ? css.scanEntryValid    :
+                        e.status === 'DUPLICATE'  ? css.scanEntryDup     :
+                        e.status === 'ERROR'      ? css.scanEntryError   : css.scanEntryPending
                       }`}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className={css.scanSN}>{e.serialNumber || e.rawValue}</div>
@@ -512,7 +652,8 @@ export default function WarehouseReceive() {
                         {e.resolvedItemName ? (
                           <div className={css.scanItem}>{e.resolvedItemCode} — {e.resolvedItemName}</div>
                         ) : e.status === 'PENDING' ? (
-                          <select style={{ marginTop: 4, fontSize: 11, border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 4px', maxWidth: '100%' }}
+                          <select
+                            style={{ marginTop: 4, fontSize: 11, border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 4px', maxWidth: '100%' }}
                             value=""
                             onChange={ev => resolveEntryItem(e.localId, ev.target.value)}>
                             <option value="">— Assign item —</option>
@@ -522,7 +663,9 @@ export default function WarehouseReceive() {
                         {e.statusMsg && <div className={css.scanMsg}>{e.statusMsg}</div>}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                        <span className={css.scanTime}>{new Date(e.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className={css.scanTime}>
+                          {new Date(e.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
                         <button className={`${css.btnIcon} ${css.btnIconDanger}`} onClick={() => removeEntry(e.localId)} title="Remove">
                           <TrashIcon />
                         </button>
@@ -545,28 +688,27 @@ export default function WarehouseReceive() {
         </>
       )}
 
-      {/* ── Step 3: Review ────────────────────────────────────────────────── */}
+      {/* ── Step 3: Review & Save ─────────────────────────────────────────── */}
       {step === 3 && (
         <>
           <div className={css.card} style={{ marginBottom: 16 }}>
             <div className={css.cardHdr}><span className={css.cardTitle}>Receipt Summary</span></div>
             <div className={css.cardBody}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, fontSize: 13 }}>
-                <SummaryField label="Warehouse" value={warehouseName || '—'} />
-                <SummaryField label="Date" value={session.receiptDate} />
-                <SummaryField label="Supplier" value={session.supplierName || '—'} />
+                <SummaryField label="Warehouse"    value={warehouseName || '—'} />
+                <SummaryField label="Date"         value={session.receiptDate} />
+                <SummaryField label="Supplier"     value={session.supplierName || '—'} />
                 <SummaryField label="Delivery Note" value={session.deliveryNote || '—'} />
-                <SummaryField label="PO Number" value={session.poNumber || '—'} />
-                <SummaryField label="Total Scans" value={String(scanEntries.length)} />
+                <SummaryField label="PO Number"    value={session.poNumber || '—'} />
+                <SummaryField label="Total Scans"  value={String(scanEntries.length)} />
               </div>
             </div>
           </div>
 
-          {/* Stats */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-            <KpiChip label="Valid"    value={validCount}   color="#16a34a" />
-            <KpiChip label="Pending"  value={pendingCount} color="#f59e0b" />
-            <KpiChip label="Duplicate" value={dupCount}    color="#dc2626" />
+            <KpiChip label="Valid"     value={validCount}   color="#16a34a" />
+            <KpiChip label="Pending"   value={pendingCount} color="#f59e0b" />
+            <KpiChip label="Duplicate" value={dupCount}     color="#dc2626" />
           </div>
 
           {pendingCount > 0 && (
@@ -576,7 +718,6 @@ export default function WarehouseReceive() {
             </div>
           )}
 
-          {/* Grouped by item */}
           {Object.entries(grouped).map(([code, entries]) => {
             const first = entries[0];
             return (
@@ -632,6 +773,67 @@ export default function WarehouseReceive() {
   );
 }
 
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function DiagPanel({ data, loading }: { data: ScanDiagnostics | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className={css.diagPanel}>
+        <span style={{ color: '#94a3b8', fontSize: 12 }}>Running diagnostics…</span>
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  const rows: Array<{ label: string; ok: boolean; value: string }> = [
+    {
+      label: 'Secure Context (HTTPS)',
+      ok: data.secureContext,
+      value: data.secureContext ? 'Yes' : 'No — camera requires HTTPS',
+    },
+    {
+      label: 'navigator.mediaDevices',
+      ok: data.mediaDevicesAvailable,
+      value: data.mediaDevicesAvailable ? 'Available' : 'Not available',
+    },
+    {
+      label: 'getUserMedia',
+      ok: data.getUserMediaAvailable,
+      value: data.getUserMediaAvailable ? 'Available' : 'Not available',
+    },
+    {
+      label: 'BarcodeDetector (native)',
+      ok: data.barcodeDetectorAvailable,
+      value: data.barcodeDetectorAvailable
+        ? `Yes (${data.barcodeDetectorFormats.length} formats)`
+        : 'No — will use ZXing fallback',
+    },
+    {
+      label: 'ZXing fallback',
+      ok: data.zxingAvailable,
+      value: data.zxingAvailable ? 'Available' : 'Not available',
+    },
+    {
+      label: 'Camera permission',
+      ok: data.cameraPermission === 'granted',
+      value: data.cameraPermission,
+    },
+  ];
+
+  return (
+    <div className={css.diagPanel}>
+      <div className={css.diagTitle}>Camera Diagnostics</div>
+      {rows.map(r => (
+        <div key={r.label} className={css.diagRow}>
+          <span className={css.diagDot} style={{ background: r.ok ? '#16a34a' : '#dc2626' }} />
+          <span className={css.diagLabel}>{r.label}</span>
+          <span className={css.diagValue}>{r.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function WizardHeader({ step }: { step: Step }) {
   const steps = ['Receipt Details', 'Scan Items', 'Review & Save'];
   return (
@@ -640,11 +842,13 @@ function WizardHeader({ step }: { step: Step }) {
       <div className={css.wizardSteps}>
         {steps.map((label, i) => {
           const n = (i + 1) as Step;
-          const cls = n < step ? 'done' : n === step ? 'active' : '';
           return (
-            <div key={n} className={`${css.wizardStep} ${cls === 'done' ? css['done' as keyof typeof css] || '' : ''}`}
+            <div key={n} className={css.wizardStep}
               style={{ color: n < step ? '#16a34a' : n === step ? '#6366f1' : '#94a3b8' }}>
-              {i > 0 && <div className={css.stepLine} style={{ background: n <= step ? (n < step ? '#16a34a' : '#6366f1') : '#e2e8f0' }} />}
+              {i > 0 && (
+                <div className={css.stepLine}
+                  style={{ background: n <= step ? (n < step ? '#16a34a' : '#6366f1') : '#e2e8f0' }} />
+              )}
               <div className={css.stepNum}
                 style={{
                   background: n < step ? '#16a34a' : n === step ? '#6366f1' : '#e2e8f0',

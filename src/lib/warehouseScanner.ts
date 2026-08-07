@@ -1,38 +1,51 @@
 // ── Warehouse Scanner Abstraction ─────────────────────────────────────────────
 //
 // Architecture:
-//  1. parseScan()   — stateless parser registry (manufacturer profiles pluggable)
-//  2. CameraScanner — class that owns the MediaStream + decode loop lifecycle
-//  3. UsbScanner    — hooks into rapid-keystroke input for USB barcode scanners
+//  1. parseScan()          — stateless parser registry (manufacturer profiles pluggable)
+//  2. CameraScanner        — owns the MediaStream + decode loop lifecycle
+//  3. UsbScanner           — hooks into rapid-keystroke input for USB barcode scanners
+//  4. getScanDiagnostics() — async capability probe for debugging
 //
-// BarcodeDetector (Chrome/Android native) is preferred.
-// @zxing/browser   is the universal fallback (iOS Safari, Firefox, desktop).
+// Decoder priority:
+//  1. BarcodeDetector (Chrome/Android native) — fastest, runs natively
+//  2. @zxing/browser                          — fallback (iOS Safari, Firefox, desktop)
+//
+// Camera startup is independent from decoder availability.
+// The camera opens as soon as getUserMedia succeeds; the decoder initialises
+// in the background. If the decoder fails, onError is surfaced but the
+// camera STAYS OPEN so manual entry or USB can still be used.
+
+// ── Parsing status ────────────────────────────────────────────────────────────
+
+export type ParsingStatus = 'resolved' | 'partially_resolved' | 'unresolved';
 
 // ── Parsed scan result ────────────────────────────────────────────────────────
 
 export interface ParsedScan {
-  rawValue: string;
-  symbology: string;         // 'CODE_128' | 'DATA_MATRIX' | 'QR_CODE' | etc.
-  serialNumber: string | null;
-  partNumber: string | null;
-  itemType: string | null;
-  rawFields: string[];
+  rawValue:       string;
+  symbology:      string;           // 'CODE_128' | 'DATA_MATRIX' | 'QR_CODE' | etc.
+  serialNumber:   string | null;
+  partNumber:     string | null;
+  itemType:       string | null;
+  manufacturer:   string | null;    // 'Nokia' | 'Huawei' | 'Ericsson' | null
+  rawFields:      string[];
   parsingProfile: string;
-  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  confidence:     'HIGH' | 'MEDIUM' | 'LOW';
+  status:         ParsingStatus;
 }
 
 // ── Parser profile interface ──────────────────────────────────────────────────
 
 interface ParserProfile {
-  name: string;
+  name:     string;
   canParse: (raw: string) => boolean;
-  parse: (raw: string) => Omit<ParsedScan, 'rawValue' | 'symbology'>;
+  parse:    (raw: string) => Omit<ParsedScan, 'rawValue' | 'symbology'>;
 }
 
 // ── GS1 DataMatrix field parser ───────────────────────────────────────────────
 
 function parseGS1(fields: string[]): Omit<ParsedScan, 'rawValue' | 'symbology'> {
-  let partNumber: string | null = null;
+  let partNumber:   string | null = null;
   let serialNumber: string | null = null;
 
   for (const f of fields) {
@@ -44,20 +57,98 @@ function parseGS1(fields: string[]): Omit<ParsedScan, 'rawValue' | 'symbology'> 
     const m21 = f.match(/^\(?21\)?(.{1,20})$/i);
     if (m21) { serialNumber = m21[1].trim().toUpperCase(); continue; }
 
-    // AI (10) = lot/batch — ignore for now
+    // AI (10) = lot/batch — ignored in Phase 1
   }
 
+  const status: ParsingStatus =
+    serialNumber && partNumber ? 'resolved' :
+    serialNumber || partNumber ? 'partially_resolved' : 'unresolved';
+
   return {
-    serialNumber,
-    partNumber,
-    itemType: null,
-    rawFields: fields,
-    parsingProfile: 'gs1',
+    serialNumber, partNumber, itemType: null, manufacturer: null,
+    rawFields: fields, parsingProfile: 'gs1',
     confidence: serialNumber ? 'HIGH' : 'MEDIUM',
+    status,
   };
 }
 
-// ── Generic parser (registered last — always matches) ────────────────────────
+// ── Nokia parser ──────────────────────────────────────────────────────────────
+// Nokia telecom equipment labels typically encode one of:
+//   a) Semicolon-delimited:  ABIO;474123-001.001;N90001234567
+//   b) GS1 DataMatrix:       AI(01)+PN  AI(21)+SN
+//   c) Plain SN barcode:     N9XXXXXXXXX / NXXXXXXXXXXXXXXX
+//
+// Nokia SN patterns observed: starts with N followed by digits/letters,
+// or a 12+ alphanumeric string on serialized radio units.
+// Nokia PN pattern: numeric prefix, dash, decimal suffix (e.g. 474234-200.001)
+
+const NOKIA_PN_RE = /^\d{6}-\d{3}\.\d{3}$/;
+const NOKIA_SN_RE = /^N[0-9A-Z]{8,18}$/i;
+
+const nokiaParser: ParserProfile = {
+  name: 'nokia',
+  canParse: (raw: string) => {
+    const clean = raw.trim();
+    // Semicolon-delimited with Nokia item types
+    if (/^(ABIO|FXDA|FXEA|AHIB|ASIA|ABIA|FHEA|FGEA|FCEA|FCEB|FPGA|AHIB|SRIA|AHEC|FSMF)/i.test(clean)) return true;
+    // Nokia PN pattern
+    if (NOKIA_PN_RE.test(clean)) return true;
+    // Nokia SN pattern
+    if (NOKIA_SN_RE.test(clean)) return true;
+    return false;
+  },
+  parse: (raw: string) => {
+    const clean = raw.trim();
+    const upper = clean.toUpperCase();
+
+    // Semicolon TYPE;PN;SN  or  TYPE;SN
+    const scFields = clean.split(';').filter(Boolean);
+    if (scFields.length >= 2) {
+      const itField = scFields[0].trim().toUpperCase();
+      const pnField = scFields.length >= 3 ? scFields[1].trim() : null;
+      const snField = (scFields[scFields.length - 1]).trim().toUpperCase();
+      return {
+        itemType:   itField || null,
+        partNumber: pnField || null,
+        serialNumber: snField || null,
+        manufacturer: 'Nokia',
+        rawFields: scFields,
+        parsingProfile: 'nokia-semicolon',
+        confidence: 'HIGH',
+        status: (itField && snField ? 'resolved' : 'partially_resolved') as ParsingStatus,
+      };
+    }
+
+    // Pure Nokia PN
+    if (NOKIA_PN_RE.test(clean)) {
+      return {
+        itemType: null, serialNumber: null, manufacturer: 'Nokia',
+        partNumber: clean,
+        rawFields: [clean], parsingProfile: 'nokia-pn-only',
+        confidence: 'MEDIUM', status: 'partially_resolved' as const,
+      };
+    }
+
+    // Pure Nokia SN
+    if (NOKIA_SN_RE.test(upper)) {
+      return {
+        itemType: null, partNumber: null, manufacturer: 'Nokia',
+        serialNumber: upper,
+        rawFields: [clean], parsingProfile: 'nokia-sn-only',
+        confidence: 'MEDIUM', status: 'partially_resolved' as const,
+      };
+    }
+
+    // Fallback: treat as Nokia item type label
+    return {
+      itemType: upper, serialNumber: null, partNumber: null, manufacturer: 'Nokia',
+      rawFields: [clean], parsingProfile: 'nokia-type-only',
+      confidence: 'LOW', status: 'partially_resolved' as const,
+    };
+  },
+};
+
+// ── Generic parser (registered last — always matches) ─────────────────────────
 
 const genericParser: ParserProfile = {
   name: 'generic',
@@ -66,7 +157,7 @@ const genericParser: ParserProfile = {
     const clean = raw.trim();
     const upper = clean.toUpperCase();
 
-    // GS1 DataMatrix: ASCII GS (0x1D) or RS (0x1E) separators
+    // GS1 DataMatrix: ASCII GS (0x1D) or RS (0x1E) or EOT (0x04) separators
     const gsFields = clean.split(/[\x1d\x1e\x04]/).filter(Boolean);
     if (gsFields.length > 1) return parseGS1(gsFields);
 
@@ -74,58 +165,56 @@ const genericParser: ParserProfile = {
     const aiFields = clean.match(/\(\d{2}\)[^(]+/g);
     if (aiFields && aiFields.length > 1) return parseGS1(aiFields);
 
-    // Semicolon-delimited (some label encodings): TYPE;PN;SN
+    // Semicolon-delimited: TYPE;PN;SN  or  PN;SN
     const scFields = clean.split(';').filter(Boolean);
     if (scFields.length === 3) {
       return {
-        itemType:      scFields[0].trim().toUpperCase() || null,
-        partNumber:    scFields[1].trim() || null,
-        serialNumber:  scFields[2].trim().toUpperCase() || null,
-        rawFields:     scFields,
-        parsingProfile: 'generic-semicolon',
+        itemType:     scFields[0].trim().toUpperCase() || null,
+        partNumber:   scFields[1].trim() || null,
+        serialNumber: scFields[2].trim().toUpperCase() || null,
+        manufacturer: null,
+        rawFields: scFields, parsingProfile: 'generic-semicolon',
         confidence: 'MEDIUM',
+        status: 'resolved' as const,
       };
     }
     if (scFields.length === 2) {
-      // Could be PN;SN or itemType;SN — treat second field as SN
       return {
-        itemType:     null,
+        itemType: null,
         partNumber:   scFields[0].trim() || null,
         serialNumber: scFields[1].trim().toUpperCase() || null,
-        rawFields:    scFields,
-        parsingProfile: 'generic-semicolon-2',
-        confidence: 'LOW',
+        manufacturer: null,
+        rawFields: scFields, parsingProfile: 'generic-semicolon-2',
+        confidence: 'LOW', status: 'partially_resolved' as const,
       };
     }
 
     // Pure serial number (alphanumeric, 6–30 chars)
     if (/^[A-Z0-9\-\/\.]{6,30}$/i.test(clean)) {
       return {
-        serialNumber:  upper,
-        partNumber:    null,
-        itemType:      null,
-        rawFields:     [clean],
-        parsingProfile: 'generic-sn-only',
-        confidence: 'LOW',
+        serialNumber: upper, partNumber: null, itemType: null, manufacturer: null,
+        rawFields: [clean], parsingProfile: 'generic-sn-only',
+        confidence: 'LOW', status: 'partially_resolved' as const,
       };
     }
 
-    // Unrecognized — keep raw, ask user to resolve
+    // Unrecognized
     return {
-      serialNumber:  null,
-      partNumber:    null,
-      itemType:      null,
-      rawFields:     [clean],
-      parsingProfile: 'generic-unknown',
-      confidence: 'LOW',
+      serialNumber: null, partNumber: null, itemType: null, manufacturer: null,
+      rawFields: [clean], parsingProfile: 'generic-unknown',
+      confidence: 'LOW', status: 'unresolved' as const,
     };
   },
 };
 
-// ── Parser registry (manufacturer profiles inserted here in Phase 2) ──────────
+// ── Parser registry ───────────────────────────────────────────────────────────
+// Profiles are checked in order; first canParse() match wins.
+// Add Huawei and Ericsson profiles here in Phase 2.
 
 const PARSERS: ParserProfile[] = [
-  // Nokia, Huawei, Ericsson profiles will be added here
+  nokiaParser,
+  // huaweiParser,   // Phase 2
+  // ericssonParser, // Phase 2
   genericParser,
 ];
 
@@ -137,8 +226,8 @@ export function parseScan(raw: string, symbology: string): ParsedScan {
   }
   return {
     rawValue: raw, symbology,
-    serialNumber: null, partNumber: null, itemType: null,
-    rawFields: [raw], parsingProfile: 'none', confidence: 'LOW',
+    serialNumber: null, partNumber: null, itemType: null, manufacturer: null,
+    rawFields: [raw], parsingProfile: 'none', confidence: 'LOW', status: 'unresolved',
   };
 }
 
@@ -147,25 +236,65 @@ export function parseScan(raw: string, symbology: string): ParsedScan {
 export type CameraPermission = 'granted' | 'denied' | 'unsupported' | 'unknown';
 
 export async function checkCameraPermission(): Promise<CameraPermission> {
+  if (!window.isSecureContext)              return 'unsupported';
   if (!navigator.mediaDevices?.getUserMedia) return 'unsupported';
   if (navigator.permissions) {
     try {
-      const status = await navigator.permissions.query({ name: 'camera' as PermissionName });
-      if (status.state === 'granted') return 'granted';
-      if (status.state === 'denied')  return 'denied';
+      const s = await navigator.permissions.query({ name: 'camera' as PermissionName });
+      if (s.state === 'granted') return 'granted';
+      if (s.state === 'denied')  return 'denied';
     } catch {
-      // Some browsers don't support querying 'camera' — fall through to probe
+      // Some browsers (Firefox, Safari) don't support querying 'camera'
     }
   }
   return 'unknown';
 }
 
+// ── Scan diagnostics ──────────────────────────────────────────────────────────
+
+export interface ScanDiagnostics {
+  secureContext:            boolean;
+  mediaDevicesAvailable:    boolean;
+  getUserMediaAvailable:    boolean;
+  barcodeDetectorAvailable: boolean;
+  barcodeDetectorFormats:   string[];
+  zxingAvailable:           boolean;
+  cameraPermission:         CameraPermission;
+}
+
+export async function getScanDiagnostics(): Promise<ScanDiagnostics> {
+  const secureContext            = window.isSecureContext;
+  const mediaDevicesAvailable    = !!navigator.mediaDevices;
+  const getUserMediaAvailable    = !!(navigator.mediaDevices?.getUserMedia);
+  const barcodeDetectorAvailable = 'BarcodeDetector' in window;
+
+  let barcodeDetectorFormats: string[] = [];
+  if (barcodeDetectorAvailable) {
+    try {
+      const BD = (window as unknown as { BarcodeDetector: BarcodeDetectorCtor }).BarcodeDetector;
+      barcodeDetectorFormats = await BD.getSupportedFormats();
+    } catch { /* ignore */ }
+  }
+
+  let zxingAvailable = false;
+  try {
+    const mod = await import('@zxing/browser');
+    zxingAvailable = !!mod.BrowserMultiFormatReader;
+  } catch { /* ignore */ }
+
+  const cameraPermission = await checkCameraPermission();
+
+  return {
+    secureContext, mediaDevicesAvailable, getUserMediaAvailable,
+    barcodeDetectorAvailable, barcodeDetectorFormats, zxingAvailable, cameraPermission,
+  };
+}
+
 // ── BarcodeDetector type shim ─────────────────────────────────────────────────
-// Not yet in lib.dom.d.ts for all TypeScript versions.
 
 interface BarcodeDetectorResult {
   rawValue: string;
-  format: string;
+  format:   string;
 }
 
 interface BarcodeDetectorCtor {
@@ -180,53 +309,147 @@ const NATIVE_FORMATS = [
   'upc_a', 'upc_e', 'itf', 'qr_code', 'data_matrix', 'pdf417', 'aztec',
 ];
 
+// ── Map DOMException names to user-friendly messages ─────────────────────────
+
+export function cameraErrorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const name = (err as DOMException).name ?? '';
+  switch (name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'Camera permission denied. Allow camera access in your browser settings and try again.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'No camera found on this device.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'Camera is already in use by another app. Close it and try again.';
+    case 'OverconstrainedError':
+    case 'ConstraintNotSatisfiedError':
+      return 'Camera constraints could not be satisfied. Trying a simpler configuration…';
+    case 'SecurityError':
+      return 'Camera blocked by browser security policy. Ensure the page is served over HTTPS.';
+    case 'AbortError':
+      return 'Camera request was cancelled.';
+    default:
+      return err.message || 'Unknown camera error.';
+  }
+}
+
 // ── CameraScanner class ───────────────────────────────────────────────────────
 
 export interface ScannerCallbacks {
-  onScan: (raw: string, symbology: string) => void;
+  onScan:   (raw: string, symbology: string) => void;
   onError?: (msg: string) => void;
   onStart?: () => void;
 }
 
 export class CameraScanner {
-  private stream: MediaStream | null = null;
-  private rafId: number | null = null;
+  private stream:       MediaStream | null = null;
+  private rafId:        number | null = null;
   private zxingCleaner: (() => void) | null = null;
-  private paused = false;
-  private lastRaw = '';
-  private lastAt = 0;
+  private paused       = false;
+  private lastRaw      = '';
+  private lastAt       = 0;
+  private facingMode:  'environment' | 'user' = 'environment';
   private readonly COOLDOWN_MS = 1500;
 
-  async start(videoEl: HTMLVideoElement, opts: ScannerCallbacks): Promise<void> {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' },
-        width:  { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-    });
+  async start(
+    videoEl: HTMLVideoElement,
+    opts: ScannerCallbacks,
+    facingMode: 'environment' | 'user' = 'environment',
+  ): Promise<void> {
+    this.facingMode = facingMode;
 
-    this.stream = stream;
+    // Verify we're in a secure context before even asking
+    if (!window.isSecureContext) {
+      throw new Error('Camera requires HTTPS. The page is not in a secure context.');
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('getUserMedia is not available in this browser.');
+    }
+
+    // Attempt ideal constraints first; if overconstrained, retry minimal
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facingMode },
+          width:  { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+    } catch (e) {
+      // If OverconstrainedError, retry with just facingMode
+      if (e instanceof Error && (e.name === 'OverconstrainedError' || e.name === 'ConstraintNotSatisfiedError')) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } },
+          audio: false,
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    this.stream       = stream;
     videoEl.srcObject = stream;
-    videoEl.setAttribute('playsinline', 'true'); // required by iOS Safari
-    videoEl.setAttribute('muted', 'true');
-    videoEl.muted = true;
-    await videoEl.play().catch(() => {}); // Safari may require a user-gesture promise chain
 
+    // iOS Safari PWA requires these attributes to be set programmatically
+    videoEl.setAttribute('playsinline', 'true');
+    videoEl.setAttribute('autoplay', 'true');
+    videoEl.setAttribute('muted', 'true');
+    videoEl.muted    = true;
+    videoEl.autoplay = true;
+
+    // Play may fail if the element is not yet visible; retry on loadedmetadata
+    try {
+      await videoEl.play();
+    } catch {
+      // Some browsers require waiting for metadata before play()
+      await new Promise<void>((resolve, reject) => {
+        const onMeta = () => {
+          videoEl.removeEventListener('loadedmetadata', onMeta);
+          videoEl.play().then(resolve).catch(reject);
+        };
+        videoEl.addEventListener('loadedmetadata', onMeta);
+        // Timeout safety: if metadata never fires, reject after 5s
+        setTimeout(() => reject(new Error('Video metadata timeout')), 5000);
+      });
+    }
+
+    // Signal the UI that camera is live — do this BEFORE starting the decoder
+    // so the video element is visible and sized when the decoder first reads it.
     opts.onStart?.();
 
+    // Start decoder (camera stays open regardless of decoder outcome)
     if ('BarcodeDetector' in window) {
-      const BD = (window as unknown as { BarcodeDetector: BarcodeDetectorCtor }).BarcodeDetector;
+      const BD       = (window as unknown as { BarcodeDetector: BarcodeDetectorCtor }).BarcodeDetector;
       const supported = await BD.getSupportedFormats().catch(() => NATIVE_FORMATS);
       const formats   = NATIVE_FORMATS.filter(f => supported.includes(f));
       const detector  = new BD({ formats: formats.length ? formats : NATIVE_FORMATS });
       this.startNativeLoop(videoEl, detector, opts);
     } else {
-      await this.startZxingLoop(videoEl, opts);
+      // ZXing: fire and forget — camera is already live; decoder starts in background
+      this.startZxingLoop(videoEl, opts);
     }
   }
 
-  private startNativeLoop(videoEl: HTMLVideoElement, detector: { detect(s: HTMLVideoElement): Promise<BarcodeDetectorResult[]> }, opts: ScannerCallbacks) {
+  // Camera switch without resetting scan entries
+  async switchCamera(videoEl: HTMLVideoElement, opts: ScannerCallbacks): Promise<void> {
+    const newFacing: 'environment' | 'user' =
+      this.facingMode === 'environment' ? 'user' : 'environment';
+    this.stopStream();          // stop old stream but don't clear rafId/zxing yet
+    await this.start(videoEl, opts, newFacing);
+  }
+
+  getFacingMode(): 'environment' | 'user' { return this.facingMode; }
+
+  private startNativeLoop(
+    videoEl:  HTMLVideoElement,
+    detector: { detect(s: HTMLVideoElement): Promise<BarcodeDetectorResult[]> },
+    opts:     ScannerCallbacks,
+  ) {
     const tick = async () => {
       if (!this.paused && videoEl.readyState >= 2) {
         try {
@@ -236,7 +459,7 @@ export class CameraScanner {
               opts.onScan(r.rawValue, r.format.toUpperCase().replace(/-/g, '_'));
             }
           }
-        } catch { /* non-fatal */ }
+        } catch { /* non-fatal: frame decode error */ }
       }
       this.rafId = requestAnimationFrame(tick);
     };
@@ -246,18 +469,18 @@ export class CameraScanner {
   private async startZxingLoop(videoEl: HTMLVideoElement, opts: ScannerCallbacks) {
     try {
       const { BrowserMultiFormatReader } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
+      const reader   = new BrowserMultiFormatReader();
       const controls = await reader.decodeFromVideoElement(videoEl, (result, _err) => {
         if (result && !this.paused) {
           const raw = result.getText();
           const fmt = result.getBarcodeFormat().toString().replace(/-/g, '_').toUpperCase();
           if (this.acceptScan(raw)) opts.onScan(raw, fmt);
         }
-        // non-fatal decode errors (NotFoundException etc.) are ignored
+        // NotFoundException and other non-fatal decode errors are silently ignored
       });
       this.zxingCleaner = () => { try { controls?.stop(); } catch { /* ignore */ } };
     } catch {
-      opts.onError?.('Barcode scanner library failed to load. Use manual entry instead.');
+      opts.onError?.('Barcode decoder unavailable. Use manual entry or USB scanner instead.');
     }
   }
 
@@ -272,6 +495,13 @@ export class CameraScanner {
   pause()  { this.paused = true; }
   resume() { this.paused = false; }
 
+  private stopStream() {
+    if (this.stream) {
+      this.stream.getTracks().forEach(t => t.stop());
+      this.stream = null;
+    }
+  }
+
   stop() {
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
@@ -279,21 +509,20 @@ export class CameraScanner {
     }
     this.zxingCleaner?.();
     this.zxingCleaner = null;
-    if (this.stream) {
-      this.stream.getTracks().forEach(t => t.stop());
-      this.stream = null;
-    }
+    this.stopStream();
   }
 
-  async toggleTorch(): Promise<void> {
+  async toggleTorch(): Promise<boolean> {
     const track = this.stream?.getVideoTracks()[0];
-    if (!track) return;
+    if (!track) return false;
     const caps = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
-    if (!caps.torch) return;
+    if (!caps.torch) return false;
     const settings = track.getSettings() as MediaTrackSettings & { torch?: boolean };
+    const newVal   = !settings.torch;
     await track.applyConstraints({
-      advanced: [{ torch: !settings.torch } as MediaTrackConstraintSet],
+      advanced: [{ torch: newVal } as MediaTrackConstraintSet],
     }).catch(() => {});
+    return newVal;
   }
 
   hasTorch(): boolean {
@@ -304,23 +533,22 @@ export class CameraScanner {
   }
 }
 
-// ── USB / hardware scanner helper ─────────────────────────────────────────────
-// USB barcode scanners behave as keyboard devices: they type characters very
-// quickly and then emit an Enter key. We detect this by watching for
-// keystroke sequences where consecutive keys arrive within 50ms.
+// ── USB / hardware scanner ────────────────────────────────────────────────────
+// USB barcode scanners type characters very fast (< 50ms between keys)
+// and emit Enter at the end. We capture this keystroke pattern and treat
+// it as a scan rather than manual keyboard input.
 
 export interface UsbScannerOptions {
-  onScan: (raw: string) => void;
-  /** ms threshold — keystrokes faster than this are from the scanner, not the user */
-  threshold?: number;
+  onScan:    (raw: string) => void;
+  threshold?: number;  // ms between keystrokes — below this = scanner, above = human
 }
 
 export class UsbScanner {
-  private buffer = '';
-  private lastKeyAt = 0;
+  private buffer     = '';
+  private lastKeyAt  = 0;
   private readonly threshold: number;
-  private readonly handler: (e: KeyboardEvent) => void;
-  private readonly target: HTMLElement;
+  private readonly handler:   (e: KeyboardEvent) => void;
+  private readonly target:    HTMLElement;
 
   constructor(target: HTMLElement, opts: UsbScannerOptions) {
     this.threshold = opts.threshold ?? 50;
@@ -328,23 +556,21 @@ export class UsbScanner {
     this.handler   = (e: KeyboardEvent) => {
       const now = Date.now();
 
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' || e.key === 'Tab') {
         const raw = this.buffer.trim();
         if (raw.length >= 3) opts.onScan(raw);
-        this.buffer = '';
+        this.buffer    = '';
         this.lastKeyAt = 0;
         e.preventDefault();
         return;
       }
 
-      // Reset buffer if gap is too large (manual typing)
-      if (now - this.lastKeyAt > this.threshold * 4 && this.lastKeyAt !== 0) {
+      // Gap too large → human is typing; discard accumulated buffer
+      if (this.lastKeyAt !== 0 && now - this.lastKeyAt > this.threshold * 4) {
         this.buffer = '';
       }
 
-      if (e.key.length === 1) {
-        this.buffer += e.key;
-      }
+      if (e.key.length === 1) this.buffer += e.key;
       this.lastKeyAt = now;
     };
   }
