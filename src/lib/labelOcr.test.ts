@@ -248,3 +248,121 @@ describe('mergeScanAndOcr() — merge engine', () => {
     expect(r.source.partNumber).toBe('OCR');
   });
 });
+
+// ── Phase B — auto-snapshot OCR tests ─────────────────────────────────────────
+
+describe('Phase B — AHGA & generic item type extraction', () => {
+  it('extracts AHGA from a real Nokia carton label (ground truth)', () => {
+    const text = [
+      'NOKIA NETWORKS',
+      'AHGA',
+      'Part No: 474254A.202',
+      'Serial No: 1M241909797',
+      'Made in China',
+    ].join('\n');
+    const { itemTypes, partNumbers, serialNumbers } = parseLabel(text, new Set());
+    expect(itemTypes).toContain('AHGA');
+    expect(partNumbers).toContain('474254A.202');
+    expect(serialNumbers).toContain('1M241909797');
+  });
+
+  it('extracts AHGA even when not in Item Master (generic Nokia code pattern)', () => {
+    // Nokia label with AHGA — Item Master vocabulary is empty
+    const { itemTypes } = parseLabel('AHGA outdoor unit', new Set());
+    expect(itemTypes).toContain('AHGA');
+  });
+
+  it('prefers Item Master match over pattern match for same token', () => {
+    // XYZQ is in the Item Master — extracted regardless of whether it looks Nokia
+    const { itemTypes } = parseLabel('XYZQ unit', new Set(['XYZQ']));
+    expect(itemTypes).toContain('XYZQ');
+  });
+
+  it('does not extract common English words as item type codes (CARE, SIDE)', () => {
+    const { itemTypes } = parseLabel('FRAGILE\nHANDLE WITH CARE\nTHIS SIDE UP', new Set());
+    expect(itemTypes).not.toContain('CARE');
+    expect(itemTypes).not.toContain('SIDE');
+    expect(itemTypes).not.toContain('HAND');
+    expect(itemTypes).toHaveLength(0);
+  });
+
+  it('does not extract NOKIA or CHINA even if they match Nokia code length', () => {
+    const { itemTypes } = parseLabel('NOKIA MADE IN CHINA', new Set(['NOKIA', 'CHINA']));
+    expect(itemTypes).not.toContain('NOKIA');
+    expect(itemTypes).not.toContain('CHINA');
+  });
+
+  it('extracts all three from label with 8-char token noise (NETWORKS stays out)', () => {
+    const text = 'NOKIA NETWORKS\nFXDA\nP/N: 475266B.102';
+    const { itemTypes } = parseLabel(text, new Set());
+    expect(itemTypes).toContain('FXDA');
+    expect(itemTypes).not.toContain('NETWORKS'); // 8 chars, not 4-letter code
+    expect(itemTypes).not.toContain('NOKIA');    // in excluded list
+  });
+});
+
+describe('Phase B — barcode+OCR merge (auto-snapshot scenario)', () => {
+  it('MERGED: Nokia DataMatrix PN+SN + OCR type AHGA → correct provenance', () => {
+    // This is the expected ground truth for the real Nokia AHGA carton:
+    // DataMatrix decoded: PN=474254A.202, SN=1M241909797
+    // OCR read from label: AHGA
+    const r = mergeScanAndOcr({
+      barcode: { serialNumber: '1M241909797', partNumber: '474254A.202', itemType: null },
+      ocr: makeOcr({ itemType: 'AHGA' }),
+    });
+    expect(r.scenario).toBe('MERGED');
+    expect(r.itemType).toBe('AHGA');
+    expect(r.serialNumber).toBe('1M241909797');
+    expect(r.partNumber).toBe('474254A.202');
+    expect(r.source.itemType).toBe('OCR');
+    expect(r.source.serialNumber).toBe('BARCODE');
+    expect(r.source.partNumber).toBe('BARCODE');
+    expect(r.confidence).toBe('HIGH');
+    expect(r.conflicts).toHaveLength(0);
+  });
+
+  it('MERGED: OCR fills unknown item type — barcode PN/SN untouched', () => {
+    const r = mergeScanAndOcr({
+      barcode: { serialNumber: 'DH252030925', partNumber: '475266B.102', itemType: null },
+      ocr: makeOcr({ itemType: 'ABIO', serialNumber: 'DH252030925' }),
+    });
+    expect(r.scenario).toBe('MERGED');
+    expect(r.itemType).toBe('ABIO');
+    expect(r.source.itemType).toBe('OCR');
+    expect(r.source.serialNumber).toBe('BARCODE');
+  });
+
+  it('rapid scan: two entries each get their own OCR result (no cross-contamination)', () => {
+    // Simulate two independent merges with different localIds/barcode data
+    const r1 = mergeScanAndOcr({
+      barcode: { serialNumber: '1M241909797', partNumber: '474254A.202', itemType: null },
+      ocr: makeOcr({ itemType: 'AHGA' }),
+    });
+    const r2 = mergeScanAndOcr({
+      barcode: { serialNumber: 'DH252030925', partNumber: '475266B.102', itemType: null },
+      ocr: makeOcr({ itemType: 'ABIO' }),
+    });
+    // Each result is independent
+    expect(r1.itemType).toBe('AHGA');
+    expect(r1.serialNumber).toBe('1M241909797');
+    expect(r2.itemType).toBe('ABIO');
+    expect(r2.serialNumber).toBe('DH252030925');
+  });
+
+  it('OCR failure (null OCR) → BARCODE_ONLY, barcode data preserved', () => {
+    const r = mergeScanAndOcr({
+      barcode: { serialNumber: '1M241909797', partNumber: '474254A.202', itemType: null },
+      ocr: null,
+    });
+    expect(r.scenario).toBe('BARCODE_ONLY');
+    expect(r.serialNumber).toBe('1M241909797');
+    expect(r.partNumber).toBe('474254A.202');
+    expect(r.itemType).toBeNull();
+  });
+
+  it('unknown item type (not in Item Master) extracted as generic Nokia code', () => {
+    // WXYZ is not in the Item Master but matches Nokia 4-letter code pattern
+    const { itemTypes } = parseLabel('WXYZ outdoor unit P/N: 474254A.202', new Set());
+    expect(itemTypes).toContain('WXYZ');
+  });
+});

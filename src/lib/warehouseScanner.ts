@@ -201,12 +201,13 @@ export function parseNokiaDI(fields: string[]): Omit<ParsedScan, 'rawValue' | 's
 }
 
 // Pattern for a STANDALONE Nokia SN encoded with the S Data Identifier prefix.
-// Structure: S + 1–3 uppercase letters (location/site code) + 6–15 digits.
-// Examples: SDH252030925 → SN=DH252030925  |  SN912345678 → SN=N912345678
+// Structure: S + 1–3 alphanumeric chars (Nokia prefix) + 6–15 digits.
+// Nokia prefixes can start with a digit (e.g. 1M) or letters (e.g. DH).
+// Examples: SDH252030925 → SN=DH252030925  |  S1M241909797 → SN=1M241909797
 // NOT matched (S is part of the value):
-//   SERIAL001 (ERIAL = 5 letters > 3 — not stripped)
-//   SFULL12345 (FULL = 4 letters > 3 — not stripped)
-const NOKIA_SN_DI_RE = /^S([A-Z]{1,3}[0-9]{6,15})$/;
+//   SERIAL001 (E-R-I = 3 alnum but then AL001 breaks the digit-only suffix)
+//   SFULL12345 (F-U-L-L starts alpha run that leaves non-digits before the suffix)
+const NOKIA_SN_DI_RE = /^S([A-Z0-9][A-Z0-9]{0,2}[0-9]{6,15})$/;
 
 // ── Nokia parser ──────────────────────────────────────────────────────────────
 // Nokia telecom equipment labels typically encode one of:

@@ -9,7 +9,7 @@ import {
 } from '../lib/warehouseScanner';
 import type { Warehouse, InventoryItem, ScanEntry, SessionDetails } from '../lib/warehouseTypes';
 import { normalizeSN } from '../lib/warehouseTypes';
-import { readLabel, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
+import { captureVideoFrame, ocrCanvasFrame, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
 import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
 import css from './Warehouse.module.css';
 
@@ -206,28 +206,108 @@ export default function WarehouseReceive() {
     setHudState('IDLE');
   }
 
-  // ── OCR — Read Label ──────────────────────────────────────────────────────
+  // ── OCR — core merge function ──────────────────────────────────────────────
+  // Finds entry by stable localId and merges OCR result into it.
+  // No HUD side effects — callers decide whether to show feedback.
+  function applyOcrByEntryId(
+    localId: string,
+    barcodeData: BarcodeSource | null,
+    ocr: OcrResult,
+  ) {
+    const barcode: BarcodeSource | null =
+      barcodeData && (barcodeData.partNumber || barcodeData.serialNumber || barcodeData.itemType)
+        ? barcodeData : null;
+
+    const merged = mergeScanAndOcr({ barcode, ocr });
+
+    let rid: string | null = null, rname: string | null = null, rcode: string | null = null;
+    if (merged.itemType) {
+      const it = itemsByCode.current.get(merged.itemType.toUpperCase());
+      if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+    }
+    if (!rid && merged.partNumber) {
+      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
+      if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+    }
+
+    setScanEntries(prev => prev.map(e => {
+      if (e.localId !== localId) return e;
+      // Preserve an already-resolved item — OCR cannot downgrade a MATCHED entry
+      const newRid   = e.resolvedItemId ?? rid;
+      const newRname = e.resolvedItemName ?? rname;
+      const newRcode = e.resolvedItemCode ?? rcode;
+      const matchStatus: ScanEntry['matchStatus'] =
+        newRid           ? 'MATCHED'   :
+        merged.partNumber ? 'UNMATCHED' : 'NO_PN';
+      return {
+        ...e,
+        itemTypeRaw:      merged.itemType ?? e.itemTypeRaw,
+        resolvedItemId:   newRid,
+        resolvedItemName: newRname,
+        resolvedItemCode: newRcode,
+        status:           newRid ? 'VALID' as const : 'PENDING' as const,
+        statusMsg:        newRid ? null : 'Item not matched — select manually',
+        matchStatus,
+        ocrRawText:       ocr.rawText.substring(0, 500),
+        ocrItemType:      merged.source.itemType    === 'OCR' ? merged.itemType     : null,
+        ocrPartNumber:    merged.source.partNumber  === 'OCR' ? merged.partNumber   : null,
+        ocrSerialNumber:  merged.source.serialNumber === 'OCR' ? merged.serialNumber : null,
+        mergeConflicts:   merged.conflicts,
+        mergeScenario:    merged.scenario,
+        ocrDurationMs:    ocr.durationMs,
+      };
+    }));
+  }
+
+  // ── Auto-OCR — fires automatically at barcode decode time ─────────────────
+  // Canvas is captured synchronously in handleRawScan; this function runs async.
+  // Correlation is by stable localId generated before any setState — not by
+  // "most recent entry", so rapid scanning never attaches OCR to the wrong item.
+  async function launchAutoOcr(
+    localId: string,
+    barcodeData: BarcodeSource,
+    canvas: HTMLCanvasElement,
+  ) {
+    try {
+      const ocr = await ocrCanvasFrame(canvas, itemTypeCodes.current);
+      // canvas is discarded inside ocrCanvasFrame
+      applyOcrByEntryId(localId, barcodeData, ocr);
+    } catch {
+      // Silent failure — barcode data is already saved; OCR is supplemental
+      canvas.width = 0; canvas.height = 0;
+    }
+  }
+
+  // ── OCR — Manual "Read Label" (fallback for text-only labels) ─────────────
   async function handleReadLabel() {
     if (!videoRef.current || !camActive) return;
 
-    // Identify which entry to update BEFORE the async OCR call to avoid stale-closure issues.
-    // We look for the most recent PENDING entry (within 30 seconds of tapping Read Label).
+    // Capture the target entry's localId + barcode data BEFORE the async call
+    // to avoid stale-closure issues with rapidly-changing scanEntries state.
     const cutoff = Date.now() - 30_000;
     const targetEntry = scanEntries.find(e =>
       !e.resolvedItemId && new Date(e.scannedAt).getTime() > cutoff
     );
+    const targetId = targetEntry?.localId ?? null;
+    const barcodeData: BarcodeSource | null = targetEntry
+      ? { serialNumber: targetEntry.serialNumber, partNumber: targetEntry.partNumber, itemType: targetEntry.itemTypeRaw }
+      : null;
 
     setOcrLoading(true);
     setOcrError(null);
     setHudOcr('OCR_PROCESSING');
 
     try {
-      const ocr = await readLabel(videoRef.current, itemTypeCodes.current);
-      if (targetEntry) {
-        applyOcrToEntry(targetEntry.localId, targetEntry, ocr);
+      const canvas = captureVideoFrame(videoRef.current);
+      const ocr    = await ocrCanvasFrame(canvas, itemTypeCodes.current);
+      // canvas discarded inside ocrCanvasFrame
+
+      if (targetId) {
+        applyOcrByEntryId(targetId, barcodeData, ocr);
       } else {
         addOcrOnlyEntry(ocr);
       }
+      setHudOcr('OCR_SUCCESS');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Label read failed.';
       setOcrError(msg);
@@ -235,56 +315,6 @@ export default function WarehouseReceive() {
     } finally {
       setOcrLoading(false);
     }
-  }
-
-  // Merge an OCR result into an existing scan entry (captured before the async call).
-  function applyOcrToEntry(localId: string, snapshot: ScanEntry, ocr: OcrResult) {
-    const barcode: BarcodeSource | null =
-      snapshot.partNumber || snapshot.serialNumber || snapshot.itemTypeRaw
-        ? { serialNumber: snapshot.serialNumber, partNumber: snapshot.partNumber, itemType: snapshot.itemTypeRaw }
-        : null;
-
-    const merged = mergeScanAndOcr({ barcode, ocr });
-
-    let rid   = snapshot.resolvedItemId;
-    let rname = snapshot.resolvedItemName;
-    let rcode = snapshot.resolvedItemCode;
-
-    if (!rid) {
-      if (merged.itemType) {
-        const it = itemsByCode.current.get(merged.itemType.toUpperCase());
-        if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
-      }
-      if (!rid && merged.partNumber) {
-        const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
-        if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
-      }
-    }
-
-    const matchStatus: ScanEntry['matchStatus'] =
-      rid               ? 'MATCHED'   :
-      merged.partNumber ? 'UNMATCHED' : 'NO_PN';
-
-    setScanEntries(prev => prev.map(e => e.localId !== localId ? e : {
-      ...e,
-      itemTypeRaw:      merged.itemType ?? e.itemTypeRaw,
-      resolvedItemId:   rid,
-      resolvedItemName: rname,
-      resolvedItemCode: rcode,
-      status:           rid ? 'VALID' as const : 'PENDING' as const,
-      statusMsg:        rid ? null : 'Item not matched — select manually',
-      matchStatus,
-      ocrRawText:       ocr.rawText.substring(0, 500),
-      ocrItemType:      merged.source.itemType === 'OCR'       ? merged.itemType     : null,
-      ocrPartNumber:    merged.source.partNumber === 'OCR'     ? merged.partNumber   : null,
-      ocrSerialNumber:  merged.source.serialNumber === 'OCR'   ? merged.serialNumber : null,
-      mergeConflicts:   merged.conflicts,
-      mergeScenario:    merged.scenario,
-      ocrDurationMs:    ocr.durationMs,
-    }));
-
-    setHudOcr('OCR_SUCCESS');
-    if (rid) { playSuccessBeep(); vibrateOnce(); }
   }
 
   // Create a new scan entry from OCR alone (text-only label scenario).
@@ -433,6 +463,14 @@ export default function WarehouseReceive() {
 
     const status: ScanEntry['status'] = resolved.id ? 'VALID' : 'PENDING';
 
+    // Phase B: capture frame synchronously BEFORE any setState so the label is
+    // still in view. Only for camera scans — USB/manual have no live video.
+    let autoOcrCanvas: HTMLCanvasElement | null = null;
+    const videoEl = videoRef.current;
+    if (!manually && symbology !== 'USB_HID' && videoEl && videoEl.videoWidth > 0) {
+      try { autoOcrCanvas = captureVideoFrame(videoEl); } catch { /* non-fatal */ }
+    }
+
     const localId = crypto.randomUUID();
     const entry: ScanEntry = {
       localId,
@@ -457,6 +495,17 @@ export default function WarehouseReceive() {
 
     if (snNorm) sessionSNs.current.add(snNorm);
     setScanEntries(prev => [entry, ...prev]);
+
+    // Launch async OCR using the frame captured at decode time.
+    // Correlation is by localId — not "latest entry" — so rapid scanning is safe.
+    if (autoOcrCanvas) {
+      const barcodeData: BarcodeSource = {
+        serialNumber: parsed.serialNumber,
+        partNumber:   parsed.partNumber,
+        itemType:     parsed.itemType,
+      };
+      void launchAutoOcr(localId, barcodeData, autoOcrCanvas);
+    }
 
     console.log('[ScanDiag]', {
       rawValue:  raw,
@@ -767,7 +816,7 @@ export default function WarehouseReceive() {
                           className={css.videoBtn}
                           onClick={handleReadLabel}
                           disabled={ocrLoading}
-                          title={ocrLoading ? 'Reading label…' : 'Read printed label text (OCR)'}>
+                          title={ocrLoading ? 'Reading label…' : 'Read label text — fallback for labels without barcode'}>
                           {ocrLoading ? '⏳' : '📝'}
                         </button>
                         <button className={css.videoBtn} onClick={switchCamera} title="Switch camera">
@@ -1140,18 +1189,24 @@ function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
           <div className={css.scanDiagRow} style={{ marginTop: 5, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
             <span className={css.scanDiagKey} style={{ color: '#818cf8' }}>EXTRACTED</span>
           </div>
-          <DiagRow label="TYPE" val={e.itemTypeRaw ?? '(not encoded in barcode)'} />
-          <DiagRow label="PN"   val={e.partNumber ?? '—'} />
-          <DiagRow label="SN"   val={e.serialNumber ?? '—'} />
+          <DiagRow label="TYPE" val={e.itemTypeRaw ?? '(not in barcode)'}
+            source={e.mergeScenario ? (e.ocrItemType ? 'OCR' : e.itemTypeRaw ? 'BARCODE' : null) : null} />
+          <DiagRow label="PN"   val={e.partNumber ?? '—'}
+            source={e.mergeScenario ? (e.ocrPartNumber ? 'OCR' : e.partNumber ? 'BARCODE' : null) : null} />
+          <DiagRow label="SN"   val={e.serialNumber ?? '—'}
+            source={e.mergeScenario ? (e.ocrSerialNumber ? 'OCR' : e.serialNumber ? 'BARCODE' : null) : null} />
         </>
       )}
 
       {/* Non-Nokia profiles: standard field list */}
       {!isNokiaDI && (
         <>
-          <DiagRow label="TYPE" val={e.itemTypeRaw ?? '—'} />
-          <DiagRow label="PN"   val={e.partNumber ?? '—'} />
-          <DiagRow label="SN"   val={e.serialNumber ?? '—'} />
+          <DiagRow label="TYPE" val={e.itemTypeRaw ?? '—'}
+            source={e.mergeScenario ? (e.ocrItemType ? 'OCR' : e.itemTypeRaw ? 'BARCODE' : null) : null} />
+          <DiagRow label="PN"   val={e.partNumber ?? '—'}
+            source={e.mergeScenario ? (e.ocrPartNumber ? 'OCR' : e.partNumber ? 'BARCODE' : null) : null} />
+          <DiagRow label="SN"   val={e.serialNumber ?? '—'}
+            source={e.mergeScenario ? (e.ocrSerialNumber ? 'OCR' : e.serialNumber ? 'BARCODE' : null) : null} />
         </>
       )}
 
@@ -1188,11 +1243,23 @@ function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
   );
 }
 
-function DiagRow({ label, val, raw }: { label: string; val: string; raw?: boolean }) {
+function DiagRow({ label, val, raw, source }: {
+  label: string; val: string; raw?: boolean; source?: 'BARCODE' | 'OCR' | null;
+}) {
   return (
     <div className={css.scanDiagRow}>
       <span className={css.scanDiagKey}>{label}</span>
-      <span className={raw ? css.scanDiagRaw : css.scanDiagVal}>{val}</span>
+      <span className={raw ? css.scanDiagRaw : css.scanDiagVal}>
+        {val}
+        {source && (
+          <span style={{
+            marginLeft: 5, fontSize: 9, fontWeight: 700, opacity: 0.8,
+            color: source === 'OCR' ? '#818cf8' : '#34d399',
+          }}>
+            [{source}]
+          </span>
+        )}
+      </span>
     </div>
   );
 }

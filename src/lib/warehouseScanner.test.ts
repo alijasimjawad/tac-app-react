@@ -129,9 +129,21 @@ describe('Nokia standalone SN barcode — S DI prefix', () => {
   it('does NOT strip S from SFULL12345678 — FULL is 4 letters (> 3 limit)', () => {
     const result = parseScan('SFULL12345678', 'CODE_128');
 
-    // NOKIA_SN_DI_RE requires [A-Z]{1,3} after S; FULL is 4 letters → no match
+    // NOKIA_SN_DI_RE requires ≤3 alnum chars before the digit run; FULL breaks it
     expect(result.serialNumber).not.toBe('FULL12345678');
     expect(result.parsingProfile).not.toBe('nokia-sn-di');
+  });
+
+  it('Phase B: strips S DI from S1M241909797 → SN=1M241909797 (digit-first Nokia prefix)', () => {
+    // Real carton: printed linear barcode S1M241909797 encodes SN 1M241909797
+    // The DataMatrix also produces SN=1M241909797 (via 1P+S DI fields).
+    // Both must normalize to the same value so the linear barcode is caught as DUPLICATE.
+    const result = parseScan('S1M241909797', 'CODE_128');
+
+    expect(result.serialNumber).toBe('1M241909797');
+    expect(result.partNumber).toBeNull();
+    expect(result.parsingProfile).toBe('nokia-sn-di');
+    expect(result.rawValue).toBe('S1M241909797'); // raw unchanged
   });
 
   it('Nokia N-series SN: N is part of the SN value — NOT stripped', () => {
