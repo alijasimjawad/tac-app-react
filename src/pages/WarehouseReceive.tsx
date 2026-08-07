@@ -9,11 +9,13 @@ import {
 } from '../lib/warehouseScanner';
 import type { Warehouse, InventoryItem, ScanEntry, SessionDetails } from '../lib/warehouseTypes';
 import { normalizeSN } from '../lib/warehouseTypes';
+import { readLabel, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
+import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
 import css from './Warehouse.module.css';
 
 type Step = 1 | 2 | 3;
 type InputMode = 'camera' | 'usb' | 'manual';
-type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN';
+type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED';
 
 const EMPTY_SESSION: SessionDetails = {
   warehouseId: '', receiptDate: new Date().toISOString().slice(0, 10),
@@ -47,6 +49,9 @@ export default function WarehouseReceive() {
   const [duplicateCount, setDuplicateCount] = useState(0);
   // Collapsed/expanded diagnostics per scan card
   const [expandedDiags, setExpandedDiags] = useState<Set<string>>(new Set());
+  // OCR state
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
 
   const videoRef    = useRef<HTMLVideoElement>(null);
   const scannerRef  = useRef<CameraScanner | null>(null);
@@ -59,8 +64,10 @@ export default function WarehouseReceive() {
   // O(1) session dedup — holds normalized SNs of all entries in this session
   const sessionSNs  = useRef<Set<string>>(new Set());
   // O(1) item master lookup maps built when items load
-  const itemsByPN   = useRef<Map<string, InventoryItem>>(new Map());
-  const itemsByCode = useRef<Map<string, InventoryItem>>(new Map());
+  const itemsByPN    = useRef<Map<string, InventoryItem>>(new Map());
+  const itemsByCode  = useRef<Map<string, InventoryItem>>(new Map());
+  // Item type / item code vocabulary for OCR label matching
+  const itemTypeCodes = useRef<Set<string>>(new Set());
 
   const [scanEntries, setScanEntries] = useState<ScanEntry[]>([]);
 
@@ -99,20 +106,26 @@ export default function WarehouseReceive() {
         const rows = iRes.data as InventoryItem[];
         setItems(rows);
         // Build O(1) lookup maps
-        const byPN   = new Map<string, InventoryItem>();
-        const byCode = new Map<string, InventoryItem>();
+        const byPN      = new Map<string, InventoryItem>();
+        const byCode    = new Map<string, InventoryItem>();
+        const typeCodes = new Set<string>();
         for (const it of rows) {
           if (it.part_number) byPN.set(it.part_number.toUpperCase(), it);
           byCode.set(it.item_code.toUpperCase(), it);
-          if (it.item_type) byCode.set(it.item_type.toUpperCase(), it);
+          typeCodes.add(it.item_code.toUpperCase());
+          if (it.item_type) {
+            byCode.set(it.item_type.toUpperCase(), it);
+            typeCodes.add(it.item_type.toUpperCase());
+          }
         }
-        itemsByPN.current   = byPN;
-        itemsByCode.current = byCode;
+        itemsByPN.current    = byPN;
+        itemsByCode.current  = byCode;
+        itemTypeCodes.current = typeCodes;
       }
       const perm = await checkCameraPermission();
       setCamPerm(perm);
     })();
-    return () => stopCamera();
+    return () => { stopCamera(); terminateOcrWorker(); };
   }, []);
 
   // ── Diagnostics ───────────────────────────────────────────────────────────
@@ -128,6 +141,14 @@ export default function WarehouseReceive() {
     setHudState(state);
     if (hudTimer.current) clearTimeout(hudTimer.current);
     hudTimer.current = setTimeout(() => setHudState('IDLE'), 1200);
+  }
+
+  function setHudOcr(state: 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED') {
+    setHudState(state);
+    if (hudTimer.current) clearTimeout(hudTimer.current);
+    if (state !== 'OCR_PROCESSING') {
+      hudTimer.current = setTimeout(() => setHudState('IDLE'), 2500);
+    }
   }
 
   // ── Audio / haptic feedback ───────────────────────────────────────────────
@@ -183,6 +204,149 @@ export default function WarehouseReceive() {
     setCamActive(false);
     setTorch(false);
     setHudState('IDLE');
+  }
+
+  // ── OCR — Read Label ──────────────────────────────────────────────────────
+  async function handleReadLabel() {
+    if (!videoRef.current || !camActive) return;
+
+    // Identify which entry to update BEFORE the async OCR call to avoid stale-closure issues.
+    // We look for the most recent PENDING entry (within 30 seconds of tapping Read Label).
+    const cutoff = Date.now() - 30_000;
+    const targetEntry = scanEntries.find(e =>
+      !e.resolvedItemId && new Date(e.scannedAt).getTime() > cutoff
+    );
+
+    setOcrLoading(true);
+    setOcrError(null);
+    setHudOcr('OCR_PROCESSING');
+
+    try {
+      const ocr = await readLabel(videoRef.current, itemTypeCodes.current);
+      if (targetEntry) {
+        applyOcrToEntry(targetEntry.localId, targetEntry, ocr);
+      } else {
+        addOcrOnlyEntry(ocr);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Label read failed.';
+      setOcrError(msg);
+      setHudOcr('OCR_FAILED');
+    } finally {
+      setOcrLoading(false);
+    }
+  }
+
+  // Merge an OCR result into an existing scan entry (captured before the async call).
+  function applyOcrToEntry(localId: string, snapshot: ScanEntry, ocr: OcrResult) {
+    const barcode: BarcodeSource | null =
+      snapshot.partNumber || snapshot.serialNumber || snapshot.itemTypeRaw
+        ? { serialNumber: snapshot.serialNumber, partNumber: snapshot.partNumber, itemType: snapshot.itemTypeRaw }
+        : null;
+
+    const merged = mergeScanAndOcr({ barcode, ocr });
+
+    let rid   = snapshot.resolvedItemId;
+    let rname = snapshot.resolvedItemName;
+    let rcode = snapshot.resolvedItemCode;
+
+    if (!rid) {
+      if (merged.itemType) {
+        const it = itemsByCode.current.get(merged.itemType.toUpperCase());
+        if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+      }
+      if (!rid && merged.partNumber) {
+        const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
+        if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+      }
+    }
+
+    const matchStatus: ScanEntry['matchStatus'] =
+      rid               ? 'MATCHED'   :
+      merged.partNumber ? 'UNMATCHED' : 'NO_PN';
+
+    setScanEntries(prev => prev.map(e => e.localId !== localId ? e : {
+      ...e,
+      itemTypeRaw:      merged.itemType ?? e.itemTypeRaw,
+      resolvedItemId:   rid,
+      resolvedItemName: rname,
+      resolvedItemCode: rcode,
+      status:           rid ? 'VALID' as const : 'PENDING' as const,
+      statusMsg:        rid ? null : 'Item not matched — select manually',
+      matchStatus,
+      ocrRawText:       ocr.rawText.substring(0, 500),
+      ocrItemType:      merged.source.itemType === 'OCR'       ? merged.itemType     : null,
+      ocrPartNumber:    merged.source.partNumber === 'OCR'     ? merged.partNumber   : null,
+      ocrSerialNumber:  merged.source.serialNumber === 'OCR'   ? merged.serialNumber : null,
+      mergeConflicts:   merged.conflicts,
+      mergeScenario:    merged.scenario,
+      ocrDurationMs:    ocr.durationMs,
+    }));
+
+    setHudOcr('OCR_SUCCESS');
+    if (rid) { playSuccessBeep(); vibrateOnce(); }
+  }
+
+  // Create a new scan entry from OCR alone (text-only label scenario).
+  function addOcrOnlyEntry(ocr: OcrResult) {
+    const merged = mergeScanAndOcr({ barcode: null, ocr });
+
+    if (!merged.serialNumber && !merged.partNumber && !merged.itemType) {
+      setOcrError('No recognizable data found on label.');
+      setHudOcr('OCR_FAILED');
+      return;
+    }
+
+    const parts = [merged.itemType, merged.partNumber, merged.serialNumber].filter(Boolean);
+    const raw   = parts.length > 0 ? parts.join(';') : ocr.rawText.substring(0, 100);
+
+    let rid: string | null = null, rname: string | null = null, rcode: string | null = null;
+    if (merged.itemType) {
+      const it = itemsByCode.current.get(merged.itemType.toUpperCase());
+      if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+    }
+    if (!rid && merged.partNumber) {
+      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
+      if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+    }
+
+    const snNorm = merged.serialNumber ? normalizeSN(merged.serialNumber) : null;
+    if (snNorm && sessionSNs.current.has(snNorm)) {
+      setDuplicateCount(c => c + 1); setHud('DUPLICATE'); vibrateDup(); return;
+    }
+
+    const entry: ScanEntry = {
+      localId:          crypto.randomUUID(),
+      rawValue:         raw,
+      symbology:        'OCR',
+      serialNumber:     merged.serialNumber,
+      serialNumberNorm: snNorm,
+      partNumber:       merged.partNumber,
+      itemTypeRaw:      merged.itemType,
+      resolvedItemId:   rid,
+      resolvedItemName: rname,
+      resolvedItemCode: rcode,
+      status:           rid ? 'VALID' : 'PENDING',
+      statusMsg:        rid ? null : 'Item not matched — select manually',
+      scannedAt:        new Date().toISOString(),
+      manually:         false,
+      parsingProfile:   'ocr',
+      parseStatus:      merged.serialNumber || merged.partNumber ? 'PARTIAL' : 'FAILED',
+      matchStatus:      rid ? 'MATCHED' : merged.partNumber ? 'UNMATCHED' : 'NO_PN',
+      scanClassification: rid ? 'VALID_ITEM' : 'PARTIAL_ITEM',
+      ocrRawText:       ocr.rawText.substring(0, 500),
+      ocrItemType:      merged.itemType,
+      ocrPartNumber:    merged.partNumber,
+      ocrSerialNumber:  merged.serialNumber,
+      mergeConflicts:   [],
+      mergeScenario:    'OCR_ONLY',
+      ocrDurationMs:    ocr.durationMs,
+    };
+
+    if (snNorm) sessionSNs.current.add(snNorm);
+    setScanEntries(prev => [entry, ...prev]);
+    setHudOcr('OCR_SUCCESS');
+    if (rid) { playSuccessBeep(); vibrateOnce(); }
   }
 
   async function toggleTorch() {
@@ -580,11 +744,17 @@ export default function WarehouseReceive() {
                       {/* HUD state banner */}
                       {hudState !== 'IDLE' && (
                         <div className={`${css.hudBanner} ${
-                          hudState === 'SUCCESS'   ? css.hudSuccess   :
-                          hudState === 'DUPLICATE' ? css.hudDuplicate : css.hudUnknown
+                          hudState === 'SUCCESS'        ? css.hudSuccess    :
+                          hudState === 'DUPLICATE'      ? css.hudDuplicate  :
+                          hudState === 'OCR_PROCESSING' ? css.hudOcrProcess :
+                          hudState === 'OCR_SUCCESS'    ? css.hudOcrSuccess :
+                          hudState === 'OCR_FAILED'     ? css.hudOcrFailed  : css.hudUnknown
                         }`}>
-                          {hudState === 'SUCCESS'   ? '✓ Added' :
-                           hudState === 'DUPLICATE' ? '⊘ Duplicate' : '? Unknown'}
+                          {hudState === 'SUCCESS'        ? '✓ Added'            :
+                           hudState === 'DUPLICATE'      ? '⊘ Duplicate'        :
+                           hudState === 'OCR_PROCESSING' ? '⏳ Reading Label…'   :
+                           hudState === 'OCR_SUCCESS'    ? '✓ Label Read'        :
+                           hudState === 'OCR_FAILED'     ? '✗ Label Unreadable'  : '? Unknown'}
                         </div>
                       )}
                       <div className={css.videoActions}>
@@ -593,6 +763,13 @@ export default function WarehouseReceive() {
                             {torch ? '🔦' : '💡'}
                           </button>
                         )}
+                        <button
+                          className={css.videoBtn}
+                          onClick={handleReadLabel}
+                          disabled={ocrLoading}
+                          title={ocrLoading ? 'Reading label…' : 'Read printed label text (OCR)'}>
+                          {ocrLoading ? '⏳' : '📝'}
+                        </button>
                         <button className={css.videoBtn} onClick={switchCamera} title="Switch camera">
                           🔄
                         </button>
@@ -634,6 +811,11 @@ export default function WarehouseReceive() {
                   )}
 
                   {showDiag && <DiagPanel data={diagData} loading={diagLoading} />}
+                  {ocrError && (
+                    <div className={css.ocrError} onClick={() => setOcrError(null)}>
+                      ✗ OCR: {ocrError} (tap to dismiss)
+                    </div>
+                  )}
                 </>
               )}
 
@@ -979,6 +1161,29 @@ function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
       <DiagRow label="PARSE" val={e.parseStatus} />
       <DiagRow label="MATCH" val={e.matchStatus} />
       <DiagRow label="CLASS" val={e.scanClassification} />
+
+      {/* OCR section — shown only when OCR was run on this entry */}
+      {e.mergeScenario != null && (
+        <>
+          <div className={css.scanDiagRow} style={{ marginTop: 5, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
+            <span className={css.scanDiagKey} style={{ color: '#818cf8' }}>OCR</span>
+            <span className={css.scanDiagVal} style={{ color: '#475569' }}>
+              {e.mergeScenario} · {e.ocrDurationMs ?? '?'}ms
+            </span>
+          </div>
+          {e.ocrItemType    && <DiagRow label="TYPE"     val={e.ocrItemType} />}
+          {e.ocrPartNumber  && <DiagRow label="PN"       val={e.ocrPartNumber} />}
+          {e.ocrSerialNumber && <DiagRow label="SN"      val={e.ocrSerialNumber} />}
+          {e.mergeConflicts && e.mergeConflicts.length > 0 && (
+            <DiagRow label="CONFLICT" val={e.mergeConflicts[0]} />
+          )}
+          {e.ocrRawText != null && (
+            <DiagRow label="TEXT" val={
+              e.ocrRawText.substring(0, 60) + (e.ocrRawText.length > 60 ? '…' : '')
+            } />
+          )}
+        </>
+      )}
     </div>
   );
 }

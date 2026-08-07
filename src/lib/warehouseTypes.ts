@@ -95,6 +95,9 @@ export type ScanClassification = 'VALID_ITEM' | 'PARTIAL_ITEM' | 'AUXILIARY_CODE
 // Duplicate scans never become entries; 'ERROR' reserved for future use
 export type ScanEntryStatus = 'VALID' | 'PENDING' | 'ERROR';
 
+// Outcome of the smart-label merge engine (barcode + OCR combination)
+export type MergeScenario = 'BARCODE_ONLY' | 'OCR_ONLY' | 'MERGED' | 'CONFLICT';
+
 export interface ScanEntry {
   localId: string;           // client-side UUID (crypto.randomUUID())
   rawValue: string;
@@ -114,6 +117,14 @@ export interface ScanEntry {
   parseStatus: 'RESOLVED' | 'PARTIAL' | 'FAILED';   // parser-level outcome
   matchStatus: 'MATCHED' | 'UNMATCHED' | 'NO_PN';   // item master lookup outcome
   scanClassification: ScanClassification;
+  // OCR-augmented fields — present only when OCR was run on this entry
+  ocrRawText?:      string | null;
+  ocrItemType?:     string | null;
+  ocrPartNumber?:   string | null;
+  ocrSerialNumber?: string | null;
+  mergeConflicts?:  string[];
+  mergeScenario?:   MergeScenario;
+  ocrDurationMs?:   number;
 }
 
 export interface SessionDetails {
