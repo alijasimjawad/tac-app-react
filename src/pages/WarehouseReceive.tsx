@@ -320,18 +320,21 @@ export default function WarehouseReceive() {
       // Register newly-discovered SN in session dedup set
       if (!e.serialNumberNorm && mergedSnNorm) sessionSNs.current.add(mergedSnNorm);
 
-      // Mapping conflict: entry was resolved via a learned mapping but OCR now points
-      // to a different item. Flag for human review; do NOT auto-override.
+      // Mapping conflict: learned mapping and OCR independently resolved DIFFERENT items.
+      // Resolution must be wiped so the entry becomes PENDING — user must explicitly
+      // pick the correct item via the assign dropdown. Entry cannot be saved until resolved.
       const mappingConflict = e.resolvedByMapping
         ? detectMappingConflict(e.resolvedItemId, rid)
         : false;
 
-      const newRid   = mappingConflict ? e.resolvedItemId   : (e.resolvedItemId   ?? rid);
-      const newRname = mappingConflict ? e.resolvedItemName  : (e.resolvedItemName ?? rname);
-      const newRcode = mappingConflict ? e.resolvedItemCode  : (e.resolvedItemCode ?? rcode);
+      // Capture prior codes before any modification (needed for statusMsg)
+      const priorItemCode = e.resolvedItemCode;
 
+      const newRid   = mappingConflict ? null  : (e.resolvedItemId   ?? rid);
+      const newRname = mappingConflict ? null  : (e.resolvedItemName ?? rname);
+      const newRcode = mappingConflict ? null  : (e.resolvedItemCode ?? rcode);
       const newResolvedByMapping = mappingConflict
-        ? e.resolvedByMapping   // preserve existing flag when in conflict
+        ? false   // cleared — user must reassign
         : e.resolvedByMapping ?? (rid ? ridFromMapping : undefined);
 
       const matchStatus: ScanEntry['matchStatus'] =
@@ -351,7 +354,7 @@ export default function WarehouseReceive() {
         resolvedByMapping: newResolvedByMapping,
         status:            newRid ? 'VALID' as const : 'PENDING' as const,
         statusMsg:         mappingConflict
-          ? 'Mapping and OCR disagree — verify item assignment'
+          ? `Mapping (${priorItemCode ?? '?'}) vs OCR (${rcode ?? '?'}) — select correct item below`
           : newRid ? null : merged.itemType
             ? `${merged.itemType} not in Item Master — assign manually`
             : 'Item not matched — select manually',
@@ -926,6 +929,16 @@ export default function WarehouseReceive() {
   // ── Save receipt ──────────────────────────────────────────────────────────
   async function saveReceipt() {
     setSaving(true);
+    // Hard block: any NEEDS_REVIEW conflict must be resolved before saving.
+    const conflicted = scanEntries.filter(e => e.matchStatus === 'NEEDS_REVIEW');
+    if (conflicted.length > 0) {
+      showToast(
+        `Resolve ${conflicted.length} item conflict${conflicted.length > 1 ? 's' : ''} before saving.`,
+        false,
+      );
+      setSaving(false);
+      return;
+    }
     const validEntries = scanEntries.filter(e => e.status === 'VALID');
 
     const { data: receipt, error: rErr } = await supabase
@@ -1001,8 +1014,11 @@ export default function WarehouseReceive() {
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const validCount   = scanEntries.filter(e => e.status === 'VALID').length;
-  const pendingCount = scanEntries.filter(e => e.status === 'PENDING').length;
+  const validCount        = scanEntries.filter(e => e.status === 'VALID').length;
+  const pendingCount      = scanEntries.filter(e => e.status === 'PENDING').length;
+  const needsReviewCount  = scanEntries.filter(e => e.matchStatus === 'NEEDS_REVIEW').length;
+  // Unresolved = pending that are NOT a NEEDS_REVIEW conflict (can still be saved without assignment)
+  const unresolvedCount   = pendingCount - needsReviewCount;
 
   const grouped = scanEntries
     .filter(e => e.status === 'VALID')
@@ -1463,9 +1479,15 @@ export default function WarehouseReceive() {
             <KpiChip label="Duplicates"   value={duplicateCount} color="#dc2626" />
           </div>
 
-          {pendingCount > 0 && (
+          {needsReviewCount > 0 && (
+            <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, color: '#991b1b' }}>
+              <strong>{needsReviewCount} item conflict{needsReviewCount > 1 ? 's' : ''} must be resolved before saving.</strong>
+              {' '}Go back to Step 2 and select the correct item for each scan marked <strong>NEEDS REVIEW</strong>.
+            </div>
+          )}
+          {unresolvedCount > 0 && (
             <div style={{ background: '#fef9c3', border: '1px solid #fde047', borderRadius: 10, padding: 12, marginBottom: 16, fontSize: 13, color: '#713f12' }}>
-              <strong>{pendingCount} scan{pendingCount !== 1 ? 's' : ''}</strong> still unmatched to an item.
+              <strong>{unresolvedCount} scan{unresolvedCount !== 1 ? 's' : ''}</strong> still unmatched to an item.
               Go back to assign them, or save now and match later.
             </div>
           )}
@@ -1509,7 +1531,8 @@ export default function WarehouseReceive() {
             <button className={css.btnGhost} onClick={() => setStep(2)}>
               <ChevronLeftIcon /> Back to Scan
             </button>
-            <button className={css.btnAccent} onClick={saveReceipt} disabled={saving || validCount === 0}>
+            <button className={css.btnAccent} onClick={saveReceipt}
+              disabled={saving || validCount === 0 || needsReviewCount > 0}>
               {saving ? 'Saving…' : `Save Receipt (${validCount} items)`}
             </button>
           </div>

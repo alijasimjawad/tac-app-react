@@ -43,8 +43,8 @@ END $$;
 -- unique index that only covers active rows.
 --
 -- Why: The old constraint blocks the deactivate + re-insert correction workflow.
--- If a mapping is wrong (Nokia PN 474800A.102 → ABIO but the item should be FXDA),
--- the operator can set is_active = false on the wrong row and insert a new one.
+-- If a mapping is wrong (e.g. PN X learned as item A but the correct item is B),
+-- the operator can set is_active = false on the wrong row and insert a corrected one.
 -- The partial index permits this because the deactivated row is excluded from the
 -- uniqueness check.
 --
