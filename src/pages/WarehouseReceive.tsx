@@ -20,11 +20,12 @@ import {
 } from '../lib/pnMapping';
 import { captureVideoFrame, ocrCanvasFrame, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
 import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
+import { buildExistingAssetsMap, getBlockMessage, type KnownAsset, type BlockedMessage } from '../lib/existingAssetCheck';
 import css from './Warehouse.module.css';
 
 type Step = 1 | 2 | 3;
 type InputMode = 'camera' | 'usb' | 'manual';
-type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN' | 'WAITING_PN' | 'INCOMPLETE_CARTON';
+type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN' | 'WAITING_PN' | 'INCOMPLETE_CARTON' | 'EXISTING_ASSET';
 
 const EMPTY_SESSION: SessionDetails = {
   warehouseId: '', receiptDate: new Date().toISOString().slice(0, 10),
@@ -79,6 +80,10 @@ export default function WarehouseReceive() {
   const learnedByPN  = useRef<Map<string, InventoryItem>>(new Map());
   // Item type / item code vocabulary for OCR label matching
   const itemTypeCodes = useRef<Set<string>>(new Set());
+  // Preloaded existing assets for O(1) scan-time dup detection (loaded at Step 1 → 2 transition)
+  const existingAssets = useRef<Map<string, KnownAsset>>(new Map());
+  // Receipt number lookup: GR id → receipt_number (for blocked-asset card display)
+  const grRefMap       = useRef<Map<string, string>>(new Map());
 
   // CartonScanBuffer — pending Nokia PN component waiting for its complementary SN.
   // Not a ScanEntry — never appears in the scan list until finalized.
@@ -101,6 +106,19 @@ export default function WarehouseReceive() {
   // Step 3 — review
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  // Blocked-asset card — shown in scan panel when a known SN is rejected
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [blockedAsset, setBlockedAsset] = useState<{
+    sn:            string;
+    status:        KnownAsset['status'];
+    msg:           BlockedMessage;
+    itemCode:      string | null;
+    itemName:      string | null;
+    partNumber:    string | null;
+    warehouseName: string | null;
+    receiptNumber: string | null;
+  } | null>(null);
 
   if (!hasPerm('view_warehouse_receive')) return <div className={css.denied}>Access denied.</div>;
   if (!hasPerm('wrh_receive_create'))    return <div className={css.denied}>You need the "Create Receipt" permission.</div>;
@@ -221,6 +239,38 @@ export default function WarehouseReceive() {
     const byPn   = itemsByPN.current.get(key);
     if (byPn)  return { item: byPn,   fromMapping: false };
     return null;
+  }
+
+  // ── Existing-asset block check ────────────────────────────────────────────
+  // Returns true if snNorm matched a known asset and the scan was blocked.
+  // Caller must return immediately when this returns true.
+  // Must be called AFTER the session-dup check (session check is first-line).
+  function checkAndBlock(snNorm: string): boolean {
+    const found = existingAssets.current.get(snNorm);
+    if (!found) return false;
+
+    const item    = items.find(i => i.id === found.inventoryItemId);
+    const wh      = warehouses.find(w => w.id === (found.warehouseId ?? ''));
+    const rcptNum = found.sourceReceiptId
+      ? (grRefMap.current.get(found.sourceReceiptId) ?? null)
+      : null;
+
+    setBlockedAsset({
+      sn:            snNorm,
+      status:        found.status,
+      msg:           getBlockMessage(found.status),
+      itemCode:      item?.item_code ?? null,
+      itemName:      item?.item_name ?? null,
+      partNumber:    found.partNumber,
+      warehouseName: wh?.name ?? null,
+      receiptNumber: rcptNum,
+    });
+
+    setHudState('EXISTING_ASSET');
+    if (hudTimer.current) clearTimeout(hudTimer.current);
+    hudTimer.current = setTimeout(() => setHudState('IDLE'), 2000);
+    vibrateDup();
+    return true;
   }
 
   // ── Audio / haptic feedback ───────────────────────────────────────────────
@@ -461,6 +511,7 @@ export default function WarehouseReceive() {
     if (snNorm && sessionSNs.current.has(snNorm)) {
       setDuplicateCount(c => c + 1); setHud('DUPLICATE'); vibrateDup(); return;
     }
+    if (snNorm && checkAndBlock(snNorm)) return;
 
     const entry: ScanEntry = {
       localId:           crypto.randomUUID(),
@@ -494,6 +545,7 @@ export default function WarehouseReceive() {
     };
 
     if (snNorm) sessionSNs.current.add(snNorm);
+    setBlockedAsset(null);
     setScanEntries(prev => [entry, ...prev]);
     setHudOcr('OCR_SUCCESS');
     if (rid) { playSuccessBeep(); vibrateOnce(); }
@@ -570,6 +622,7 @@ export default function WarehouseReceive() {
     };
 
     sessionSNs.current.add(snNorm);
+    setBlockedAsset(null);
     setScanEntries(prev => [entry, ...prev]);
 
     if (frame) {
@@ -652,6 +705,7 @@ export default function WarehouseReceive() {
         setHud('DUPLICATE'); vibrateDup();
         return;
       }
+      if (checkAndBlock(newSnNorm)) { clearPendingCarton(); return; }
 
       let snFrame: HTMLCanvasElement | null = null;
       if (!manually && symbology !== 'USB_HID' && videoEl && videoEl.videoWidth > 0) {
@@ -714,6 +768,8 @@ export default function WarehouseReceive() {
       console.log('[ScanDiag] DUPLICATE', { rawValue: raw, snNorm });
       return;
     }
+    // Existing-asset check (second-line, after session dup)
+    if (snNorm && checkAndBlock(snNorm)) { clearPendingCarton(); return; }
 
     // ── Pairing: DataMatrix or generic SN completing pending buffer ────────
     // This path handles DataMatrix (PN+SN combined) and generic SN-only barcodes.
@@ -796,6 +852,7 @@ export default function WarehouseReceive() {
     };
 
     if (snNorm) sessionSNs.current.add(snNorm);
+    setBlockedAsset(null);
     setScanEntries(prev => [entry, ...prev]);
 
     // Correlation is by localId — not "latest entry" — so rapid scanning is safe.
@@ -866,10 +923,42 @@ export default function WarehouseReceive() {
   }
 
   // ── Step navigation ────────────────────────────────────────────────────────
-  function goStep2() {
+  async function goStep2() {
     setSessionErr('');
     if (!session.warehouseId) { setSessionErr('Select a warehouse.'); return; }
     if (!session.receiptDate) { setSessionErr('Receipt date is required.'); return; }
+
+    setLoadingAssets(true);
+    const [assetRes, grRes] = await Promise.all([
+      supabase.from('inventory_assets')
+        .select('serial_number_normalized, inventory_item_id, part_number, warehouse_id, status, source_receipt_id'),
+      supabase.from('goods_receipts').select('id, receipt_number'),
+    ]);
+    if (assetRes.data) {
+      existingAssets.current = buildExistingAssetsMap(
+        (assetRes.data as Array<{
+          serial_number_normalized: string;
+          inventory_item_id:        string;
+          part_number:              string | null;
+          warehouse_id:             string | null;
+          status:                   KnownAsset['status'];
+          source_receipt_id:        string | null;
+        }>).map(r => ({
+          serialNumberNorm: r.serial_number_normalized,
+          inventoryItemId:  r.inventory_item_id,
+          partNumber:       r.part_number,
+          warehouseId:      r.warehouse_id,
+          status:           r.status,
+          sourceReceiptId:  r.source_receipt_id,
+        }))
+      );
+    }
+    if (grRes.data) {
+      grRefMap.current = new Map(
+        (grRes.data as Array<{ id: string; receipt_number: string }>).map(r => [r.id, r.receipt_number])
+      );
+    }
+    setLoadingAssets(false);
     setStep(2);
   }
 
@@ -1108,8 +1197,8 @@ export default function WarehouseReceive() {
               </div>
               {sessionErr && <p className={css.formError}>{sessionErr}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                <button className={css.btnAccent} onClick={goStep2}>
-                  Next: Scan Items <ChevronRightIcon />
+                <button className={css.btnAccent} onClick={goStep2} disabled={loadingAssets}>
+                  {loadingAssets ? 'Loading inventory…' : <>Next: Scan Items <ChevronRightIcon /></>}
                 </button>
               </div>
             </div>
@@ -1175,6 +1264,7 @@ export default function WarehouseReceive() {
                         <div className={`${css.hudBanner} ${
                           hudState === 'SUCCESS'            ? css.hudSuccess    :
                           hudState === 'DUPLICATE'          ? css.hudDuplicate  :
+                          hudState === 'EXISTING_ASSET'     ? css.hudDuplicate  :
                           hudState === 'OCR_PROCESSING'     ? css.hudOcrProcess :
                           hudState === 'OCR_SUCCESS'        ? css.hudOcrSuccess :
                           hudState === 'OCR_FAILED'         ? css.hudOcrFailed  :
@@ -1182,6 +1272,7 @@ export default function WarehouseReceive() {
                         }`}>
                           {hudState === 'SUCCESS'           ? '✓ Added'                        :
                            hudState === 'DUPLICATE'         ? '⊘ Duplicate'                    :
+                           hudState === 'EXISTING_ASSET'    ? '⊘ Already Known — see details'  :
                            hudState === 'OCR_PROCESSING'    ? '⏳ Reading Label…'               :
                            hudState === 'OCR_SUCCESS'       ? '✓ Label Read'                    :
                            hudState === 'OCR_FAILED'        ? '✗ Label Unreadable'              :
@@ -1341,6 +1432,50 @@ export default function WarehouseReceive() {
 
             {/* Right — scan list */}
             <div className={css.scanListWrap}>
+              {/* Blocked-asset card — replaces the entry; shown until next accepted scan */}
+              {blockedAsset && (
+                <div style={{
+                  background: '#fee2e2', border: '1px solid #fca5a5',
+                  borderRadius: 10, padding: '12px 14px', marginBottom: 10,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: '#991b1b' }}>
+                      ⊘ {blockedAsset.msg.headline}
+                    </div>
+                    <button
+                      onClick={() => setBlockedAsset(null)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991b1b', fontSize: 18, lineHeight: 1, padding: '0 2px' }}
+                      title="Dismiss"
+                    >×</button>
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: '#7f1d1d', marginTop: 4 }}>
+                    {blockedAsset.sn}
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#991b1b', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {blockedAsset.itemCode && (
+                      <div><strong>Item:</strong> {blockedAsset.itemCode} — {blockedAsset.itemName}</div>
+                    )}
+                    {blockedAsset.partNumber && (
+                      <div><strong>PN:</strong> {blockedAsset.partNumber}</div>
+                    )}
+                    {blockedAsset.warehouseName && (
+                      <div><strong>Location:</strong> {blockedAsset.warehouseName}</div>
+                    )}
+                    {blockedAsset.receiptNumber && (
+                      <div><strong>Receipt:</strong> {blockedAsset.receiptNumber}</div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#7f1d1d', lineHeight: 1.4 }}>
+                    {blockedAsset.msg.subtext}
+                  </div>
+                  {blockedAsset.msg.allowReturn && (
+                    <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: '#991b1b' }}>
+                      Use the Return to Warehouse workflow to process this asset.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className={css.scanListHdr}>
                 <span className={css.scanCount}>{scanEntries.length} scan{scanEntries.length !== 1 ? 's' : ''}</span>
                 {scanEntries.length > 0 && (
