@@ -371,6 +371,89 @@ describe('Nokia alt-PN barcode — letter format (Issue 2 fix)', () => {
   });
 });
 
+// ── Nokia PN barcode with 1P DI prefix (PATH B linear aggregation fix) ───────
+
+describe('Nokia PN barcode with 1P DI prefix', () => {
+  it('1P474800A.102 → nokia-pn-only, partNumber=474800A.102, serialNumber=null', () => {
+    const r = parseScan('1P474800A.102', 'CODE_128');
+    expect(r.parsingProfile).toBe('nokia-pn-only');
+    expect(r.partNumber).toBe('474800A.102');
+    expect(r.serialNumber).toBeNull();
+    expect(r.manufacturer).toBe('Nokia');
+  });
+
+  it('1P474800A.102 → classifyScan → AUXILIARY_CODE', () => {
+    const parsed = parseScan('1P474800A.102', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('1P prefix stripped: partNumber does not contain 1P', () => {
+    const parsed = parseScan('1P474800A.102', 'CODE_128');
+    expect(parsed.partNumber).toBe('474800A.102');
+    expect(parsed.partNumber).not.toMatch(/^1P/i);
+  });
+
+  it('serialNumber is null — no fake SN enters sessionSNs', () => {
+    const parsed = parseScan('1P474800A.102', 'CODE_128');
+    expect(parsed.serialNumber).toBeNull();
+  });
+
+  it('1P474254A.202 → nokia-pn-only, AUXILIARY_CODE, partNumber=474254A.202', () => {
+    const parsed = parseScan('1P474254A.202', 'CODE_128');
+    expect(parsed.parsingProfile).toBe('nokia-pn-only');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    expect(parsed.partNumber).toBe('474254A.202');
+  });
+
+  it('1P474234-200.001 (legacy dash-format with DI) → nokia-pn-only, AUXILIARY_CODE', () => {
+    const parsed = parseScan('1P474234-200.001', 'CODE_128');
+    expect(parsed.parsingProfile).toBe('nokia-pn-only');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    expect(parsed.partNumber).toBe('474234-200.001');
+  });
+
+  it('1P-prefixed and bare PN produce the same partNumber value (buffer pairing works)', () => {
+    const withDI    = parseScan('1P474800A.102', 'CODE_128');
+    const withoutDI = parseScan('474800A.102',   'CODE_128');
+    expect(withDI.partNumber).toBe(withoutDI.partNumber);
+    expect(withDI.parsingProfile).toBe(withoutDI.parsingProfile);
+  });
+
+  it('1PGARBAGE does not match Nokia PN (garbage after 1P fails regex → genericParser)', () => {
+    const parsed = parseScan('1PGARBAGE', 'CODE_128');
+    expect(parsed.parsingProfile).not.toBe('nokia-pn-only');
+  });
+
+  it('K9241817927 → generic-sn-only, PARTIAL_ITEM (aggregated at React level, no parser change)', () => {
+    const parsed = parseScan('K9241817927', 'CODE_128');
+    expect(parsed.parsingProfile).toBe('generic-sn-only');
+    expect(classifyScan(parsed)).toBe('PARTIAL_ITEM');
+    expect(parsed.serialNumber).toBe('K9241817927');
+  });
+
+  it('DataMatrix 1P+S DI fields still route to nokia-gs1 (not intercepted by 1P linear fix)', () => {
+    // DataMatrix payload has GS separator — splits into ['1P474800A.102', 'SK9241817927']
+    // → genericParser → hasNokiaDI=true → parseNokiaDI → nokia-gs1
+    const raw = '1P474800A.102' + '\x1d' + 'SK9241817927';
+    const parsed = parseScan(raw, 'DATA_MATRIX');
+    expect(parsed.parsingProfile).toBe('nokia-gs1');
+    expect(parsed.partNumber).toBe('474800A.102');
+    expect(parsed.serialNumber).toBe('K9241817927');
+    expect(classifyScan(parsed)).toBe('VALID_ITEM');
+  });
+
+  it('REGRESSION — 474800A.102 bare still works (existing nokia-pn-only path unchanged)', () => {
+    const parsed = parseScan('474800A.102', 'CODE_128');
+    expect(parsed.parsingProfile).toBe('nokia-pn-only');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('REGRESSION — 474254A.202 bare still AUXILIARY_CODE', () => {
+    const parsed = parseScan('474254A.202', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+});
+
 // ── Continuous scanning — SN dedup and secondary barcode handling ─────────────
 
 describe('Continuous scanning — SN dedup and secondary barcode handling', () => {

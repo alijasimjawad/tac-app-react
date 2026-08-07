@@ -7,6 +7,10 @@ import {
   checkCameraPermission, cameraErrorMessage, getScanDiagnostics,
   type CameraPermission, type ScanDiagnostics, type DIField,
 } from '../lib/warehouseScanner';
+import {
+  createPendingCarton, isPendingExpired, isPnCompatible, CARTON_WINDOW_MS,
+  type PendingCarton,
+} from '../lib/cartonBuffer';
 import type { Warehouse, InventoryItem, ScanEntry, SessionDetails } from '../lib/warehouseTypes';
 import { normalizeSN } from '../lib/warehouseTypes';
 import { captureVideoFrame, ocrCanvasFrame, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
@@ -15,7 +19,7 @@ import css from './Warehouse.module.css';
 
 type Step = 1 | 2 | 3;
 type InputMode = 'camera' | 'usb' | 'manual';
-type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED';
+type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN';
 
 const EMPTY_SESSION: SessionDetails = {
   warehouseId: '', receiptDate: new Date().toISOString().slice(0, 10),
@@ -68,6 +72,12 @@ export default function WarehouseReceive() {
   const itemsByCode  = useRef<Map<string, InventoryItem>>(new Map());
   // Item type / item code vocabulary for OCR label matching
   const itemTypeCodes = useRef<Set<string>>(new Set());
+
+  // CartonScanBuffer — pending Nokia PN component waiting for its complementary SN.
+  // Not a ScanEntry — never appears in the scan list until finalized.
+  const pendingCarton      = useRef<PendingCarton | null>(null);
+  const pendingCartonFrame = useRef<HTMLCanvasElement | null>(null);
+  const pendingCartonTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [scanEntries, setScanEntries] = useState<ScanEntry[]>([]);
 
@@ -131,7 +141,7 @@ export default function WarehouseReceive() {
       const perm = await checkCameraPermission();
       setCamPerm(perm);
     })();
-    return () => { stopCamera(); terminateOcrWorker(); };
+    return () => { stopCamera(); terminateOcrWorker(); clearPendingCarton(); };
   }, []);
 
   // ── Diagnostics ───────────────────────────────────────────────────────────
@@ -156,6 +166,24 @@ export default function WarehouseReceive() {
       hudTimer.current = setTimeout(() => setHudState('IDLE'), 2500);
     }
   }
+
+  // ── CartonScanBuffer helpers ──────────────────────────────────────────────
+  // Cancel any in-flight timer, release the captured canvas, and null the ref.
+  const clearPendingCarton = () => {
+    if (pendingCartonTimer.current) { clearTimeout(pendingCartonTimer.current); pendingCartonTimer.current = null; }
+    if (pendingCartonFrame.current) { pendingCartonFrame.current.width = 0; pendingCartonFrame.current.height = 0; pendingCartonFrame.current = null; }
+    pendingCarton.current = null;
+  };
+
+  // Start (or restart) the 2-second aggregation window timer.
+  // If no SN arrives in time, the pending carton is silently dropped.
+  const startPendingCartonTimer = () => {
+    if (pendingCartonTimer.current) clearTimeout(pendingCartonTimer.current);
+    pendingCartonTimer.current = setTimeout(() => {
+      clearPendingCarton();
+      setHudState('IDLE');
+    }, CARTON_WINDOW_MS);
+  };
 
   // ── Audio / haptic feedback ───────────────────────────────────────────────
   function playSuccessBeep() {
@@ -431,6 +459,64 @@ export default function WarehouseReceive() {
     return () => { usb.detach(); usbRef.current = null; };
   }, [step, inputMode]);
 
+  // ── Finalize a paired carton (pending PN + incoming SN → ONE ScanEntry) ─────
+  // Called only from handleRawScan when the pairing check succeeds.
+  // `frame` ownership transfers here — do NOT touch pendingCartonFrame after calling.
+  function finalizePairedCarton(
+    pending:   PendingCarton,
+    sn:        string,
+    snNorm:    string,
+    frame:     HTMLCanvasElement | null,
+    rawValue:  string,   // SN barcode's raw string (the "completing" scan)
+    symbology: string,
+  ) {
+    const pn = pending.partNumber;
+
+    // Item master lookup by PN (same priority as handleRawScan normal path)
+    let resolvedId: string | null = null, resolvedName: string | null = null, resolvedCode: string | null = null;
+    const it = itemsByPN.current.get(pn.toUpperCase());
+    if (it) { resolvedId = it.id; resolvedName = it.item_name; resolvedCode = it.item_code; }
+
+    const entry: ScanEntry = {
+      localId:           pending.localId,
+      rawValue,
+      symbology,
+      serialNumber:      sn,
+      serialNumberNorm:  snNorm,
+      partNumber:        pn,
+      itemTypeRaw:       null,             // filled by OCR below
+      resolvedItemId:    resolvedId,
+      resolvedItemName:  resolvedName,
+      resolvedItemCode:  resolvedCode,
+      status:            resolvedId ? 'VALID' : 'PENDING',
+      statusMsg:         resolvedId ? null : 'Item not matched — select manually',
+      scannedAt:         new Date().toISOString(),
+      manually:          false,
+      parsingProfile:    'nokia-pn-sn-aggregated',
+      parseStatus:       'RESOLVED',
+      matchStatus:       resolvedId ? 'MATCHED' : 'UNMATCHED',
+      scanClassification: resolvedId ? 'VALID_ITEM' : 'PARTIAL_ITEM',
+      ocrStatus:         frame ? 'RUNNING' : undefined,
+      ocrCanvasSize:     frame ? `${frame.width}×${frame.height}` : undefined,
+    };
+
+    sessionSNs.current.add(snNorm);
+    setScanEntries(prev => [entry, ...prev]);
+
+    // OCR fires once for the finalized carton, using the frame captured at PN scan time.
+    if (frame) {
+      const barcodeData: BarcodeSource = { serialNumber: sn, partNumber: pn, itemType: null };
+      void launchAutoOcr(pending.localId, barcodeData, frame);
+    }
+
+    console.log('[ScanDiag] PAIRED_CARTON', {
+      pendingPn: pn, snRaw: rawValue, serialNumber: sn, resolvedId,
+    });
+
+    if (resolvedId) { setHud('SUCCESS'); playSuccessBeep(); vibrateOnce(); }
+    else { setHud('UNKNOWN'); }
+  }
+
   // ── Core scan handler ─────────────────────────────────────────────────────
   function handleRawScan(raw: string, symbology: string, manually: boolean) {
     setScanFlash(true);
@@ -439,19 +525,57 @@ export default function WarehouseReceive() {
 
     const parsed         = parseScan(raw, symbology);
     const classification = classifyScan(parsed);
+    const videoEl        = videoRef.current;
 
-    // Filter auxiliary / unknown noise from camera and USB — not from manual entry
+    // ── Nokia PN component → CartonScanBuffer ──────────────────────────────
+    // Nokia PN-only barcodes ('1P474800A.102', '474800A.102', etc.) are
+    // components of a carton, not independent inventory items. Buffer the PN
+    // and wait up to CARTON_WINDOW_MS for the complementary SN barcode.
+    // OCR is NOT launched here — it fires once when the carton is finalized.
+    if (classification === 'AUXILIARY_CODE' && parsed.parsingProfile === 'nokia-pn-only' && parsed.partNumber) {
+      const newPn = parsed.partNumber;
+      let pnFrame: HTMLCanvasElement | null = null;
+      if (!manually && symbology !== 'USB_HID' && videoEl && videoEl.videoWidth > 0) {
+        try { pnFrame = captureVideoFrame(videoEl); } catch { /* non-fatal */ }
+      }
+
+      const existing = pendingCarton.current;
+      if (existing && !isPendingExpired(existing) && existing.partNumber.toUpperCase() === newPn.toUpperCase()) {
+        // Same PN seen again (repeated decode from same barcode) — refresh timer, update frame
+        if (pnFrame) {
+          if (pendingCartonFrame.current) { pendingCartonFrame.current.width = 0; pendingCartonFrame.current.height = 0; }
+          pendingCartonFrame.current = pnFrame;
+        }
+        startPendingCartonTimer();
+      } else {
+        // Different or new PN — clear any existing pending, start fresh buffer
+        clearPendingCarton();
+        pendingCarton.current      = createPendingCarton(newPn, crypto.randomUUID());
+        pendingCartonFrame.current = pnFrame;
+        startPendingCartonTimer();
+        setHudState('WAITING_SN');
+      }
+      return;
+    }
+
+    // Filter other auxiliary / unknown codes (not Nokia PN — those are handled above)
     if (!manually && (classification === 'AUXILIARY_CODE' || classification === 'UNKNOWN_CODE')) {
       return;
+    }
+
+    // Expire pending carton before processing next scan
+    if (pendingCarton.current && isPendingExpired(pendingCarton.current)) {
+      clearPendingCarton();
+      setHudState('IDLE');
     }
 
     const sn     = parsed.serialNumber;
     const snNorm = sn ? normalizeSN(sn) : null;
 
-    // O(1) duplicate check
+    // Duplicate check — also clears pending carton (SN already in session)
     if (snNorm && sessionSNs.current.has(snNorm)) {
+      clearPendingCarton();
       setDuplicateCount(c => c + 1);
-      // Briefly highlight the existing card
       setHighlightSN(snNorm);
       if (hlTimer.current) clearTimeout(hlTimer.current);
       hlTimer.current = setTimeout(() => setHighlightSN(null), 2000);
@@ -461,7 +585,23 @@ export default function WarehouseReceive() {
       return;
     }
 
-    // O(1) item master lookup
+    // ── Pairing: pending Nokia PN + incoming SN → ONE ScanEntry ───────────
+    const pending = pendingCarton.current;
+    if (pending && sn && snNorm) {
+      const incomingPn = parsed.partNumber;
+      if (isPnCompatible(pending.partNumber, incomingPn)) {
+        // Transfer frame ownership before clearPendingCarton destroys it
+        const frame = pendingCartonFrame.current;
+        pendingCartonFrame.current = null;
+        clearPendingCarton();
+        finalizePairedCarton(pending, sn, snNorm, frame, raw, symbology);
+        return;
+      }
+      // Incompatible PN (different carton) — drop pending, fall through to normal flow
+      clearPendingCarton();
+    }
+
+    // ── Normal single-barcode entry ─────────────────────────────────────────
     const resolveItem = (): { id: string | null; name: string | null; code: string | null } => {
       if (parsed.partNumber) {
         const it = itemsByPN.current.get(parsed.partNumber.toUpperCase());
@@ -485,10 +625,9 @@ export default function WarehouseReceive() {
 
     const status: ScanEntry['status'] = resolved.id ? 'VALID' : 'PENDING';
 
-    // Phase B: capture frame synchronously BEFORE any setState so the label is
-    // still in view. Only for camera scans — USB/manual have no live video.
+    // Capture frame synchronously BEFORE any setState — label still in view.
+    // Only for camera scans — USB/manual have no live video.
     let autoOcrCanvas: HTMLCanvasElement | null = null;
-    const videoEl = videoRef.current;
     if (!manually && symbology !== 'USB_HID' && videoEl && videoEl.videoWidth > 0) {
       try { autoOcrCanvas = captureVideoFrame(videoEl); } catch { /* non-fatal */ }
     }
@@ -520,7 +659,6 @@ export default function WarehouseReceive() {
     if (snNorm) sessionSNs.current.add(snNorm);
     setScanEntries(prev => [entry, ...prev]);
 
-    // Launch async OCR using the frame captured at decode time.
     // Correlation is by localId — not "latest entry" — so rapid scanning is safe.
     if (autoOcrCanvas) {
       const barcodeData: BarcodeSource = {
@@ -534,7 +672,6 @@ export default function WarehouseReceive() {
     console.log('[ScanDiag]', {
       rawValue:  raw,
       symbology,
-      // All GS-separated DI fields — key for Nokia payload investigation
       diFields:  parsed.diFields ?? decodeAllDIFields(raw),
       extracted: { itemType: parsed.itemType, partNumber: parsed.partNumber, serialNumber: parsed.serialNumber },
       parser:    parsed.parsingProfile,
@@ -601,6 +738,7 @@ export default function WarehouseReceive() {
     if (!scanEntries.length) {
       showToast('Scan at least one item before proceeding.', false); return;
     }
+    clearPendingCarton();  // drop any un-paired Nokia PN before leaving scan step
     stopCamera();
     setStep(3);
   }
@@ -835,11 +973,12 @@ export default function WarehouseReceive() {
                           hudState === 'OCR_SUCCESS'    ? css.hudOcrSuccess :
                           hudState === 'OCR_FAILED'     ? css.hudOcrFailed  : css.hudUnknown
                         }`}>
-                          {hudState === 'SUCCESS'        ? '✓ Added'            :
-                           hudState === 'DUPLICATE'      ? '⊘ Duplicate'        :
-                           hudState === 'OCR_PROCESSING' ? '⏳ Reading Label…'   :
-                           hudState === 'OCR_SUCCESS'    ? '✓ Label Read'        :
-                           hudState === 'OCR_FAILED'     ? '✗ Label Unreadable'  : '? Unknown'}
+                          {hudState === 'SUCCESS'        ? '✓ Added'                :
+                           hudState === 'DUPLICATE'      ? '⊘ Duplicate'            :
+                           hudState === 'OCR_PROCESSING' ? '⏳ Reading Label…'       :
+                           hudState === 'OCR_SUCCESS'    ? '✓ Label Read'            :
+                           hudState === 'OCR_FAILED'     ? '✗ Label Unreadable'      :
+                           hudState === 'WAITING_SN'     ? 'PN captured — scan SN'   : '? Unknown'}
                         </div>
                       )}
                       <div className={css.videoActions}>

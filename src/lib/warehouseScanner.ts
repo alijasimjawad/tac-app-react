@@ -233,6 +233,8 @@ const nokiaParser: ParserProfile = {
     if (NOKIA_PN_RE.test(clean)) return true;
     // Nokia alt-format PN barcode (letter format: 474254A.202)
     if (NOKIA_ALT_PN_RE.test(clean)) return true;
+    // Nokia PN barcode with 1P DI prefix as standalone linear barcode (e.g. '1P474800A.102')
+    if (clean.startsWith('1P') && (NOKIA_PN_RE.test(clean.slice(2)) || NOKIA_ALT_PN_RE.test(clean.slice(2)))) return true;
     // Nokia N-series SN barcode (N is part of the SN, not a DI)
     if (NOKIA_SN_RE.test(clean)) return true;
     // Nokia standalone SN with S Data Identifier prefix (e.g. SDH252030925)
@@ -259,6 +261,20 @@ const nokiaParser: ParserProfile = {
         confidence: 'HIGH',
         status: (itField && snField ? 'resolved' : 'partially_resolved') as ParsingStatus,
       };
+    }
+
+    // Nokia PN barcode with 1P DI prefix (standalone linear barcode, e.g. '1P474800A.102')
+    // The 1P Data Identifier is stripped; the remaining value is the Nokia PN.
+    if (upper.startsWith('1P')) {
+      const pnValue = clean.slice(2);
+      if (NOKIA_PN_RE.test(pnValue) || NOKIA_ALT_PN_RE.test(pnValue)) {
+        return {
+          itemType: null, serialNumber: null, manufacturer: 'Nokia',
+          partNumber: pnValue,
+          rawFields: [clean], parsingProfile: 'nokia-pn-only',
+          confidence: 'MEDIUM', status: 'partially_resolved' as const,
+        };
+      }
     }
 
     // Standalone Nokia SN with S DI prefix: strip S, return remaining as SN
