@@ -263,6 +263,8 @@ export default function WarehouseReceive() {
         ocrDurationMs:    ocr.durationMs,
         ocrStatus:        'DONE' as const,
         ocrPasses:        ocr.passes,
+        ocrCandidates:    ocr.candidateDetails,
+        ocrAmbiguous:     ocr.isItemTypeAmbiguous,
         ocrMergeApplied:  !!(merged.itemType && !e.itemTypeRaw)
                           || !!(merged.partNumber && !e.partNumber)
                           || !!(merged.serialNumber && !e.serialNumber),
@@ -1033,9 +1035,14 @@ export default function WarehouseReceive() {
                         {e.partNumber && <div className={css.scanPN}>PN: {e.partNumber}</div>}
 
                         {/* OCR-detected item type — visible even when not in Item Master */}
-                        {e.itemTypeRaw && !e.resolvedItemCode && (
+                        {e.itemTypeRaw && !e.resolvedItemCode && !e.ocrAmbiguous && (
                           <div style={{ fontSize: 12, fontWeight: 700, color: '#818cf8', marginTop: 2 }}>
                             TYPE: {e.itemTypeRaw}{e.ocrItemType ? ' [OCR]' : ''}
+                          </div>
+                        )}
+                        {e.ocrAmbiguous && !e.resolvedItemCode && (
+                          <div style={{ fontSize: 12, fontWeight: 600, color: '#f59e0b', marginTop: 2 }}>
+                            TYPE: ambiguous — expand diagnostics
                           </div>
                         )}
                         {e.ocrStatus === 'RUNNING' && (
@@ -1276,7 +1283,42 @@ function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
               e.ocrRawText.substring(0, 60) + (e.ocrRawText.length > 60 ? '…' : '')
             } />
           )}
-          {/* Per-pass breakdown — key for diagnosing which region found the type code */}
+          {/* Candidate scoring table */}
+          {e.ocrCandidates && e.ocrCandidates.length > 0 && (
+            <>
+              <div className={css.scanDiagRow} style={{ marginTop: 3 }}>
+                <span className={css.scanDiagKey} style={{ color: '#64748b', fontSize: 10 }}>TYPE CANDIDATES</span>
+              </div>
+              {e.ocrCandidates.map(c => (
+                <div key={c.text} className={css.scanDiagRow}>
+                  <span className={css.scanDiagKey} style={{
+                    color: c.accepted ? (c.inItemMaster ? '#34d399' : '#818cf8') : '#f87171',
+                    fontSize: 10, minWidth: 55,
+                  }}>
+                    {c.text}
+                  </span>
+                  <span className={css.scanDiagVal} style={{ fontSize: 10 }}>
+                    {c.accepted
+                      ? `passes:${c.passes.join(',')} score:${c.score}${c.inItemMaster ? ' [MASTER]' : ''}`
+                      : `REJECTED: ${c.rejectionReason ?? 'noise'}`}
+                  </span>
+                </div>
+              ))}
+              {e.ocrAmbiguous && (
+                <div className={css.scanDiagRow}>
+                  <span className={css.scanDiagKey} style={{ color: '#f59e0b', fontSize: 10 }}>SELECTED</span>
+                  <span className={css.scanDiagVal} style={{ fontSize: 10, color: '#f59e0b' }}>AMBIGUOUS — not auto-selected</span>
+                </div>
+              )}
+              {!e.ocrAmbiguous && e.itemTypeRaw && (
+                <div className={css.scanDiagRow}>
+                  <span className={css.scanDiagKey} style={{ color: '#34d399', fontSize: 10 }}>SELECTED</span>
+                  <span className={css.scanDiagVal} style={{ fontSize: 10, color: '#34d399' }}>{e.itemTypeRaw} [OCR]</span>
+                </div>
+              )}
+            </>
+          )}
+          {/* Per-pass breakdown */}
           {e.ocrPasses && e.ocrPasses.length > 0 && (
             <>
               <div className={css.scanDiagRow} style={{ marginTop: 3 }}>

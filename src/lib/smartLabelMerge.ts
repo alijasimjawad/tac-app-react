@@ -41,9 +41,10 @@ export function mergeScanAndOcr({ barcode, ocr }: MergeInput): MergedResult {
   const bPN = barcode?.partNumber   ?? null;
   const bIT = barcode?.itemType     ?? null;
 
-  const oSN = ocr?.serialNumberCandidates[0] ?? null;
-  const oPN = ocr?.partNumberCandidates[0]   ?? null;
-  const oIT = ocr?.itemTypeCandidates[0]     ?? null;
+  const oSN = ocr?.serialNumberCandidates[0]                            ?? null;
+  const oPN = ocr?.partNumberCandidates[0]                              ?? null;
+  // Use ranked winner when available; fall back to first candidate for backward compat
+  const oIT = ocr?.selectedItemType ?? ocr?.itemTypeCandidates[0]       ?? null;
 
   const conflicts: string[] = [];
 

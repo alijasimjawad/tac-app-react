@@ -1,5 +1,7 @@
 // ── Shared Warehouse & Inventory types ────────────────────────────────────────
 
+import type { OcrCandidateDetail } from './labelOcr';
+
 export interface Warehouse {
   id: string;
   code: string;
@@ -129,9 +131,11 @@ export interface ScanEntry {
   ocrStatus?:       'RUNNING' | 'DONE' | 'FAILED';
   ocrCanvasSize?:   string;   // "1280×720" — captured at scan time
   ocrMergeApplied?: boolean;  // whether OCR added meaningful data
+  ocrAmbiguous?:    boolean;  // true when multiple plausible item types, none selected
+  ocrCandidates?:   OcrCandidateDetail[];  // per-candidate scoring breakdown
   ocrPasses?: Array<{
-    passId:     string;   // 'A' | 'B' | 'C'
-    label:      string;   // 'Full frame' | 'Center 50%' | 'Upper 40%'
+    passId:     string;   // 'A' | 'B' | 'C' | 'D'
+    label:      string;
     rawText:    string;
     confidence: number;   // 0–100 from Tesseract
     durationMs: number;

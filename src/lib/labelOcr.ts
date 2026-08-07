@@ -6,34 +6,52 @@
 //   Pass A — Full frame at native resolution (broad coverage)
 //   Pass B — Center 50%×50% crop, upscaled to ≥1600 px (main label area, higher detail)
 //   Pass C — Upper 40% strip, upscaled to ≥1600 px (Nokia item codes often at label top)
-// Candidates from all passes are merged and deduplicated.
+//   Pass D — Upper-right 50%×40% crop, upscaled to ≥1600 px (item-type area on Nokia labels)
+// Candidates from all passes are merged, fuzzy-noise-filtered, scored and deduplicated.
+// The winner is selected by composite score; ambiguity is surfaced rather than guessed.
 
 export interface OcrPassResult {
-  passId:     string;   // 'A' | 'B' | 'C'
+  passId:     string;   // 'A' | 'B' | 'C' | 'D'
   label:      string;   // human-readable description
   rawText:    string;   // exact Tesseract output for this pass
   confidence: number;   // 0–100 from Tesseract
   durationMs: number;
-  candidates: string[]; // item type tokens accepted in this pass
+  candidates: string[]; // accepted item type tokens in this pass
+}
+
+// Per-candidate scoring detail — exposed in diagnostics so operators can see why
+// a code was accepted or rejected.
+export interface OcrCandidateDetail {
+  text:             string;
+  passes:           string[];       // pass IDs ('A'/'B'/'C'/'D') where this token appeared
+  inItemMaster:     boolean;
+  score:            number;         // composite score; -1000 for noise-rejected
+  accepted:         boolean;
+  noiseRejected:    boolean;
+  rejectionReason?: string;
 }
 
 export interface OcrResult {
-  rawText:                string;               // merged text from all passes (separator: \n---\n)
-  itemTypeCandidates:     string[];
+  rawText:                string;                // merged text from all passes (separator: \n---\n)
+  itemTypeCandidates:     string[];              // accepted candidates (backward-compat list)
+  selectedItemType:       string | null;         // ranked winner after scoring; null if ambiguous/none
+  candidateDetails:       OcrCandidateDetail[];  // full scoring breakdown for diagnostics
+  isItemTypeAmbiguous:    boolean;               // true when multiple plausible candidates tie
   partNumberCandidates:   string[];
   serialNumberCandidates: string[];
-  confidence:             number;               // average across passes
+  confidence:             number;                // average across passes
   source:                 'OCR';
-  durationMs:             number;               // wall-clock total
-  passes?:                OcrPassResult[];      // per-pass detail for diagnostics
-  canvasWidth?:           number;               // source frame dimensions at capture time
+  durationMs:             number;                // wall-clock total
+  passes?:                OcrPassResult[];       // per-pass detail for diagnostics
+  canvasWidth?:           number;                // source frame dimensions at capture time
   canvasHeight?:          number;
 }
 
 export interface ParsedLabelText {
-  itemTypes:     string[];
-  partNumbers:   string[];
-  serialNumbers: string[];
+  itemTypes:       string[];
+  partNumbers:     string[];
+  serialNumbers:   string[];
+  rejectedTokens?: Array<{ text: string; reason: string }>; // noise tokens seen per pass
 }
 
 // ── Text parsing patterns ─────────────────────────────────────────────────────
@@ -49,15 +67,12 @@ const SN_LABELED_RE = /(?:S\/N|Serial(?:\s*N(?:o\.?|umber)?)?|SN)[:\s]+([A-Z0-9]
 const NOKIA_SN_RE   = /\b((?:DH|N9|1M)[A-Z0-9]{7,18})\b/g;
 
 // Generic item type token: 3–8 chars starting with a letter, all uppercase alphanumeric.
-// Matches Nokia type codes (AHGA, ABIO, FXDA…) and Item Master codes (variable length).
 const ITEM_TYPE_TOKEN_RE = /\b([A-Z][A-Z0-9]{2,7})\b/g;
 
 // Nokia equipment type code pattern: exactly 4 uppercase letters, no digits.
-// Catches AHGA, ABIO, FXDA, FXEA, etc. without requiring a hardcoded list.
 const NOKIA_EQUIP_CODE_RE = /^[A-Z]{4}$/;
 
-// Words that must never be extracted as item type codes.
-// Checked BEFORE Item Master lookup so even vocabulary words are rejected if noisy.
+// Words that must never be extracted as item type codes (checked first, before Item Master).
 const EXCLUDED_TOKENS = new Set([
   // English label noise
   'FROM', 'WITH', 'THIS', 'THAT', 'MADE', 'DATE', 'OVER', 'ALSO',
@@ -66,7 +81,7 @@ const EXCLUDED_TOKENS = new Set([
   // Nokia brand / geography / generic hardware words
   'NOKIA', 'CHINA', 'NETWORKS', 'SOLUTIONS', 'SYSTEMS', 'OUTDOOR',
   'INDOOR', 'VENDOR', 'INTL', 'CORP', 'ORIG', 'ASSY', 'OPER',
-  // Shipping / freight label words (must not false-positive as Nokia type codes)
+  // Shipping / freight label words
   'CARE', 'SIDE', 'KEEP', 'COOL', 'HAND', 'FRAG', 'PACK', 'LIFT',
   'PUSH', 'PULL', 'STOP', 'READ', 'SIGN', 'NOTE', 'WARD', 'HOLD',
   // Item field label words
@@ -76,26 +91,85 @@ const EXCLUDED_TOKENS = new Set([
   'EAC', 'ROHS', 'WEEE', 'CERT',
 ]);
 
+// ── Fuzzy noise rejection ─────────────────────────────────────────────────────
+// Catches OCR-corrupted variants of known brand/country/compliance words that
+// are not caught by the EXCLUDED_TOKENS exact list (e.g. OKIA from NOKIA when
+// the leading N is dropped; N0KIA/NOK1A handled by 0→O/1→I normalization).
+//
+// Applied ONLY to Nokia 4-letter code candidates — Item Master matches bypass this
+// filter because they are already confirmed vocabulary.
+//
+// Conservative approach: three checks in order of increasing permissiveness.
+//   1. Exact match after digit/letter confusable substitution (0→O, 1→I)
+//   2. Token is a contiguous substring of a noise word (catches dropped-char reads)
+//   3. Same-length hamming distance ≤ 1 (catches single-char corruption)
+
+const FUZZY_NOISE_WORDS = [
+  'NOKIA', 'CHINA', 'MADE', 'NETWORK', 'NETWORKS',
+  'SOLUTIONS', 'SIDE', 'CARE', 'CE', 'EAC', 'ROHS', 'WEEE', 'CERT',
+];
+
+// Exported for unit tests
+export function normalizeOcr(s: string): string {
+  return s.replace(/0/g, 'O').replace(/1/g, 'I');
+}
+
+function hammingDistance(a: string, b: string): number {
+  if (a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+  return d;
+}
+
+// Returns a rejection reason string if the token is fuzzy-noise, or null if clean.
+// Exported for unit tests.
+export function fuzzyNoiseCheck(token: string): string | null {
+  const norm = normalizeOcr(token); // token is already uppercase from parseLabel
+  for (const nw of FUZZY_NOISE_WORDS) {
+    const normNw = normalizeOcr(nw);
+    // 1. Exact match after 0→O / 1→I substitution (catches N0KIA, NOK1A)
+    if (norm === normNw) return `normalized match "${nw}"`;
+    // 2. Token is a contiguous ≥3-char substring of noise word (catches OKIA ⊂ NOKIA, NOKI ⊂ NOKIA)
+    if (norm.length >= 3 && norm.length < normNw.length && normNw.includes(norm)) {
+      return `partial read of "${nw}"`;
+    }
+    // 3. Same-length, hamming distance 1 (catches CHLNA vs CHINA)
+    if (norm.length === normNw.length && hammingDistance(norm, normNw) <= 1) {
+      return `1-char corruption of "${nw}"`;
+    }
+  }
+  return null;
+}
+
 // ── Pure text parser — testable without Tesseract ────────────────────────────
 
 export function parseLabel(text: string, itemTypeCodes: Set<string>): ParsedLabelText {
   const upper = text.toUpperCase();
-  const itemTypes = new Set<string>();
+  const itemTypes     = new Set<string>();
+  const rejectedTokens: Array<{ text: string; reason: string }> = [];
 
-  // Generic candidate extraction:
-  //   1. Token 3–8 chars starting with [A-Z], all [A-Z0-9]
-  //   2. Reject noise words
-  //   3. Accept if in Item Master vocabulary (HIGH confidence)
-  //   4. Accept if matches Nokia 4-letter equipment code pattern (MEDIUM confidence)
-  //      — all-uppercase 4-letter codes: AHGA, ABIO, FXDA, FXEA, etc.
   for (const m of upper.matchAll(ITEM_TYPE_TOKEN_RE)) {
     const tok = m[1];
-    if (EXCLUDED_TOKENS.has(tok)) continue;
+    // 1. Hard-excluded noise words (highest priority — bypasses Item Master)
+    if (EXCLUDED_TOKENS.has(tok)) {
+      rejectedTokens.push({ text: tok, reason: 'excluded token' });
+      continue;
+    }
+    // 2. Item Master vocabulary — always accepted (known-good codes)
     if (itemTypeCodes.has(tok)) {
       itemTypes.add(tok);
-    } else if (NOKIA_EQUIP_CODE_RE.test(tok)) {
-      itemTypes.add(tok);
+      continue;
     }
+    // 3. Nokia 4-letter equipment code pattern — accept only if not fuzzy-noise
+    if (NOKIA_EQUIP_CODE_RE.test(tok)) {
+      const noiseReason = fuzzyNoiseCheck(tok);
+      if (noiseReason) {
+        rejectedTokens.push({ text: tok, reason: noiseReason });
+      } else {
+        itemTypes.add(tok);
+      }
+    }
+    // Other token lengths/patterns: silently ignored
   }
 
   const partNumbers = new Set<string>();
@@ -120,6 +194,7 @@ export function parseLabel(text: string, itemTypeCodes: Set<string>): ParsedLabe
     itemTypes:     [...itemTypes],
     partNumbers:   [...partNumbers],
     serialNumbers: [...serialNumbers],
+    rejectedTokens,
   };
 }
 
@@ -218,8 +293,6 @@ function getOcrWorker(): Promise<OcrWorker> {
 }
 
 // ── Core OCR runner (private) ─────────────────────────────────────────────────
-// Preprocesses the canvas at targetWidth, runs Tesseract, discards the processed copy.
-// Does NOT discard the source canvas — caller manages source lifecycle.
 
 async function runOcrOnCanvas(
   canvas: HTMLCanvasElement,
@@ -233,12 +306,88 @@ async function runOcrOnCanvas(
   return { text: data.text, confidence: Math.round(data.confidence), durationMs: Date.now() - t0 };
 }
 
+// ── Candidate scoring ─────────────────────────────────────────────────────────
+// Scores cross-pass item-type candidates from all OCR passes.
+//
+// Score breakdown:
+//   +100  exact match in Item Master (confirmed vocabulary)
+//   + 30  Nokia 4-letter equipment code pattern (^[A-Z]{4}$)
+//   + 10  each additional pass the token appears in (multi-pass consensus)
+//   + 15  detected in Pass D (upper-right region — Nokia label item-type area)
+//   0–10  OCR confidence contribution (maxConf / 10, rounded)
+//   -1000 noise-rejected (effectively eliminates the candidate)
+//
+// Ambiguity rule: if the top two accepted candidates have scores within 15 pts
+// of each other and neither is in Item Master, the result is ambiguous.
+// The caller surfaces this rather than silently choosing.
+
+interface PassCandidateData {
+  passes:  string[];
+  maxConf: number; // highest pass-level confidence where this token appeared
+}
+
+function computeScore(text: string, data: PassCandidateData, inItemMaster: boolean): number {
+  let score = 0;
+  if (inItemMaster) score += 100;
+  if (/^[A-Z]{4}$/.test(text)) score += 30;
+  score += (data.passes.length - 1) * 10;   // multi-pass bonus (1st pass free)
+  if (data.passes.includes('D')) score += 15; // upper-right region bonus
+  score += Math.round(data.maxConf / 10);    // 0–10 pts from OCR confidence
+  return score;
+}
+
+function buildCandidateDetails(
+  accepted: Map<string, PassCandidateData>,
+  rejected: Map<string, { passes: string[]; reason: string }>,
+  itemTypeCodes: Set<string>,
+): OcrCandidateDetail[] {
+  const details: OcrCandidateDetail[] = [];
+
+  for (const [text, data] of accepted) {
+    const inItemMaster = itemTypeCodes.has(text);
+    const score = computeScore(text, data, inItemMaster);
+    details.push({ text, passes: [...data.passes], inItemMaster, score, accepted: true, noiseRejected: false });
+  }
+  for (const [text, { passes, reason }] of rejected) {
+    details.push({
+      text, passes: [...passes], inItemMaster: false, score: -1000,
+      accepted: false, noiseRejected: true, rejectionReason: reason,
+    });
+  }
+
+  // Sort: accepted first (by score desc), then rejected
+  details.sort((a, b) => {
+    if (a.accepted !== b.accepted) return a.accepted ? -1 : 1;
+    return b.score - a.score;
+  });
+  return details;
+}
+
+// Select the best item-type candidate from scored details.
+// Exported so unit tests can call it directly without browser/canvas.
+export function selectBestItemType(
+  details: OcrCandidateDetail[],
+): { selectedItemType: string | null; isItemTypeAmbiguous: boolean } {
+  const acc = details.filter(d => d.accepted).sort((a, b) => b.score - a.score);
+  if (acc.length === 0) return { selectedItemType: null, isItemTypeAmbiguous: false };
+  if (acc.length === 1) return { selectedItemType: acc[0].text, isItemTypeAmbiguous: false };
+
+  const top    = acc[0];
+  const second = acc[1];
+  // Clear winner: in Item Master (unambiguous by definition), or score gap ≥ 15
+  if (top.inItemMaster || top.score - second.score >= 15) {
+    return { selectedItemType: top.text, isItemTypeAmbiguous: false };
+  }
+  return { selectedItemType: null, isItemTypeAmbiguous: true };
+}
+
 // ── Public: Multi-pass OCR on a pre-captured canvas ───────────────────────────
-// Three passes with increasing ROI focus:
+// Four passes with increasing ROI focus:
 //   A  Full frame (broad coverage, lower per-character resolution)
 //   B  Center 50%×50% crop upscaled to 1600 px (label typically centred)
 //   C  Upper 40% strip upscaled to 1600 px (Nokia item codes at top of label)
-// Candidates and fields from all passes are merged and deduplicated.
+//   D  Upper-right 50%×40% crop upscaled to 1600 px (item-type area on Nokia labels)
+// Candidates from all passes are cross-referenced, scored, and ranked.
 // The canvas is DISCARDED inside this function — do not reuse after calling.
 
 export async function ocrCanvasFrame(
@@ -249,28 +398,47 @@ export async function ocrCanvasFrame(
   const canvasWidth  = canvas.width;
   const canvasHeight = canvas.height;
 
-  const passes: OcrPassResult[]  = [];
-  const allTypes   = new Set<string>();
+  const passes: OcrPassResult[] = [];
   const allPNs     = new Set<string>();
   const allSNs     = new Set<string>();
   const rawTexts: string[] = [];
   let sumConf = 0;
 
+  // Cross-pass candidate tracking: token → { passes[], maxConf }
+  const acceptedMap = new Map<string, PassCandidateData>();
+  const rejectedMap = new Map<string, { passes: string[]; reason: string }>();
+
+  function recordPass(
+    passId: string,
+    label:  string,
+    text:   string,
+    confidence: number,
+    durationMs: number,
+    parsed: ParsedLabelText,
+  ): void {
+    for (const tok of parsed.itemTypes) {
+      const ex = acceptedMap.get(tok) ?? { passes: [], maxConf: 0 };
+      if (!ex.passes.includes(passId)) ex.passes.push(passId);
+      ex.maxConf = Math.max(ex.maxConf, confidence);
+      acceptedMap.set(tok, ex);
+    }
+    for (const r of parsed.rejectedTokens ?? []) {
+      if (!rejectedMap.has(r.text)) rejectedMap.set(r.text, { passes: [], reason: r.reason });
+      const rec = rejectedMap.get(r.text)!;
+      if (!rec.passes.includes(passId)) rec.passes.push(passId);
+    }
+    for (const p of parsed.partNumbers)   allPNs.add(p);
+    for (const s of parsed.serialNumbers) allSNs.add(s);
+    rawTexts.push(text);
+    sumConf += confidence;
+    passes.push({ passId, label, rawText: text, confidence, durationMs, candidates: parsed.itemTypes });
+  }
+
   // ── Pass A: Full frame ───────────────────────────────────────────────────
   {
     const pt = Date.now();
     const { text, confidence } = await runOcrOnCanvas(canvas, 1200);
-    const parsed = parseLabel(text, itemTypeCodes);
-    parsed.itemTypes.forEach(t => allTypes.add(t));
-    parsed.partNumbers.forEach(p => allPNs.add(p));
-    parsed.serialNumbers.forEach(s => allSNs.add(s));
-    rawTexts.push(text);
-    sumConf += confidence;
-    passes.push({
-      passId: 'A', label: 'Full frame',
-      rawText: text, confidence, durationMs: Date.now() - pt,
-      candidates: parsed.itemTypes,
-    });
+    recordPass('A', 'Full frame', text, confidence, Date.now() - pt, parseLabel(text, itemTypeCodes));
   }
 
   // ── Pass B: Center 50%×50% crop — label usually centred in frame ─────────
@@ -279,45 +447,42 @@ export async function ocrCanvasFrame(
     const crop = cropRegion(canvas, 0.25, 0.25, 0.5, 0.5);
     const { text, confidence } = await runOcrOnCanvas(crop, 1600);
     crop.width = 0; crop.height = 0;
-    const parsed = parseLabel(text, itemTypeCodes);
-    parsed.itemTypes.forEach(t => allTypes.add(t));
-    parsed.partNumbers.forEach(p => allPNs.add(p));
-    parsed.serialNumbers.forEach(s => allSNs.add(s));
-    rawTexts.push(text);
-    sumConf += confidence;
-    passes.push({
-      passId: 'B', label: 'Center 50%',
-      rawText: text, confidence, durationMs: Date.now() - pt,
-      candidates: parsed.itemTypes,
-    });
+    recordPass('B', 'Center 50%×50%', text, confidence, Date.now() - pt, parseLabel(text, itemTypeCodes));
   }
 
-  // ── Pass C: Upper 40% strip — Nokia item codes printed above DataMatrix ───
+  // ── Pass C: Upper 40% strip — Nokia item codes at top of label ───────────
   {
     const pt = Date.now();
     const crop = cropRegion(canvas, 0, 0, 1, 0.4);
     const { text, confidence } = await runOcrOnCanvas(crop, 1600);
     crop.width = 0; crop.height = 0;
-    const parsed = parseLabel(text, itemTypeCodes);
-    parsed.itemTypes.forEach(t => allTypes.add(t));
-    parsed.partNumbers.forEach(p => allPNs.add(p));
-    parsed.serialNumbers.forEach(s => allSNs.add(s));
-    rawTexts.push(text);
-    sumConf += confidence;
-    passes.push({
-      passId: 'C', label: 'Upper 40%',
-      rawText: text, confidence, durationMs: Date.now() - pt,
-      candidates: parsed.itemTypes,
-    });
+    recordPass('C', 'Upper 40%', text, confidence, Date.now() - pt, parseLabel(text, itemTypeCodes));
+  }
+
+  // ── Pass D: Upper-right 50%×40% — item-type area on Nokia labels ─────────
+  // Nokia hardware labels typically print the equipment code (AHGA, ABIO…) in
+  // the upper-right quadrant, with the DataMatrix below it.
+  {
+    const pt = Date.now();
+    const crop = cropRegion(canvas, 0.5, 0, 0.5, 0.4);
+    const { text, confidence } = await runOcrOnCanvas(crop, 1600);
+    crop.width = 0; crop.height = 0;
+    recordPass('D', 'Upper-right 50%×40%', text, confidence, Date.now() - pt, parseLabel(text, itemTypeCodes));
   }
 
   // Discard source canvas — no label images are retained after OCR
   canvas.width  = 0;
   canvas.height = 0;
 
+  const candidateDetails = buildCandidateDetails(acceptedMap, rejectedMap, itemTypeCodes);
+  const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType(candidateDetails);
+
   return {
     rawText:                rawTexts.join('\n\n---\n\n'),
-    itemTypeCandidates:     [...allTypes],
+    itemTypeCandidates:     [...acceptedMap.keys()],
+    selectedItemType,
+    candidateDetails,
+    isItemTypeAmbiguous,
     partNumberCandidates:   [...allPNs],
     serialNumberCandidates: [...allSNs],
     confidence:             Math.round(sumConf / passes.length),
