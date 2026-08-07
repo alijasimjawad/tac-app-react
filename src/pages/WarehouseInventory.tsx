@@ -150,8 +150,8 @@ export default function WarehouseInventory() {
 
     if (currentUser) {
       await supabase.from('activity_log').insert({
-        user_id: currentUser.id,
-        action:  editId ? `Updated inventory item: ${name}` : `Created inventory item: ${name}`,
+        user_full_name: currentUser.full_name,
+        action:         editId ? `Updated inventory item: ${name}` : `Created inventory item: ${name}`,
       });
     }
 

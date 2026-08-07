@@ -291,8 +291,8 @@ export default function WarehouseReceive() {
 
     if (currentUser) {
       await supabase.from('activity_log').insert({
-        user_id: currentUser.id,
-        action:  `Created goods receipt ${receipt.receipt_number} (${validEntries.length} items)`,
+        user_full_name: currentUser.full_name,
+        action:         `Created goods receipt ${receipt.receipt_number} (${validEntries.length} items)`,
       });
     }
 

@@ -128,8 +128,8 @@ export default function WarehouseHistory() {
     if (currentUser) {
       const r = receipts.find(r => r.id === receiptId);
       await supabase.from('activity_log').insert({
-        user_id: currentUser.id,
-        action:  `Posted goods receipt ${r?.receipt_number || receiptId}`,
+        user_full_name: currentUser.full_name,
+        action:         `Posted goods receipt ${r?.receipt_number || receiptId}`,
       });
     }
     showToast('Receipt posted.', true);

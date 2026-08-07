@@ -13,13 +13,16 @@ interface MovementRow extends StockMovement {
 
 const PAGE_SIZE = 25;
 
+// Canonical movement_type values — must match stock_movements rows written by Phase 3.
 const MOVEMENT_TYPES: Record<string, { label: string; cls: string }> = {
-  RECEIPT:   { label: 'Receipt',   cls: 'badgeGreen'  },
-  ISSUE:     { label: 'Issue',     cls: 'badgeAmber'  },
-  RETURN:    { label: 'Return',    cls: 'badgeBlue'   },
-  TRANSFER:  { label: 'Transfer',  cls: 'badgePurple' },
-  ADJUSTMENT:{ label: 'Adjust',   cls: 'badgeSlate'  },
-  SCRAP:     { label: 'Scrap',     cls: 'badgeRed'    },
+  RECEIVE:      { label: 'Receive',      cls: 'badgeGreen'  },
+  ISSUE:        { label: 'Issue',        cls: 'badgeAmber'  },
+  TRANSFER_IN:  { label: 'Transfer In',  cls: 'badgePurple' },
+  TRANSFER_OUT: { label: 'Transfer Out', cls: 'badgePurple' },
+  RETURN:       { label: 'Return',       cls: 'badgeBlue'   },
+  ADJUSTMENT:   { label: 'Adjust',       cls: 'badgeSlate'  },
+  DAMAGE:       { label: 'Damage',       cls: 'badgeAmber'  },
+  SCRAP:        { label: 'Scrap',        cls: 'badgeRed'    },
 };
 
 function movBadge(type: string) {
@@ -95,12 +98,14 @@ export default function WarehouseMovements() {
     const rows = (data || []) as MovementRow[];
     const { itemMap, wrhMap } = metaRef.current;
 
-    // Gather unique performer IDs
+    // Gather unique performer IDs.
+    // performed_by stores users.id (NOT team_members.id) — some users have no
+    // team_members row (admin accounts), so we look up public.users, not team_members.
     const perfIds = [...new Set(rows.map(r => r.performed_by).filter(Boolean))];
     let perfMap: Record<string, string> = {};
     if (perfIds.length) {
       const { data: pData } = await supabase
-        .from('team_members').select('id, full_name').in('id', perfIds);
+        .from('users').select('id, full_name').in('id', perfIds);
       if (pData) pData.forEach(p => { perfMap[p.id] = p.full_name; });
     }
 
