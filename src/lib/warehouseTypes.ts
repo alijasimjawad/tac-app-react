@@ -100,6 +100,19 @@ export type ScanEntryStatus = 'VALID' | 'PENDING' | 'ERROR';
 // Outcome of the smart-label merge engine (barcode + OCR combination)
 export type MergeScenario = 'BARCODE_ONLY' | 'OCR_ONLY' | 'MERGED' | 'CONFLICT';
 
+export interface ItemCodeMapping {
+  id:                string;
+  inventory_item_id: string;
+  manufacturer:      string | null;
+  code_type:         string;
+  external_code:     string;
+  parsing_profile:   string | null;
+  is_active:         boolean;
+  source:            string | null;
+  created_by:        string | null;
+  created_at:        string;
+}
+
 export interface ScanEntry {
   localId: string;           // client-side UUID (crypto.randomUUID())
   rawValue: string;
@@ -111,13 +124,14 @@ export interface ScanEntry {
   resolvedItemId: string | null;
   resolvedItemName: string | null;
   resolvedItemCode: string | null;
+  resolvedByMapping?: boolean;       // true when item resolved via learned PN mapping
   status: ScanEntryStatus;
   statusMsg: string | null;
   scannedAt: string;         // ISO timestamp
   manually: boolean;
   parsingProfile: string;
   parseStatus: 'RESOLVED' | 'PARTIAL' | 'FAILED';   // parser-level outcome
-  matchStatus: 'MATCHED' | 'UNMATCHED' | 'NO_PN';   // item master lookup outcome
+  matchStatus: 'MATCHED' | 'UNMATCHED' | 'NO_PN' | 'NEEDS_REVIEW';  // item master lookup outcome
   scanClassification: ScanClassification;
   // OCR-augmented fields — present only when OCR was run on this entry
   ocrRawText?:      string | null;

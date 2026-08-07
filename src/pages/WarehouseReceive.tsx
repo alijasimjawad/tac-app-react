@@ -14,6 +14,10 @@ import {
 } from '../lib/cartonBuffer';
 import type { Warehouse, InventoryItem, ScanEntry, SessionDetails } from '../lib/warehouseTypes';
 import { normalizeSN } from '../lib/warehouseTypes';
+import {
+  normalizePn, filterAndDeduplicateMappings, detectMappingConflict,
+  MAPPING_SOURCE_RECEIVING, MAPPING_CODE_TYPE_PN,
+} from '../lib/pnMapping';
 import { captureVideoFrame, ocrCanvasFrame, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
 import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
 import css from './Warehouse.module.css';
@@ -71,6 +75,8 @@ export default function WarehouseReceive() {
   // O(1) item master lookup maps built when items load
   const itemsByPN    = useRef<Map<string, InventoryItem>>(new Map());
   const itemsByCode  = useRef<Map<string, InventoryItem>>(new Map());
+  // Learned PN mappings loaded from item_code_mappings at startup (post-migration)
+  const learnedByPN  = useRef<Map<string, InventoryItem>>(new Map());
   // Item type / item code vocabulary for OCR label matching
   const itemTypeCodes = useRef<Set<string>>(new Set());
 
@@ -119,16 +125,20 @@ export default function WarehouseReceive() {
         supabase.from('inventory_items').select('*').eq('is_active', true).order('item_name'),
       ]);
       if (wRes.data) setWarehouses(wRes.data as Warehouse[]);
+
+      let itemsById: Map<string, InventoryItem> | null = null;
       if (iRes.data) {
         const rows = iRes.data as InventoryItem[];
         setItems(rows);
         // Build O(1) lookup maps
         const byPN      = new Map<string, InventoryItem>();
         const byCode    = new Map<string, InventoryItem>();
+        const byId      = new Map<string, InventoryItem>();
         const typeCodes = new Set<string>();
         for (const it of rows) {
-          if (it.part_number) byPN.set(it.part_number.toUpperCase(), it);
+          if (it.part_number) byPN.set(normalizePn(it.part_number), it);
           byCode.set(it.item_code.toUpperCase(), it);
+          byId.set(it.id, it);
           typeCodes.add(it.item_code.toUpperCase());
           if (it.item_type) {
             byCode.set(it.item_type.toUpperCase(), it);
@@ -138,7 +148,26 @@ export default function WarehouseReceive() {
         itemsByPN.current    = byPN;
         itemsByCode.current  = byCode;
         itemTypeCodes.current = typeCodes;
+        itemsById = byId;
       }
+
+      // Load learned PN mappings (graceful pre-migration fallback: error → stay empty)
+      if (itemsById) {
+        const mRes = await supabase
+          .from('item_code_mappings')
+          .select('external_code, inventory_item_id')
+          .eq('code_type', MAPPING_CODE_TYPE_PN)
+          .eq('is_active', true);
+        if (mRes.data && !mRes.error) {
+          const byPN = new Map<string, InventoryItem>();
+          for (const row of mRes.data as { external_code: string; inventory_item_id: string }[]) {
+            const item = itemsById.get(row.inventory_item_id);
+            if (item) byPN.set(normalizePn(row.external_code), item);
+          }
+          learnedByPN.current = byPN;
+        }
+      }
+
       const perm = await checkCameraPermission();
       setCamPerm(perm);
     })();
@@ -187,6 +216,18 @@ export default function WarehouseReceive() {
       hudTimer.current = setTimeout(() => setHudState('IDLE'), 2000);
     }, CARTON_WINDOW_MS);
   };
+
+  // ── PN resolution helper ──────────────────────────────────────────────────
+  // Priority: learnedByPN (1) → itemsByPN (2) → null
+  // fromMapping = true only when the answer came from a learned mapping row.
+  function resolveByPN(pn: string): { item: InventoryItem; fromMapping: boolean } | null {
+    const key    = normalizePn(pn);
+    const mapped = learnedByPN.current.get(key);
+    if (mapped) return { item: mapped, fromMapping: true };
+    const byPn   = itemsByPN.current.get(key);
+    if (byPn)  return { item: byPn,   fromMapping: false };
+    return null;
+  }
 
   // ── Audio / haptic feedback ───────────────────────────────────────────────
   function playSuccessBeep() {
@@ -258,10 +299,11 @@ export default function WarehouseReceive() {
     const merged = mergeScanAndOcr({ barcode, ocr });
 
     let rid: string | null = null, rname: string | null = null, rcode: string | null = null;
+    let ridFromMapping = false;
     // PN has highest priority (deterministic, no fuzzy)
     if (merged.partNumber) {
-      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
-      if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+      const result = resolveByPN(merged.partNumber);
+      if (result) { rid = result.item.id; rname = result.item.item_name; rcode = result.item.item_code; ridFromMapping = result.fromMapping; }
     }
     if (!rid && merged.itemType) {
       const it = itemsByCode.current.get(merged.itemType.toUpperCase());
@@ -270,10 +312,6 @@ export default function WarehouseReceive() {
 
     setScanEntries(prev => prev.map(e => {
       if (e.localId !== localId) return e;
-      // Preserve an already-resolved item — OCR cannot downgrade a MATCHED entry
-      const newRid   = e.resolvedItemId ?? rid;
-      const newRname = e.resolvedItemName ?? rname;
-      const newRcode = e.resolvedItemCode ?? rcode;
       // Complementary-field merge: OCR fills in fields absent from the barcode.
       // Barcode values always win when both sources have a value (priority = barcode > OCR).
       const mergedPn = e.partNumber   ?? merged.partNumber;
@@ -281,22 +319,42 @@ export default function WarehouseReceive() {
       const mergedSnNorm = e.serialNumberNorm ?? (merged.serialNumber ? normalizeSN(merged.serialNumber) : null);
       // Register newly-discovered SN in session dedup set
       if (!e.serialNumberNorm && mergedSnNorm) sessionSNs.current.add(mergedSnNorm);
+
+      // Mapping conflict: entry was resolved via a learned mapping but OCR now points
+      // to a different item. Flag for human review; do NOT auto-override.
+      const mappingConflict = e.resolvedByMapping
+        ? detectMappingConflict(e.resolvedItemId, rid)
+        : false;
+
+      const newRid   = mappingConflict ? e.resolvedItemId   : (e.resolvedItemId   ?? rid);
+      const newRname = mappingConflict ? e.resolvedItemName  : (e.resolvedItemName ?? rname);
+      const newRcode = mappingConflict ? e.resolvedItemCode  : (e.resolvedItemCode ?? rcode);
+
+      const newResolvedByMapping = mappingConflict
+        ? e.resolvedByMapping   // preserve existing flag when in conflict
+        : e.resolvedByMapping ?? (rid ? ridFromMapping : undefined);
+
       const matchStatus: ScanEntry['matchStatus'] =
-        newRid    ? 'MATCHED'   :
-        mergedPn  ? 'UNMATCHED' : 'NO_PN';
+        mappingConflict ? 'NEEDS_REVIEW' :
+        newRid          ? 'MATCHED'      :
+        mergedPn        ? 'UNMATCHED'    : 'NO_PN';
+
       return {
         ...e,
-        partNumber:       mergedPn,
-        serialNumber:     mergedSn,
-        serialNumberNorm: mergedSnNorm,
-        itemTypeRaw:      merged.itemType ?? e.itemTypeRaw,
-        resolvedItemId:   newRid,
-        resolvedItemName: newRname,
-        resolvedItemCode: newRcode,
-        status:           newRid ? 'VALID' as const : 'PENDING' as const,
-        statusMsg:        newRid ? null : merged.itemType
-          ? `${merged.itemType} not in Item Master — assign manually`
-          : 'Item not matched — select manually',
+        partNumber:        mergedPn,
+        serialNumber:      mergedSn,
+        serialNumberNorm:  mergedSnNorm,
+        itemTypeRaw:       merged.itemType ?? e.itemTypeRaw,
+        resolvedItemId:    newRid,
+        resolvedItemName:  newRname,
+        resolvedItemCode:  newRcode,
+        resolvedByMapping: newResolvedByMapping,
+        status:            newRid ? 'VALID' as const : 'PENDING' as const,
+        statusMsg:         mappingConflict
+          ? 'Mapping and OCR disagree — verify item assignment'
+          : newRid ? null : merged.itemType
+            ? `${merged.itemType} not in Item Master — assign manually`
+            : 'Item not matched — select manually',
         matchStatus,
         ocrRawText:       ocr.rawText.substring(0, 500),
         ocrItemType:      merged.source.itemType     === 'OCR' ? merged.itemType     : null,
@@ -391,10 +449,11 @@ export default function WarehouseReceive() {
     const raw   = parts.length > 0 ? parts.join(';') : ocr.rawText.substring(0, 100);
 
     let rid: string | null = null, rname: string | null = null, rcode: string | null = null;
+    let ridFromMapping = false;
     // PN has highest priority (deterministic, no fuzzy)
     if (merged.partNumber) {
-      const it = itemsByPN.current.get(merged.partNumber.toUpperCase());
-      if (it) { rid = it.id; rname = it.item_name; rcode = it.item_code; }
+      const result = resolveByPN(merged.partNumber);
+      if (result) { rid = result.item.id; rname = result.item.item_name; rcode = result.item.item_code; ridFromMapping = result.fromMapping; }
     }
     if (!rid && merged.itemType) {
       const it = itemsByCode.current.get(merged.itemType.toUpperCase());
@@ -407,25 +466,26 @@ export default function WarehouseReceive() {
     }
 
     const entry: ScanEntry = {
-      localId:          crypto.randomUUID(),
-      rawValue:         raw,
-      symbology:        'OCR',
-      serialNumber:     merged.serialNumber,
-      serialNumberNorm: snNorm,
-      partNumber:       merged.partNumber,
-      itemTypeRaw:      merged.itemType,
-      resolvedItemId:   rid,
-      resolvedItemName: rname,
-      resolvedItemCode: rcode,
-      status:           rid ? 'VALID' : 'PENDING',
-      statusMsg:        rid ? null : merged.itemType
+      localId:           crypto.randomUUID(),
+      rawValue:          raw,
+      symbology:         'OCR',
+      serialNumber:      merged.serialNumber,
+      serialNumberNorm:  snNorm,
+      partNumber:        merged.partNumber,
+      itemTypeRaw:       merged.itemType,
+      resolvedItemId:    rid,
+      resolvedItemName:  rname,
+      resolvedItemCode:  rcode,
+      resolvedByMapping: rid ? ridFromMapping : undefined,
+      status:            rid ? 'VALID' : 'PENDING',
+      statusMsg:         rid ? null : merged.itemType
         ? `${merged.itemType} not in Item Master — assign manually`
         : 'Item not matched — select manually',
-      scannedAt:        new Date().toISOString(),
-      manually:         false,
-      parsingProfile:   'ocr',
-      parseStatus:      merged.serialNumber || merged.partNumber ? 'PARTIAL' : 'FAILED',
-      matchStatus:      rid ? 'MATCHED' : merged.partNumber ? 'UNMATCHED' : 'NO_PN',
+      scannedAt:         new Date().toISOString(),
+      manually:          false,
+      parsingProfile:    'ocr',
+      parseStatus:       merged.serialNumber || merged.partNumber ? 'PARTIAL' : 'FAILED',
+      matchStatus:       rid ? 'MATCHED' : merged.partNumber ? 'UNMATCHED' : 'NO_PN',
       scanClassification: rid ? 'VALID_ITEM' : 'PARTIAL_ITEM',
       ocrRawText:       ocr.rawText.substring(0, 500),
       ocrItemType:      merged.itemType,
@@ -484,8 +544,9 @@ export default function WarehouseReceive() {
     symbology: string,
   ) {
     let resolvedId: string | null = null, resolvedName: string | null = null, resolvedCode: string | null = null;
-    const it = itemsByPN.current.get(pn.toUpperCase());
-    if (it) { resolvedId = it.id; resolvedName = it.item_name; resolvedCode = it.item_code; }
+    let resolvedByMapping = false;
+    const result = resolveByPN(pn);
+    if (result) { resolvedId = result.item.id; resolvedName = result.item.item_name; resolvedCode = result.item.item_code; resolvedByMapping = result.fromMapping; }
 
     const entry: ScanEntry = {
       localId,
@@ -498,6 +559,7 @@ export default function WarehouseReceive() {
       resolvedItemId:    resolvedId,
       resolvedItemName:  resolvedName,
       resolvedItemCode:  resolvedCode,
+      resolvedByMapping: resolvedId ? resolvedByMapping : undefined,
       status:            resolvedId ? 'VALID' : 'PENDING',
       statusMsg:         resolvedId ? null : 'Item not matched — select manually',
       scannedAt:         new Date().toISOString(),
@@ -681,16 +743,16 @@ export default function WarehouseReceive() {
     }
 
     // ── Normal single-barcode entry ─────────────────────────────────────────
-    const resolveItem = (): { id: string | null; name: string | null; code: string | null } => {
+    const resolveItem = (): { id: string | null; name: string | null; code: string | null; fromMapping: boolean } => {
       if (parsed.partNumber) {
-        const it = itemsByPN.current.get(parsed.partNumber.toUpperCase());
-        if (it) return { id: it.id, name: it.item_name, code: it.item_code };
+        const r = resolveByPN(parsed.partNumber);
+        if (r) return { id: r.item.id, name: r.item.item_name, code: r.item.item_code, fromMapping: r.fromMapping };
       }
       if (parsed.itemType) {
         const it = itemsByCode.current.get(parsed.itemType.toUpperCase());
-        if (it) return { id: it.id, name: it.item_name, code: it.item_code };
+        if (it) return { id: it.id, name: it.item_name, code: it.item_code, fromMapping: false };
       }
-      return { id: null, name: null, code: null };
+      return { id: null, name: null, code: null, fromMapping: false };
     };
     const resolved = resolveItem();
 
@@ -723,6 +785,7 @@ export default function WarehouseReceive() {
       resolvedItemId:     resolved.id,
       resolvedItemName:   resolved.name,
       resolvedItemCode:   resolved.code,
+      resolvedByMapping:  resolved.id ? resolved.fromMapping : undefined,
       status,
       statusMsg:          resolved.id ? null : 'Item not matched — select manually',
       scannedAt:          new Date().toISOString(),
@@ -799,8 +862,8 @@ export default function WarehouseReceive() {
     setScanEntries(prev => prev.map(e =>
       e.localId === localId
         ? { ...e, resolvedItemId: itemId, resolvedItemName: item?.item_name || null,
-            resolvedItemCode: item?.item_code || null, status: 'VALID' as const,
-            statusMsg: null, matchStatus: 'MATCHED' as const }
+            resolvedItemCode: item?.item_code || null, resolvedByMapping: false,
+            status: 'VALID' as const, statusMsg: null, matchStatus: 'MATCHED' as const }
         : e
     ));
   }
@@ -820,6 +883,44 @@ export default function WarehouseReceive() {
     clearPendingCarton();  // drop any un-paired Nokia PN before leaving scan step
     stopCamera();
     setStep(3);
+  }
+
+  // ── Learn PN mappings from this receipt ───────────────────────────────────
+  // Called after all inserts succeed. Inserts new PN → item rows derived from
+  // valid scans; skips PNs already in learnedByPN (already persisted) and
+  // deduplicates within the batch. ignoreDuplicates guards against race conditions.
+  async function learnPnMappings(entries: ScanEntry[]) {
+    const { candidates } = filterAndDeduplicateMappings(entries, learnedByPN.current);
+    if (candidates.length === 0) return;
+
+    const rows = candidates.map(c => ({
+      inventory_item_id: c.itemId,
+      manufacturer:      null as string | null,
+      code_type:         MAPPING_CODE_TYPE_PN,
+      external_code:     c.partNumber,
+      parsing_profile:   null as string | null,
+      is_active:         true,
+      source:            MAPPING_SOURCE_RECEIVING,
+      created_by:        currentUser?.id ?? null,
+    }));
+
+    const { error } = await supabase
+      .from('item_code_mappings')
+      .upsert(rows, { ignoreDuplicates: true });
+
+    if (error) {
+      // Pre-migration (is_active column absent) or transient error — non-fatal
+      console.warn('[LearnPN] Mapping insert skipped:', error.message);
+      return;
+    }
+
+    // Update in-memory map so subsequent scans in same session benefit immediately
+    for (const c of candidates) {
+      const item = items.find(i => i.id === c.itemId);
+      if (item) learnedByPN.current.set(normalizePn(c.partNumber), item);
+    }
+
+    console.log(`[LearnPN] Learned ${candidates.length} new PN mapping(s)`);
   }
 
   // ── Save receipt ──────────────────────────────────────────────────────────
@@ -883,6 +984,9 @@ export default function WarehouseReceive() {
       scanned_manually:  e.manually,
     }));
     if (scanLogs.length) await supabase.from('receiving_scan_log').insert(scanLogs);
+
+    // Learn PN mappings from this receipt (non-fatal if pre-migration)
+    await learnPnMappings(validEntries);
 
     if (currentUser) {
       await supabase.from('activity_log').insert({
@@ -1249,11 +1353,13 @@ export default function WarehouseReceive() {
                             <span className={css.scanCardItemCode}>{e.resolvedItemCode}</span>
                           )}
                           <span className={`${css.badge} ${
-                            e.matchStatus === 'MATCHED'   ? css.badgeGreen :
-                            e.matchStatus === 'UNMATCHED' ? css.badgeAmber : css.badgeSlate
+                            e.matchStatus === 'MATCHED'       ? css.badgeGreen :
+                            e.matchStatus === 'NEEDS_REVIEW'  ? css.badgeRed   :
+                            e.matchStatus === 'UNMATCHED'     ? css.badgeAmber : css.badgeSlate
                           }`} style={{ fontSize: 9, padding: '1px 6px' }}>
-                            {e.matchStatus === 'MATCHED' ? 'MATCHED' :
-                             e.matchStatus === 'UNMATCHED' ? 'NO MATCH' : 'NO PN'}
+                            {e.matchStatus === 'MATCHED'      ? 'MATCHED'      :
+                             e.matchStatus === 'NEEDS_REVIEW' ? 'NEEDS REVIEW' :
+                             e.matchStatus === 'UNMATCHED'    ? 'NO MATCH'     : 'NO PN'}
                           </span>
                         </div>
 
