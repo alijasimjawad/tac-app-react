@@ -5,7 +5,7 @@ const def: PageDef = {
   label: 'Stock Movements',
   to: '/warehouse/movements',
   group: 'warehouse',
-  order: 5,
+  order: 6,
 };
 
 export default def;

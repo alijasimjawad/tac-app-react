@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { InventoryItem } from '../lib/warehouseTypes';
+import { buildPnCountMap } from '../lib/warehouseStock';
 import css from './Warehouse.module.css';
 
 type TrackingMethod = 'SERIALIZED' | 'QUANTITY';
@@ -31,7 +32,8 @@ const ITEM_TYPES  = ['Nokia', 'Huawei', 'Ericsson', 'Generic', 'Consumable', 'Ot
 
 export default function WarehouseInventory() {
   const { hasPerm, currentUser } = useAuth();
-  const [items,   setItems]   = useState<InventoryItem[]>([]);
+  const [items,      setItems]      = useState<InventoryItem[]>([]);
+  const [pnCountMap, setPnCountMap] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
   const [search,  setSearch]  = useState('');
@@ -62,10 +64,14 @@ export default function WarehouseInventory() {
   async function load() {
     setLoading(true);
     setError('');
-    const q = supabase.from('inventory_items').select('*').order('item_name');
-    const { data, error: e } = await q;
-    if (e) { setError(e.message); setLoading(false); return; }
-    setItems(data as InventoryItem[]);
+    const [itemRes, mappingRes] = await Promise.all([
+      supabase.from('inventory_items').select('*').order('item_name'),
+      supabase.from('item_code_mappings').select('inventory_item_id')
+        .eq('code_type', 'PART_NUMBER').eq('is_active', true),
+    ]);
+    if (itemRes.error) { setError(itemRes.error.message); setLoading(false); return; }
+    setItems(itemRes.data as InventoryItem[]);
+    setPnCountMap(buildPnCountMap(mappingRes.data || []));
     setLoading(false);
   }
 
@@ -230,7 +236,7 @@ export default function WarehouseInventory() {
                   <th>Code</th>
                   <th>Name</th>
                   <th>Type / Mfr</th>
-                  <th>Part #</th>
+                  <th>Known PNs</th>
                   <th>Category</th>
                   <th>Tracking</th>
                   <th>Unit</th>
@@ -245,7 +251,14 @@ export default function WarehouseInventory() {
                     <td style={{ color: '#64748b', fontSize: 12 }}>
                       {[it.item_type, it.manufacturer].filter(Boolean).join(' / ') || '—'}
                     </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{it.part_number || '—'}</td>
+                    <td>
+                      {(() => {
+                        const count = pnCountMap.get(it.id);
+                        return count
+                          ? <span className={`${css.badge} ${css.badgePurple}`}>{count} PN{count !== 1 ? 's' : ''}</span>
+                          : <span style={{ fontSize: 12, color: '#94a3b8' }}>—</span>;
+                      })()}
+                    </td>
                     <td>
                       {it.category ? (
                         <span className={`${css.badge} ${css.badgeSlate}`}>{it.category}</span>

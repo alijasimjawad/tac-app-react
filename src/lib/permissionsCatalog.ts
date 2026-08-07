@@ -404,6 +404,8 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
 
   activity_log_export: 'view_activity_log',
 
+  view_warehouse_stock: 'view_warehouse_inventory',
+
   wrh_items_add:    'view_warehouse_inventory',
   wrh_items_edit:   'view_warehouse_inventory',
   wrh_items_delete: 'view_warehouse_inventory',

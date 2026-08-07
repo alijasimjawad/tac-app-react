@@ -9,6 +9,7 @@ interface MovementRow extends StockMovement {
   itemName?: string;
   itemCode?: string;
   performerName?: string;
+  receiptNumber?: string;
 }
 
 const PAGE_SIZE = 25;
@@ -98,23 +99,35 @@ export default function WarehouseMovements() {
     const rows = (data || []) as MovementRow[];
     const { itemMap, wrhMap } = metaRef.current;
 
-    // Gather unique performer IDs.
-    // performed_by stores users.id (NOT team_members.id) — some users have no
-    // team_members row (admin accounts), so we look up public.users, not team_members.
     const perfIds = [...new Set(rows.map(r => r.performed_by).filter(Boolean))];
+    const grIds   = [...new Set(
+      rows.filter(r => r.reference_type === 'GOODS_RECEIPT' && r.reference_id)
+          .map(r => r.reference_id as string)
+    )];
+
     let perfMap: Record<string, string> = {};
-    if (perfIds.length) {
-      const { data: pData } = await supabase
-        .from('users').select('id, full_name').in('id', perfIds);
-      if (pData) pData.forEach(p => { perfMap[p.id] = p.full_name; });
-    }
+    let grMap:   Record<string, string> = {};
+
+    await Promise.all([
+      perfIds.length
+        ? supabase.from('users').select('id, full_name').in('id', perfIds)
+            .then(({ data: pData }) => { if (pData) pData.forEach(p => { perfMap[p.id] = p.full_name; }); })
+        : Promise.resolve(),
+      grIds.length
+        ? supabase.from('goods_receipts').select('id, receipt_number').in('id', grIds)
+            .then(({ data: gData }) => { if (gData) gData.forEach(g => { grMap[g.id] = g.receipt_number; }); })
+        : Promise.resolve(),
+    ]);
 
     rows.forEach(r => {
-      r.warehouseName  = wrhMap[r.warehouse_id] || '—';
+      r.warehouseName = wrhMap[r.warehouse_id] || '—';
       const it = itemMap[r.inventory_item_id];
-      r.itemName  = it?.item_name  || '—';
-      r.itemCode  = it?.item_code  || '—';
+      r.itemName      = it?.item_name || '—';
+      r.itemCode      = it?.item_code || '—';
       r.performerName = perfMap[r.performed_by] || r.performed_by || '—';
+      r.receiptNumber = (r.reference_type === 'GOODS_RECEIPT' && r.reference_id)
+        ? grMap[r.reference_id]
+        : undefined;
     });
 
     let filtered = rows;
@@ -210,7 +223,17 @@ export default function WarehouseMovements() {
                       {m.quantity > 0 ? '+' : ''}{m.quantity}
                     </td>
                     <td style={{ fontSize: 11, color: '#64748b' }}>
-                      {m.reference_type && <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>{m.reference_type}</span>}
+                      {m.reference_type && (
+                        <div>
+                          {m.receiptNumber
+                            ? <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 11 }}>{m.receiptNumber}</span>
+                            : <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>{m.reference_type}</span>
+                          }
+                          {m.receiptNumber && (
+                            <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>Goods Receipt</div>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td style={{ fontSize: 12 }}>{m.performerName}</td>
                     <td style={{ fontSize: 12, color: '#64748b', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

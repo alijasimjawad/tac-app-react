@@ -11,9 +11,25 @@ interface ReceiptRow extends GoodsReceipt {
   itemCount?: number;
 }
 
+interface ScanLogRow {
+  id:                 string;
+  goods_receipt_id:   string;
+  inventory_item_id:  string | null;
+  serial_number:      string;
+  part_number:        string | null;
+  raw_scan_value:     string;
+  barcode_symbology:  string | null;
+  scanned_manually:   boolean;
+  created_at:         string;
+  itemCode?: string;
+  itemName?: string;
+}
+
 interface ReceiptDetail {
-  receipt: ReceiptRow;
-  lineItems: Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
+  receipt:       ReceiptRow;
+  lineItems:     Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
+  scanLogs:      ScanLogRow[];
+  assetsCreated: number | null;
 }
 
 function statusBadge(s: string) {
@@ -103,19 +119,32 @@ export default function WarehouseHistory() {
   useEffect(() => { load(page); }, [page, warehouses]);
 
   async function openDetail(receipt: ReceiptRow) {
-    const { data: liData } = await supabase
-      .from('goods_receipt_items')
-      .select('*')
-      .eq('goods_receipt_id', receipt.id);
+    const [liRes, scanRes, assetCountRes] = await Promise.all([
+      supabase.from('goods_receipt_items').select('*').eq('goods_receipt_id', receipt.id),
+      supabase.from('receiving_scan_log').select('*').eq('goods_receipt_id', receipt.id).order('created_at'),
+      receipt.status === 'POSTED'
+        ? supabase.from('inventory_assets').select('id', { count: 'exact', head: true }).eq('source_receipt_id', receipt.id)
+        : Promise.resolve({ count: null }),
+    ]);
 
-    const lineItems = (liData || []) as Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
-    const itemMap = Object.fromEntries(items.map(i => [i.id, i]));
+    const lineItems = (liRes.data || []) as Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
+    const itemMap   = Object.fromEntries(items.map(i => [i.id, i]));
     lineItems.forEach(li => {
       const it = itemMap[li.inventory_item_id];
       if (it) { li.itemName = it.item_name; li.itemCode = it.item_code; }
     });
 
-    setDetail({ receipt, lineItems });
+    const scanLogs = (scanRes.data || []) as ScanLogRow[];
+    scanLogs.forEach(s => {
+      if (s.inventory_item_id) {
+        const it = itemMap[s.inventory_item_id];
+        if (it) { s.itemCode = it.item_code; s.itemName = it.item_name; }
+      }
+    });
+
+    const assetsCreated = receipt.status === 'POSTED' ? ((assetCountRes as { count: number | null }).count ?? null) : null;
+
+    setDetail({ receipt, lineItems, scanLogs, assetsCreated });
   }
 
   async function postReceipt(receiptId: string) {
@@ -272,6 +301,15 @@ export default function WarehouseHistory() {
                 </div>
               )}
 
+              {detail.assetsCreated !== null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '8px 12px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
+                  <span className={`${css.badge} ${css.badgeGreen}`}>Posted to Stock</span>
+                  <span style={{ fontSize: 13, color: '#15803d' }}>
+                    {detail.assetsCreated} serialized asset{detail.assetsCreated !== 1 ? 's' : ''} created
+                  </span>
+                </div>
+              )}
+
               <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
                 Line Items ({detail.lineItems.length})
               </div>
@@ -299,6 +337,40 @@ export default function WarehouseHistory() {
                     ))}
                   </tbody>
                 </table>
+              )}
+
+              {detail.scanLogs.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
+                    Serialized Units ({detail.scanLogs.length})
+                  </div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Serial Number</th>
+                        <th>Part Number</th>
+                        <th>Barcode</th>
+                        <th>Scanned At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.scanLogs.map(s => (
+                        <tr key={s.id}>
+                          <td style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700 }}>{s.itemCode || '—'}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700 }}>{s.serial_number}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.part_number || '—'}</td>
+                          <td style={{ fontSize: 11, color: '#64748b' }}>
+                            {s.barcode_symbology
+                              ? <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>{s.barcode_symbology}</span>
+                              : '—'}
+                          </td>
+                          <td style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{s.created_at.slice(0, 16).replace('T', ' ')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
             <div className={css.modalFtr}>

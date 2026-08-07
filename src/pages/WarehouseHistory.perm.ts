@@ -5,7 +5,7 @@ const def: PageDef = {
   label: 'Receiving History',
   to: '/warehouse/history',
   group: 'warehouse',
-  order: 4,
+  order: 5,
 };
 
 export default def;

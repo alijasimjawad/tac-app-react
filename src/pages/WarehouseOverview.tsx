@@ -108,7 +108,7 @@ export default function WarehouseOverview() {
             </Link>
           )}
           {hasPerm('wrh_warehouses_manage') && (
-            <Link to="/warehouse/inventory">
+            <Link to="/warehouse/item-master">
               <button className={css.btnGhost}>Item Master</button>
             </Link>
           )}
@@ -189,6 +189,14 @@ export default function WarehouseOverview() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <QuickLink
           to="/warehouse/inventory"
+          perm="view_warehouse_stock"
+          icon={<StockIcon />}
+          title="Inventory"
+          desc="View current stock by warehouse"
+          hasPerm={hasPerm}
+        />
+        <QuickLink
+          to="/warehouse/item-master"
           perm="view_warehouse_inventory"
           icon={<BoxIcon />}
           title="Item Master"

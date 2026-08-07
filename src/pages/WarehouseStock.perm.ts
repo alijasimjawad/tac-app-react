@@ -1,11 +1,11 @@
 import type { PageDef } from '../lib/permissionsCatalog';
 
 const def: PageDef = {
-  key:   'view_warehouse_inventory',
-  label: 'Item Master',
-  to:    '/warehouse/item-master',
+  key:   'view_warehouse_stock',
+  label: 'Inventory',
+  to:    '/warehouse/inventory',
   group: 'warehouse',
-  order: 3,
+  order: 2,
 };
 
 export default def;

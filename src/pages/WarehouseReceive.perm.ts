@@ -5,7 +5,7 @@ const def: PageDef = {
   label: 'Receive Materials',
   to: '/warehouse/receive',
   group: 'warehouse',
-  order: 3,
+  order: 4,
 };
 
 export default def;
