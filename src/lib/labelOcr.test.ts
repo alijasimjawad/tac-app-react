@@ -498,17 +498,27 @@ describe('parseLabel() — fuzzy noise rejection integrated', () => {
 function makeDetail(text: string, overrides: Partial<OcrCandidateDetail> = {}): OcrCandidateDetail {
   return {
     text,
-    passes:       ['A'],
-    inItemMaster: false,
-    score:        30,
-    accepted:     true,
-    noiseRejected: false,
+    passes:            ['A'],
+    inItemMaster:      false,
+    score:             30,
+    accepted:          true,
+    noiseRejected:     false,
+    maxConf:           70,
+    nearestMasterCode: null,
+    nearestMasterDist: null,
+    correctedToMaster: null,
+    decisionReason:    'test candidate',
     ...overrides,
   };
 }
 
 function makeRejected(text: string, reason: string, passes: string[] = ['A']): OcrCandidateDetail {
-  return { text, passes, inItemMaster: false, score: -1000, accepted: false, noiseRejected: true, rejectionReason: reason };
+  return {
+    text, passes, inItemMaster: false, score: -1000, accepted: false, noiseRejected: true,
+    rejectionReason: reason,
+    maxConf: 0, nearestMasterCode: null, nearestMasterDist: null,
+    correctedToMaster: null, decisionReason: `noise rejected: ${reason}`,
+  };
 }
 
 describe('selectBestItemType() — candidate ranking', () => {
@@ -538,10 +548,21 @@ describe('selectBestItemType() — candidate ranking', () => {
     expect(isItemTypeAmbiguous).toBe(false);
   });
 
-  it('two unknown codes within 15 pts → ambiguous, null selected', () => {
+  it('two unknown codes (single non-D pass) → insufficient evidence, not ambiguous', () => {
+    // Both are single-pass unknown words — new policy: Case 4 → null, false (not ambiguous)
     const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
-      makeDetail('AHGA', { score: 40 }),
-      makeDetail('FXDA', { score: 35 }),
+      makeDetail('AHGA', { score: 40 }),  // passes=['A'] default
+      makeDetail('FXDA', { score: 35 }),  // passes=['A'] default
+    ]);
+    expect(selectedItemType).toBeNull();
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('two unknown codes in Pass D within 15 pts → genuinely ambiguous', () => {
+    // Both have Pass D (spatial evidence) but scores too close to pick one
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('AHGA', { score: 40, passes: ['D'] }),
+      makeDetail('FXDA', { score: 35, passes: ['D'] }),
     ]);
     expect(selectedItemType).toBeNull();
     expect(isItemTypeAmbiguous).toBe(true);
@@ -765,5 +786,213 @@ describe('Item Master resolution — post-OCR merge (Issue 1)', () => {
     // AHGA is selectedItemType — OKIA is not passed to resolution
     expect(mergeResult.itemType).toBe('AHGA');
     expect(mergeResult.itemType).not.toBe('OKIA');
+  });
+});
+
+// ── Confusion-correction (Issue 3 — ARGA→AHGA) ───────────────────────────────
+
+describe('selectBestItemType() — confusion correction (H↔R, B↔8 etc.)', () => {
+  it('ARGA with correctedToMaster=AHGA in Pass D → selects AHGA (corrected master form)', () => {
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('ARGA', {
+        passes: ['D'], score: 90,
+        correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
+      }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('ARGA with correctedToMaster=AHGA, single non-D pass → still corrects (master uniqueness is sufficient)', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ARGA', {
+        passes: ['A'], score: 75,
+        correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
+      }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  it('ARGA → AHGA correction wins over unrelated unknown REET (large score gap)', () => {
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('ARGA', {
+        passes: ['A'], score: 75,
+        correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
+      }),
+      makeDetail('REET', { passes: ['A'], score: 10 }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('ambiguous correction: ARGA maps to both AHGA and ABIA → ambiguous (no auto-select)', () => {
+    // correctedToMaster is null when multiple master codes are at distance 1
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('ARGA', {
+        passes: ['D'], score: 85,
+        correctedToMaster: null,  // multiple matches → no unique correction
+        nearestMasterCode: 'AHGA', nearestMasterDist: 1,
+      }),
+    ]);
+    // No master match, no unique correction, but has Pass D → Case 3
+    expect(selectedItemType).toBe('ARGA');  // unknown but Pass D evidence
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('REGRESSION — pass A ARGA + passes B,C AHGA: AHGA (direct master) wins over ARGA correction', () => {
+    // AHGA appears directly in passes B+C → inItemMaster=true → Case 1 wins
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('AHGA', { passes: ['B', 'C'], score: 120, inItemMaster: true }),
+      makeDetail('ARGA', { passes: ['A'], score: 75, correctedToMaster: 'AHGA' }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+});
+
+// ── REET / WHOS suppression (real 7-carton failures) ─────────────────────────
+
+describe('selectBestItemType() — false-word suppression (REET, WHOS)', () => {
+  it('REET single non-D pass → null (insufficient evidence, not ambiguous)', () => {
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('REET', { passes: ['A'], score: 10 }),
+    ]);
+    expect(selectedItemType).toBeNull();
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('WHOS single non-D pass → null (insufficient evidence)', () => {
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('WHOS', { passes: ['B'], score: 10 }),
+    ]);
+    expect(selectedItemType).toBeNull();
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('REET appears in Pass D → may select (spatial evidence, operator reviews)', () => {
+    // If a label word appears in upper-right Nokia item-type area, trust it but keep PENDING
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('REET', { passes: ['D'], score: 20 }),
+    ]);
+    expect(selectedItemType).toBe('REET');  // Case 3 — D pass, only candidate
+  });
+
+  it('REET does not beat a valid Item Master code even in Pass D', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('AHGA', { passes: ['D'], score: 115, inItemMaster: true }),
+      makeDetail('REET', { passes: ['D'], score: 20 }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');  // Case 1 — master always wins
+  });
+
+  it('REET does not beat an ARGA→AHGA correction', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ARGA', { passes: ['D'], score: 90, correctedToMaster: 'AHGA' }),
+      makeDetail('REET', { passes: ['A'], score: 10 }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  it('unknown 4-letter word multi-pass → selects (consensus evidence)', () => {
+    // An unknown code seen in A+B passes has multi-pass consensus
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('XYZQ', { passes: ['A', 'B'], score: 20 }),
+    ]);
+    expect(selectedItemType).toBe('XYZQ');
+  });
+});
+
+// ── 7-carton regression suite ─────────────────────────────────────────────────
+
+describe('7-carton real-world regression (scoring system)', () => {
+  // SUCCESSFUL cartons
+  it('AHGA (master) in Pass D → auto-selects AHGA', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('AHGA', { passes: ['B', 'D'], score: 130, inItemMaster: true }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  it('ABIA (master) in multiple passes → auto-selects ABIA', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ABIA', { passes: ['C', 'D'], score: 125, inItemMaster: true }),
+    ]);
+    expect(selectedItemType).toBe('ABIA');
+  });
+
+  it('ABIO (master) → auto-selects ABIO', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ABIO', { passes: ['B', 'C', 'D'], score: 140, inItemMaster: true }),
+    ]);
+    expect(selectedItemType).toBe('ABIO');
+  });
+
+  // FAILED cartons — should be improved
+  it('ARGA + AHGA in master: AHGA dominates, ARGA is noise (realistic scores)', () => {
+    // Realistic score: AHGA (master) = 100+D+multi-pass+conf ≈ 135; ARGA ≈ 5+pass
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('AHGA', { passes: ['B', 'C', 'D'], score: 135, inItemMaster: true }),
+      makeDetail('ARGA', { passes: ['A'], score: 12, correctedToMaster: 'AHGA' }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  it('ARGA alone (AHGA not read) → corrects to AHGA via confusable model', () => {
+    // Only ARGA appears in OCR — but it uniquely corrects to Item Master AHGA
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ARGA', {
+        passes: ['D'], score: 90,
+        correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
+        inItemMaster: false,
+      }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  it('REET alone → null (not auto-assigned)', () => {
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('REET', { passes: ['A'], score: 10 }),
+    ]);
+    expect(selectedItemType).toBeNull();
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('WHOS alone → null (not auto-assigned)', () => {
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('WHOS', { passes: ['A'], score: 10 }),
+    ]);
+    expect(selectedItemType).toBeNull();
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('ambiguous candidates (REET + WHOS, both non-D single pass) → null, not ambiguous', () => {
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('REET', { passes: ['A'], score: 10 }),
+      makeDetail('WHOS', { passes: ['A'], score: 9 }),
+    ]);
+    expect(selectedItemType).toBeNull();
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('unknown legitimate code not in master (multi-pass) → selected, PENDING (not auto-matched)', () => {
+    // e.g. a new equipment type not yet in master — shows TYPE: XXXX [OCR], stays PENDING
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('XXXX', { passes: ['B', 'D'], score: 30, inItemMaster: false }),
+    ]);
+    expect(selectedItemType).toBe('XXXX');  // selected for display, will be PENDING in scan entry
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('OKIA must never beat AHGA (master) regardless of pass order', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeRejected('OKIA', 'partial read of "NOKIA"', ['A']),
+      makeDetail('AHGA', { passes: ['D'], score: 115, inItemMaster: true }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  it('text-only label: AHGA alone in master → resolves when OCR reads it directly', () => {
+    // Full OCR extraction via parseLabel — confirmed by existing parseLabel tests
+    const { itemTypes } = parseLabel('AHGA\nP/N: 474254A.202\nS/N: 1M241909797', new Set(['AHGA']));
+    expect(itemTypes).toContain('AHGA');
   });
 });

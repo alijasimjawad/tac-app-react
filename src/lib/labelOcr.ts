@@ -22,13 +22,19 @@ export interface OcrPassResult {
 // Per-candidate scoring detail — exposed in diagnostics so operators can see why
 // a code was accepted or rejected.
 export interface OcrCandidateDetail {
-  text:             string;
-  passes:           string[];       // pass IDs ('A'/'B'/'C'/'D') where this token appeared
-  inItemMaster:     boolean;
-  score:            number;         // composite score; -1000 for noise-rejected
-  accepted:         boolean;
-  noiseRejected:    boolean;
-  rejectionReason?: string;
+  text:               string;
+  passes:             string[];       // pass IDs ('A'/'B'/'C'/'D') where this token appeared
+  inItemMaster:       boolean;
+  score:              number;         // composite score; -1000 for noise-rejected
+  accepted:           boolean;
+  noiseRejected:      boolean;
+  rejectionReason?:   string;
+  // Diagnostics — populated for every accepted candidate
+  maxConf:            number;         // highest Tesseract confidence where this token appeared
+  nearestMasterCode:  string | null;  // closest Item Master code by confusable-char distance
+  nearestMasterDist:  number | null;  // 0=exact match, 1=one confusable sub; null=no close match
+  correctedToMaster:  string | null;  // the master code this token uniquely maps to (dist=1, unique)
+  decisionReason:     string;         // human-readable explanation of accept/reject/correction
 }
 
 export interface OcrResult {
@@ -90,6 +96,48 @@ const EXCLUDED_TOKENS = new Set([
   // OCR / standards noise
   'EAC', 'ROHS', 'WEEE', 'CERT',
 ]);
+
+// ── OCR character confusion model ─────────────────────────────────────────────
+// Common OCR character substitutions observed in Tesseract output on dark/low-contrast
+// warehouse label text.  Used only for candidate→Item-Master correction; NOT used to
+// alter raw OCR token extraction or noise rejection paths.
+
+const CONFUSABLE_PAIRS: Array<[string, string]> = [
+  ['H', 'R'], ['B', '8'], ['I', '1'], ['O', '0'],
+  ['G', '6'], ['S', '5'], ['Z', '2'],
+];
+
+// Returns the number of confusable-pair substitutions needed to transform a into b.
+// Returns Infinity if lengths differ or any position differs by a non-confusable pair
+// (meaning a cannot be OCR-corrected to b through the confusable model).
+function confusionDistance(a: string, b: string): number {
+  if (a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === b[i]) continue;
+    const confusable = CONFUSABLE_PAIRS.some(
+      ([x, y]) => (a[i] === x && b[i] === y) || (a[i] === y && b[i] === x)
+    );
+    if (!confusable) return Infinity;
+    d++;
+  }
+  return d;
+}
+
+// Find all Item Master codes within confusionDistance ≤ maxDist of token.
+// Returns matches sorted by distance ascending.
+function findConfusionMatches(
+  token: string,
+  itemTypeCodes: Set<string>,
+  maxDist: number,
+): Array<{ code: string; dist: number }> {
+  const matches: Array<{ code: string; dist: number }> = [];
+  for (const code of itemTypeCodes) {
+    const d = confusionDistance(token, code);
+    if (d <= maxDist) matches.push({ code, dist: d });
+  }
+  return matches.sort((a, b) => a.dist - b.dist);
+}
 
 // ── Fuzzy noise rejection ─────────────────────────────────────────────────────
 // Catches OCR-corrupted variants of known brand/country/compliance words that
@@ -311,28 +359,42 @@ async function runOcrOnCanvas(
 //
 // Score breakdown:
 //   +100  exact match in Item Master (confirmed vocabulary)
-//   + 30  Nokia 4-letter equipment code pattern (^[A-Z]{4}$)
+//   + 70  unique confusion-correctable to exactly one Item Master code (H↔R etc.)
+//   +  5  Nokia 4-letter equipment code pattern (^[A-Z]{4}$), unknown word only
+//          (deliberately low — prevents unknown words from beating Item Master codes)
 //   + 10  each additional pass the token appears in (multi-pass consensus)
 //   + 15  detected in Pass D (upper-right region — Nokia label item-type area)
 //   0–10  OCR confidence contribution (maxConf / 10, rounded)
 //   -1000 noise-rejected (effectively eliminates the candidate)
 //
-// Ambiguity rule: if the top two accepted candidates have scores within 15 pts
-// of each other and neither is in Item Master, the result is ambiguous.
-// The caller surfaces this rather than silently choosing.
+// Selection policy (see selectBestItemType):
+//   1. Exact Item Master candidate → always selected unless tied with another master
+//   2. Unique confusion-corrected → return the corrected master code
+//   3. Unknown word in Pass D or 2+ passes → selected if gap ≥ 15 over second
+//   4. Unknown word in single non-D pass → never auto-selected (insufficient evidence)
 
 interface PassCandidateData {
   passes:  string[];
   maxConf: number; // highest pass-level confidence where this token appeared
 }
 
-function computeScore(text: string, data: PassCandidateData, inItemMaster: boolean): number {
+function computeScore(
+  text: string,
+  data: PassCandidateData,
+  inItemMaster: boolean,
+  correctedToMaster: string | null,
+): number {
   let score = 0;
-  if (inItemMaster) score += 100;
-  if (/^[A-Z]{4}$/.test(text)) score += 30;
-  score += (data.passes.length - 1) * 10;   // multi-pass bonus (1st pass free)
-  if (data.passes.includes('D')) score += 15; // upper-right region bonus
-  score += Math.round(data.maxConf / 10);    // 0–10 pts from OCR confidence
+  if (inItemMaster) {
+    score += 100;
+  } else if (correctedToMaster) {
+    score += 70;  // unique confusion correction to Item Master — strong but below exact match
+  } else if (/^[A-Z]{4}$/.test(text)) {
+    score += 5;   // unknown 4-letter word — very weak signal only
+  }
+  score += (data.passes.length - 1) * 10;    // multi-pass consensus bonus
+  if (data.passes.includes('D')) score += 15; // upper-right ROI — Nokia item-type area
+  score += Math.round(data.maxConf / 10);     // 0–10 pts from OCR confidence
   return score;
 }
 
@@ -345,13 +407,65 @@ function buildCandidateDetails(
 
   for (const [text, data] of accepted) {
     const inItemMaster = itemTypeCodes.has(text);
-    const score = computeScore(text, data, inItemMaster);
-    details.push({ text, passes: [...data.passes], inItemMaster, score, accepted: true, noiseRejected: false });
+
+    // Confusion correction — only for unknown candidates not already in Item Master
+    let correctedToMaster: string | null = null;
+    let nearestMasterCode: string | null = null;
+    let nearestMasterDist: number | null = null;
+
+    if (inItemMaster) {
+      nearestMasterCode = text;
+      nearestMasterDist = 0;
+    } else {
+      const matches = findConfusionMatches(text, itemTypeCodes, 1);
+      if (matches.length > 0) {
+        nearestMasterCode = matches[0].code;
+        nearestMasterDist = matches[0].dist;
+        // Unique correction: exactly one Item Master code reachable by one confusable substitution
+        if (matches.length === 1 && matches[0].dist === 1) {
+          correctedToMaster = matches[0].code;
+        }
+        // Multiple matches at dist 1 → ambiguous correction, do not auto-correct
+      }
+    }
+
+    const score = computeScore(text, data, inItemMaster, correctedToMaster);
+
+    // Human-readable reason for diagnostics
+    let decisionReason: string;
+    if (inItemMaster) {
+      decisionReason = 'exact Item Master match';
+    } else if (correctedToMaster) {
+      const roiNote = data.passes.includes('D') ? ' [upper-right ROI]' : '';
+      decisionReason = `OCR correction of ${correctedToMaster} via confusable char${roiNote}`;
+    } else if (data.passes.includes('D')) {
+      decisionReason = 'upper-right ROI (Nokia item-type area)';
+    } else if (data.passes.length >= 2) {
+      decisionReason = `multi-pass consensus (${data.passes.join(',')})`;
+    } else {
+      decisionReason = 'insufficient evidence — single non-ROI-D pass';
+    }
+
+    details.push({
+      text, passes: [...data.passes], inItemMaster, score,
+      accepted: true, noiseRejected: false,
+      maxConf: data.maxConf,
+      nearestMasterCode,
+      nearestMasterDist,
+      correctedToMaster,
+      decisionReason,
+    });
   }
+
   for (const [text, { passes, reason }] of rejected) {
     details.push({
       text, passes: [...passes], inItemMaster: false, score: -1000,
       accepted: false, noiseRejected: true, rejectionReason: reason,
+      maxConf: 0,
+      nearestMasterCode: null,
+      nearestMasterDist: null,
+      correctedToMaster: null,
+      decisionReason: `noise rejected: ${reason}`,
     });
   }
 
@@ -365,20 +479,55 @@ function buildCandidateDetails(
 
 // Select the best item-type candidate from scored details.
 // Exported so unit tests can call it directly without browser/canvas.
+//
+// Decision priority:
+//   1. Exact Item Master match → auto-select unless tied with another master code
+//   2. Unique confusion-correction to Item Master → return the CORRECTED master code
+//   3. Unknown word in Pass D or 2+ passes → auto-select if score gap ≥ 15
+//   4. Unknown word in single non-D pass → null (insufficient evidence, not ambiguous)
+//
+// "Wrong auto-assignment is worse than requiring review."
 export function selectBestItemType(
   details: OcrCandidateDetail[],
 ): { selectedItemType: string | null; isItemTypeAmbiguous: boolean } {
   const acc = details.filter(d => d.accepted).sort((a, b) => b.score - a.score);
   if (acc.length === 0) return { selectedItemType: null, isItemTypeAmbiguous: false };
-  if (acc.length === 1) return { selectedItemType: acc[0].text, isItemTypeAmbiguous: false };
 
   const top    = acc[0];
-  const second = acc[1];
-  // Clear winner: in Item Master (unambiguous by definition), or score gap ≥ 15
-  if (top.inItemMaster || top.score - second.score >= 15) {
-    return { selectedItemType: top.text, isItemTypeAmbiguous: false };
+  const second = acc.length > 1 ? acc[1] : null;
+
+  // Case 1: Exact Item Master match
+  if (top.inItemMaster) {
+    if (!second || !second.inItemMaster || top.score - second.score >= 15) {
+      return { selectedItemType: top.text, isItemTypeAmbiguous: false };
+    }
+    // Two Item Master codes with close scores — cannot decide
+    return { selectedItemType: null, isItemTypeAmbiguous: true };
   }
-  return { selectedItemType: null, isItemTypeAmbiguous: true };
+
+  // Case 2: Unique confusion-correction to Item Master — return the corrected master code
+  if (top.correctedToMaster) {
+    if (!second || top.score - second.score >= 15) {
+      return { selectedItemType: top.correctedToMaster, isItemTypeAmbiguous: false };
+    }
+    // Another candidate is too close — ambiguous
+    return { selectedItemType: null, isItemTypeAmbiguous: true };
+  }
+
+  // Case 3: Unknown word — require spatial (Pass D) or multi-pass evidence
+  const hasPassD  = top.passes.includes('D');
+  const multiPass = top.passes.length >= 2;
+
+  if (hasPassD || multiPass) {
+    if (!second || top.score - second.score >= 15) {
+      return { selectedItemType: top.text, isItemTypeAmbiguous: false };
+    }
+    return { selectedItemType: null, isItemTypeAmbiguous: true };
+  }
+
+  // Case 4: Unknown word, single non-D pass — insufficient evidence
+  // Return null WITHOUT flagging ambiguous (we simply didn't see enough to decide)
+  return { selectedItemType: null, isItemTypeAmbiguous: false };
 }
 
 // ── Public: Multi-pass OCR on a pre-captured canvas ───────────────────────────

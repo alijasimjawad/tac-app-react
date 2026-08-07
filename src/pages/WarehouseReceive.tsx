@@ -1299,19 +1299,32 @@ function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
             <>
               <div className={css.scanDiagRow} style={{ marginTop: 3 }}>
                 <span className={css.scanDiagKey} style={{ color: '#64748b', fontSize: 10 }}>TYPE CANDIDATES</span>
+                <span className={css.scanDiagVal} style={{ color: '#334155', fontSize: 9 }}>conf · passes · master · nearest · reason</span>
               </div>
               {e.ocrCandidates.map(c => (
                 <div key={c.text} className={css.scanDiagRow}>
                   <span className={css.scanDiagKey} style={{
-                    color: c.accepted ? (c.inItemMaster ? '#34d399' : '#818cf8') : '#f87171',
-                    fontSize: 10, minWidth: 55,
+                    color: c.inItemMaster ? '#34d399'
+                         : c.correctedToMaster ? '#a78bfa'
+                         : c.accepted ? '#818cf8' : '#f87171',
+                    fontSize: 10, minWidth: 68,
                   }}>
-                    {c.text}
+                    {c.text}{c.correctedToMaster ? `→${c.correctedToMaster}` : ''}
                   </span>
-                  <span className={css.scanDiagVal} style={{ fontSize: 10 }}>
-                    {c.accepted
-                      ? `passes:${c.passes.join(',')} score:${c.score}${c.inItemMaster ? ' [MASTER]' : ''}`
-                      : `REJECTED: ${c.rejectionReason ?? 'noise'}`}
+                  <span className={css.scanDiagVal} style={{ fontSize: 9, color: '#94a3b8' }}>
+                    {c.accepted ? (
+                      [
+                        `${c.maxConf ?? '?'}%`,
+                        c.passes.join(','),
+                        c.inItemMaster ? 'MASTER' : 'NO',
+                        c.nearestMasterCode && !c.inItemMaster
+                          ? `${c.nearestMasterCode}(d=${c.nearestMasterDist})`
+                          : '—',
+                        c.decisionReason,
+                      ].join(' · ')
+                    ) : (
+                      `REJECTED: ${c.rejectionReason ?? 'noise'}`
+                    )}
                   </span>
                 </div>
               ))}
