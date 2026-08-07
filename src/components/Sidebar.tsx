@@ -17,7 +17,7 @@ import { PROJ_NAMES, SEC_LABELS } from '../pages/NetworkScopes';
 import { ensureSectionsLoaded, getSections, invalidateSections } from '../lib/sectionsCache';
 import type { SectionMeta } from '../lib/sectionsCache';
 import { ensureProjectsLoaded, getProjectKeys } from '../lib/projectsCache';
-import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN } from '../lib/permissionsCatalog';
+import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_WAREHOUSE } from '../lib/permissionsCatalog';
 
 
 const DEFAULT_SECTIONS: Record<string, string[]> = {
@@ -30,11 +30,12 @@ const DEFAULT_SECTIONS: Record<string, string[]> = {
 
 const DEFAULT_HEADERS = ['Site ID', 'Governate', 'Delivery', 'Installation', 'Integration Status', 'ATP Status', 'Clearance & Tools', 'Final ATP'];
 
-type MajorGroup = 'finance' | 'hr' | 'admin';
+type MajorGroup = 'finance' | 'hr' | 'admin' | 'warehouse';
 
 function getActiveGroupFromPath(pathname: string): MajorGroup | null {
   if (pathname.startsWith('/finance')) return 'finance';
   if (pathname === '/hr-profiles' || pathname === '/attendance-admin') return 'hr';
+  if (pathname.startsWith('/warehouse')) return 'warehouse';
   if (
     pathname === '/live-trips' ||
     pathname === '/activity-log' ||
@@ -732,6 +733,66 @@ function AdminNavGroup({ isExpanded, onToggle }: NavGroupProps) {
   );
 }
 
+// ── Warehouse nav group ───────────────────────────────────────────────────────
+
+function WarehouseNavGroup({ isExpanded, onToggle }: NavGroupProps) {
+  const { hasPerm } = useAuth();
+
+  const WRH_LINKS = VIEW_WAREHOUSE.filter(({ key }) => hasPerm(key));
+
+  if (WRH_LINKS.length === 0) return null;
+
+  return (
+    <div className={styles.nsSection}>
+      <div className={styles.nsSectionHdr} onClick={onToggle}>
+        <div className={styles.nsHdrLeft}>
+          <WarehouseGroupIcon />
+          <span>Warehouse</span>
+        </div>
+        <svg
+          className={`${styles.nsChevron} ${isExpanded ? '' : styles.nsChevronClosed}`}
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+          width="12" height="12"
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      {isExpanded && (
+        <div className={styles.nsBody}>
+          <div className={styles.projGroup}>
+            <div className={styles.projChildren}>
+              {WRH_LINKS.map(({ to, label }) => (
+                <div key={to} className={styles.secLinkWrap}>
+                  <NavLink
+                    to={to}
+                    className={({ isActive }) =>
+                      `${styles.secLink} ${isActive ? styles.secLinkActive : ''}`
+                    }
+                    end={to === '/warehouse'}
+                  >
+                    <span className={styles.secDot} />
+                    <span className={styles.secLinkLabel}>{label}</span>
+                    <span className={styles.secArr}>›</span>
+                  </NavLink>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WarehouseGroupIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  );
+}
+
 // ── Field-role nav ────────────────────────────────────────────────────────────
 
 function LangToggle({ roleLower }: { roleLower: string | undefined }) {
@@ -848,14 +909,12 @@ function FieldRoleNav({ expandedGroup, toggleGroup, roleLower }: { expandedGroup
         <span className={styles.navLabel}>{t('nav_myExpenses')}</span>
       </NavLink>
 
-      {/* Finance/HR/Admin sub-page permissions (e.g. Revenue, Employee
-          Profiles, Activity Log, Live Trips, Attendance) are granted
+      {/* Finance/HR/Warehouse/Admin sub-page permissions are granted
           per-user like any other permission and must reflect here too —
           these groups already self-hide (return null) when the user has
           none of their perms. Only User Management and Backup & Restore
-          stay hardcoded admin-only (too high-risk to grant piecemeal), so
-          mounting these groups for field roles only ever exposes what was
-          actually granted. */}
+          stay hardcoded admin-only. */}
+      <WarehouseNavGroup isExpanded={expandedGroup === 'warehouse'} onToggle={() => toggleGroup('warehouse')} />
       <FinanceNavGroup isExpanded={expandedGroup === 'finance'} onToggle={() => toggleGroup('finance')} />
       <HrNavGroup isExpanded={expandedGroup === 'hr'} onToggle={() => toggleGroup('hr')} />
       <AdminNavGroup isExpanded={expandedGroup === 'admin'} onToggle={() => toggleGroup('admin')} />
@@ -1039,6 +1098,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
               {navLinks(NAV_PERSONAL)}
             </nav>
 
+            <WarehouseNavGroup
+              isExpanded={expandedGroup === 'warehouse'}
+              onToggle={() => toggleGroup('warehouse')}
+            />
             <FinanceNavGroup
               isExpanded={expandedGroup === 'finance'}
               onToggle={() => toggleGroup('finance')}

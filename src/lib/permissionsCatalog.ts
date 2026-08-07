@@ -24,7 +24,7 @@ export interface NavPermDef extends PermDef {
   to: string;
 }
 
-export type PermGroup = 'core' | 'daily' | 'finance' | 'hr' | 'admin';
+export type PermGroup = 'core' | 'daily' | 'finance' | 'hr' | 'admin' | 'warehouse';
 
 export interface PageDef extends NavPermDef {
   group: PermGroup;
@@ -56,6 +56,7 @@ export const VIEW_DAILY_WORK: NavPermDef[] = byGroup('daily');
 export const VIEW_FINANCE: NavPermDef[] = byGroup('finance');
 export const VIEW_HR: NavPermDef[] = byGroup('hr');
 export const VIEW_ADMIN: NavPermDef[] = byGroup('admin');
+export const VIEW_WAREHOUSE: NavPermDef[] = byGroup('warehouse');
 
 // Keys that default to GRANTED for Engineer/Technician roles when the
 // permission hasn't been explicitly set by an admin yet — collected
@@ -279,6 +280,32 @@ export const ACTION_SCOPES: ActionScope[] = [
       { key: 'fin_cars_edit_rate',      label: 'Edit KM Rate' },
     ],
   },
+  {
+    id: 'warehouse_items',
+    label: 'Warehouse — Item Master',
+    actions: [
+      { key: 'wrh_items_add',    label: 'Add Item' },
+      { key: 'wrh_items_edit',   label: 'Edit Item' },
+      { key: 'wrh_items_delete', label: 'Delete Item' },
+    ],
+  },
+  {
+    id: 'warehouse_receive',
+    label: 'Warehouse — Receive Materials',
+    actions: [
+      { key: 'wrh_receive_create', label: 'Create Receipt' },
+      { key: 'wrh_receive_post',   label: 'Post to Stock' },
+      { key: 'wrh_receive_cancel', label: 'Cancel Receipt' },
+    ],
+  },
+  {
+    id: 'warehouse_admin',
+    label: 'Warehouse — Admin',
+    actions: [
+      { key: 'wrh_warehouses_manage', label: 'Manage Warehouses' },
+      { key: 'wrh_mappings_manage',   label: 'Manage Code Mappings' },
+    ],
+  },
 ];
 
 // Flattened list of every scoped action key — used where a page just needs
@@ -376,4 +403,15 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
   sitesdb_export: 'view_sites_db',
 
   activity_log_export: 'view_activity_log',
+
+  wrh_items_add:    'view_warehouse_inventory',
+  wrh_items_edit:   'view_warehouse_inventory',
+  wrh_items_delete: 'view_warehouse_inventory',
+
+  wrh_receive_create: 'view_warehouse_receive',
+  wrh_receive_post:   'view_warehouse_receive',
+  wrh_receive_cancel: 'view_warehouse_receive',
+
+  wrh_warehouses_manage: 'view_warehouse_overview',
+  wrh_mappings_manage:   'view_warehouse_inventory',
 };

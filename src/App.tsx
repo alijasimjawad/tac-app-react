@@ -34,6 +34,11 @@ import UserManagement from './pages/UserManagement';
 import BackupRestore from './pages/BackupRestore';
 import MyWork from './pages/MyWork';
 import MySites from './pages/MySites';
+import WarehouseOverview from './pages/WarehouseOverview';
+import WarehouseInventory from './pages/WarehouseInventory';
+import WarehouseReceive from './pages/WarehouseReceive';
+import WarehouseHistory from './pages/WarehouseHistory';
+import WarehouseMovements from './pages/WarehouseMovements';
 
 function RoleRedirect() {
   const { currentUser, loading } = useAuth();
@@ -88,6 +93,11 @@ export default function App() {
             <Route path="/dashboard"                 element={<Dashboard />} />
             <Route path="/my-work"                   element={<MyWork />} />
             <Route path="/my-sites"                  element={<MySites />} />
+            <Route path="/warehouse"             element={<WarehouseOverview />} />
+            <Route path="/warehouse/inventory"   element={<WarehouseInventory />} />
+            <Route path="/warehouse/receive"     element={<WarehouseReceive />} />
+            <Route path="/warehouse/history"     element={<WarehouseHistory />} />
+            <Route path="/warehouse/movements"   element={<WarehouseMovements />} />
             <Route path="/"           element={<RoleRedirect />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
