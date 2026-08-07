@@ -359,7 +359,6 @@ async function runOcrOnCanvas(
 //
 // Score breakdown:
 //   +100  exact match in Item Master (confirmed vocabulary)
-//   + 70  unique confusion-correctable to exactly one Item Master code (H↔R etc.)
 //   +  5  Nokia 4-letter equipment code pattern (^[A-Z]{4}$), unknown word only
 //          (deliberately low — prevents unknown words from beating Item Master codes)
 //   + 10  each additional pass the token appears in (multi-pass consensus)
@@ -369,9 +368,11 @@ async function runOcrOnCanvas(
 //
 // Selection policy (see selectBestItemType):
 //   1. Exact Item Master candidate → always selected unless tied with another master
-//   2. Unique confusion-corrected → return the corrected master code
-//   3. Unknown word in Pass D or 2+ passes → selected if gap ≥ 15 over second
-//   4. Unknown word in single non-D pass → never auto-selected (insufficient evidence)
+//   2. Unknown word in Pass D or 2+ passes → selected if gap ≥ 15 over second
+//   3. Unknown word in single non-D pass → never auto-selected (insufficient evidence)
+//
+// NOTE: correctedToMaster is DIAGNOSTIC ONLY — it never drives auto-selection.
+//   OCR text is validated against Item Master, not rewritten by it.
 
 interface PassCandidateData {
   passes:  string[];
@@ -382,13 +383,10 @@ function computeScore(
   text: string,
   data: PassCandidateData,
   inItemMaster: boolean,
-  correctedToMaster: string | null,
 ): number {
   let score = 0;
   if (inItemMaster) {
     score += 100;
-  } else if (correctedToMaster) {
-    score += 70;  // unique confusion correction to Item Master — strong but below exact match
   } else if (/^[A-Z]{4}$/.test(text)) {
     score += 5;   // unknown 4-letter word — very weak signal only
   }
@@ -429,7 +427,7 @@ function buildCandidateDetails(
       }
     }
 
-    const score = computeScore(text, data, inItemMaster, correctedToMaster);
+    const score = computeScore(text, data, inItemMaster);
 
     // Human-readable reason for diagnostics
     let decisionReason: string;
@@ -437,7 +435,7 @@ function buildCandidateDetails(
       decisionReason = 'exact Item Master match';
     } else if (correctedToMaster) {
       const roiNote = data.passes.includes('D') ? ' [upper-right ROI]' : '';
-      decisionReason = `OCR correction of ${correctedToMaster} via confusable char${roiNote}`;
+      decisionReason = `nearest master: ${correctedToMaster} (confusable char, diagnostic only)${roiNote}`;
     } else if (data.passes.includes('D')) {
       decisionReason = 'upper-right ROI (Nokia item-type area)';
     } else if (data.passes.length >= 2) {
@@ -482,11 +480,11 @@ function buildCandidateDetails(
 //
 // Decision priority:
 //   1. Exact Item Master match → auto-select unless tied with another master code
-//   2. Unique confusion-correction to Item Master → return the CORRECTED master code
-//   3. Unknown word in Pass D or 2+ passes → auto-select if score gap ≥ 15
-//   4. Unknown word in single non-D pass → null (insufficient evidence, not ambiguous)
+//   2. Unknown word in Pass D or 2+ passes → auto-select if score gap ≥ 15
+//   3. Unknown word in single non-D pass → null (insufficient evidence, not ambiguous)
 //
 // "Wrong auto-assignment is worse than requiring review."
+// IMPORTANT: correctedToMaster is NEVER used for auto-selection — it is diagnostic only.
 export function selectBestItemType(
   details: OcrCandidateDetail[],
 ): { selectedItemType: string | null; isItemTypeAmbiguous: boolean } {
@@ -505,16 +503,7 @@ export function selectBestItemType(
     return { selectedItemType: null, isItemTypeAmbiguous: true };
   }
 
-  // Case 2: Unique confusion-correction to Item Master — return the corrected master code
-  if (top.correctedToMaster) {
-    if (!second || top.score - second.score >= 15) {
-      return { selectedItemType: top.correctedToMaster, isItemTypeAmbiguous: false };
-    }
-    // Another candidate is too close — ambiguous
-    return { selectedItemType: null, isItemTypeAmbiguous: true };
-  }
-
-  // Case 3: Unknown word — require spatial (Pass D) or multi-pass evidence
+  // Case 2: Unknown word — require spatial (Pass D) or multi-pass evidence
   const hasPassD  = top.passes.includes('D');
   const multiPass = top.passes.length >= 2;
 
@@ -525,7 +514,7 @@ export function selectBestItemType(
     return { selectedItemType: null, isItemTypeAmbiguous: true };
   }
 
-  // Case 4: Unknown word, single non-D pass — insufficient evidence
+  // Case 3: Unknown word, single non-D pass — insufficient evidence
   // Return null WITHOUT flagging ambiguous (we simply didn't see enough to decide)
   return { selectedItemType: null, isItemTypeAmbiguous: false };
 }

@@ -789,63 +789,60 @@ describe('Item Master resolution — post-OCR merge (Issue 1)', () => {
   });
 });
 
-// ── Confusion-correction (Issue 3 — ARGA→AHGA) ───────────────────────────────
+// ── Confusion-correction is diagnostic only — ARGA must never auto-correct to AHGA ──────
 
-describe('selectBestItemType() — confusion correction (H↔R, B↔8 etc.)', () => {
-  it('ARGA with correctedToMaster=AHGA in Pass D → selects AHGA (corrected master form)', () => {
+describe('selectBestItemType() — confusion correction is diagnostic only', () => {
+  // THE CRITICAL REGRESSION: printed label says ARGA, not AHGA.
+  // Even though AHGA is in Item Master at confusionDistance=1, ARGA must stay ARGA.
+  it('ARGA in Pass D (correctedToMaster=AHGA) → selects ARGA, NOT AHGA', () => {
     const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
       makeDetail('ARGA', {
-        passes: ['D'], score: 90,
+        passes: ['D'], score: 20,  // 5 (4-letter) + 15 (D-pass) = 20
         correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
       }),
     ]);
-    expect(selectedItemType).toBe('AHGA');
+    expect(selectedItemType).toBe('ARGA');  // OCR text preserved — NOT rewritten to AHGA
     expect(isItemTypeAmbiguous).toBe(false);
   });
 
-  it('ARGA with correctedToMaster=AHGA, single non-D pass → still corrects (master uniqueness is sufficient)', () => {
+  it('ARGA single non-D pass (correctedToMaster=AHGA) → null (insufficient evidence)', () => {
+    // Single non-D pass with unknown word → Case 3: null, not ambiguous
+    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
+      makeDetail('ARGA', {
+        passes: ['A'], score: 5,
+        correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
+      }),
+    ]);
+    expect(selectedItemType).toBeNull();  // not enough evidence; no auto-correction
+    expect(isItemTypeAmbiguous).toBe(false);
+  });
+
+  it('ARGA multi-pass (correctedToMaster=AHGA) → selects ARGA', () => {
     const { selectedItemType } = selectBestItemType([
       makeDetail('ARGA', {
-        passes: ['A'], score: 75,
+        passes: ['A', 'B'], score: 15,  // 5 + 10(multi-pass)
         correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
       }),
     ]);
-    expect(selectedItemType).toBe('AHGA');
+    expect(selectedItemType).toBe('ARGA');
   });
 
-  it('ARGA → AHGA correction wins over unrelated unknown REET (large score gap)', () => {
+  it('ARGA in Pass D beats REET noise — selects ARGA (not AHGA)', () => {
     const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
-      makeDetail('ARGA', {
-        passes: ['A'], score: 75,
-        correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
-      }),
-      makeDetail('REET', { passes: ['A'], score: 10 }),
+      makeDetail('ARGA', { passes: ['D'], score: 20, correctedToMaster: 'AHGA' }),
+      makeDetail('REET', { passes: ['A'], score: 5 }),
     ]);
-    expect(selectedItemType).toBe('AHGA');
+    expect(selectedItemType).toBe('ARGA');  // OCR text, not the corrected master code
     expect(isItemTypeAmbiguous).toBe(false);
   });
 
-  it('ambiguous correction: ARGA maps to both AHGA and ABIA → ambiguous (no auto-select)', () => {
-    // correctedToMaster is null when multiple master codes are at distance 1
-    const { selectedItemType, isItemTypeAmbiguous } = selectBestItemType([
-      makeDetail('ARGA', {
-        passes: ['D'], score: 85,
-        correctedToMaster: null,  // multiple matches → no unique correction
-        nearestMasterCode: 'AHGA', nearestMasterDist: 1,
-      }),
-    ]);
-    // No master match, no unique correction, but has Pass D → Case 3
-    expect(selectedItemType).toBe('ARGA');  // unknown but Pass D evidence
-    expect(isItemTypeAmbiguous).toBe(false);
-  });
-
-  it('REGRESSION — pass A ARGA + passes B,C AHGA: AHGA (direct master) wins over ARGA correction', () => {
-    // AHGA appears directly in passes B+C → inItemMaster=true → Case 1 wins
+  it('AHGA directly OCR-read + in master → selects AHGA (Case 1 exact master)', () => {
+    // When the label actually says AHGA and Tesseract reads it correctly → normal path
     const { selectedItemType } = selectBestItemType([
       makeDetail('AHGA', { passes: ['B', 'C'], score: 120, inItemMaster: true }),
-      makeDetail('ARGA', { passes: ['A'], score: 75, correctedToMaster: 'AHGA' }),
+      makeDetail('ARGA', { passes: ['A'], score: 5, correctedToMaster: 'AHGA' }),
     ]);
-    expect(selectedItemType).toBe('AHGA');
+    expect(selectedItemType).toBe('AHGA');  // Case 1 — direct master match always wins
   });
 });
 
@@ -884,12 +881,12 @@ describe('selectBestItemType() — false-word suppression (REET, WHOS)', () => {
     expect(selectedItemType).toBe('AHGA');  // Case 1 — master always wins
   });
 
-  it('REET does not beat an ARGA→AHGA correction', () => {
+  it('REET does not beat ARGA in Pass D — ARGA selected (correctedToMaster is diagnostic only)', () => {
     const { selectedItemType } = selectBestItemType([
-      makeDetail('ARGA', { passes: ['D'], score: 90, correctedToMaster: 'AHGA' }),
-      makeDetail('REET', { passes: ['A'], score: 10 }),
+      makeDetail('ARGA', { passes: ['D'], score: 20, correctedToMaster: 'AHGA' }),
+      makeDetail('REET', { passes: ['A'], score: 5 }),
     ]);
-    expect(selectedItemType).toBe('AHGA');
+    expect(selectedItemType).toBe('ARGA');  // OCR text wins, not the correction
   });
 
   it('unknown 4-letter word multi-pass → selects (consensus evidence)', () => {
@@ -936,16 +933,17 @@ describe('7-carton real-world regression (scoring system)', () => {
     expect(selectedItemType).toBe('AHGA');
   });
 
-  it('ARGA alone (AHGA not read) → corrects to AHGA via confusable model', () => {
-    // Only ARGA appears in OCR — but it uniquely corrects to Item Master AHGA
+  it('ARGA alone (AHGA not read) → selects ARGA (correctedToMaster is diagnostic only)', () => {
+    // Only ARGA appears in OCR. AHGA is in master at confusionDistance=1.
+    // Policy: OCR text is validated, not rewritten. ARGA stays ARGA.
     const { selectedItemType } = selectBestItemType([
       makeDetail('ARGA', {
-        passes: ['D'], score: 90,
+        passes: ['D'], score: 20,  // 5 + 15(D-pass)
         correctedToMaster: 'AHGA', nearestMasterCode: 'AHGA', nearestMasterDist: 1,
         inItemMaster: false,
       }),
     ]);
-    expect(selectedItemType).toBe('AHGA');
+    expect(selectedItemType).toBe('ARGA');  // NOT 'AHGA' — printed text is the truth
   });
 
   it('REET alone → null (not auto-assigned)', () => {
@@ -994,5 +992,117 @@ describe('7-carton real-world regression (scoring system)', () => {
     // Full OCR extraction via parseLabel — confirmed by existing parseLabel tests
     const { itemTypes } = parseLabel('AHGA\nP/N: 474254A.202\nS/N: 1M241909797', new Set(['AHGA']));
     expect(itemTypes).toContain('AHGA');
+  });
+});
+
+// ── 10 mandatory regressions — ARGA/AHGA no-auto-correction policy ────────────
+//
+// These tests encode the real-world acceptance criteria from the ARGA carton
+// (PN: 474800A.102, SN: K9241817927). ARGA must never silently become AHGA.
+
+describe('REGRESSION — confusion correction diagnostic-only policy', () => {
+  const AHGA_ITEM = makeItem({ id: 'ahga-1', item_code: 'AHGA', item_name: 'AHGA Radio Module', item_type: 'AHGA' });
+  const ARGA_ITEM = makeItem({ id: 'arga-1', item_code: 'ARGA', item_name: 'ARGA Unit',          item_type: 'ARGA' });
+
+  // 1. OCR=ARGA, master has AHGA only → selectedItemType=ARGA; resolution must NOT return AHGA's id
+  it('R1: OCR=ARGA, master has AHGA only → selected=ARGA, rid=null (NOT AHGA\'s id)', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ARGA', { passes: ['D'], score: 20, correctedToMaster: 'AHGA',
+        nearestMasterCode: 'AHGA', nearestMasterDist: 1, inItemMaster: false }),
+    ]);
+    expect(selectedItemType).toBe('ARGA');
+
+    // Resolution must NOT look up correctedToMaster — only exact OCR text
+    const { byPN, byCode } = buildMaps([AHGA_ITEM]);
+    const { rid } = resolveAfterOcr({ itemType: selectedItemType, partNumber: null }, byPN, byCode);
+    expect(rid).toBeNull();  // ARGA not in master → PENDING, not auto-matched to AHGA
+  });
+
+  // 2. ARGA in 3 passes (A,B,D), AHGA not OCR'd → ARGA selected (strong consensus)
+  it('R2: ARGA in passes A+B+D → selected=ARGA (strong multi-pass+D consensus)', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ARGA', { passes: ['A', 'B', 'D'], score: 30, inItemMaster: false }),
+    ]);
+    expect(selectedItemType).toBe('ARGA');
+  });
+
+  // 3. AHGA in 3 passes (directly OCR'd), ARGA once → AHGA wins (direct master match)
+  it('R3: AHGA directly read in B+C+D (master), ARGA once in A → AHGA wins (Case 1)', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('AHGA', { passes: ['B', 'C', 'D'], score: 130, inItemMaster: true }),
+      makeDetail('ARGA', { passes: ['A'], score: 5, correctedToMaster: 'AHGA' }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  // 4. ARGA and AHGA with comparable D-pass evidence → ambiguous (can't pick either)
+  it('R4: ARGA in D (unknown) vs AHGA in D (master) → master wins (Case 1 over Case 2)', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('AHGA', { passes: ['D'], score: 115, inItemMaster: true }),
+      makeDetail('ARGA', { passes: ['D'], score: 20, correctedToMaster: 'AHGA' }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+  });
+
+  // 5. Exact OCR AHGA + AHGA in master → MATCHED via item_type
+  it('R5: exact OCR AHGA + AHGA in master → rid resolved', () => {
+    const { byPN, byCode } = buildMaps([AHGA_ITEM]);
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('AHGA', { passes: ['B', 'D'], score: 130, inItemMaster: true }),
+    ]);
+    expect(selectedItemType).toBe('AHGA');
+    const { rid } = resolveAfterOcr({ itemType: selectedItemType, partNumber: null }, byPN, byCode);
+    expect(rid).toBe('ahga-1');
+  });
+
+  // 6. Exact OCR ARGA + ARGA in master → MATCHED via item_type (not confused)
+  it('R6: exact OCR ARGA + ARGA in master → rid resolved to ARGA item', () => {
+    const { byPN, byCode } = buildMaps([ARGA_ITEM]);
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ARGA', { passes: ['B', 'D'], score: 130, inItemMaster: true }),
+    ]);
+    expect(selectedItemType).toBe('ARGA');
+    const { rid } = resolveAfterOcr({ itemType: selectedItemType, partNumber: null }, byPN, byCode);
+    expect(rid).toBe('arga-1');
+  });
+
+  // 7. OCR=ARGA, ARGA NOT in master → selectedItemType=ARGA preserved, rid=null (PENDING)
+  it('R7: OCR=ARGA, ARGA not in master → TYPE ARGA preserved, rid=null (PENDING)', () => {
+    const { selectedItemType } = selectBestItemType([
+      makeDetail('ARGA', { passes: ['D'], score: 20, inItemMaster: false }),
+    ]);
+    expect(selectedItemType).toBe('ARGA');
+
+    const { byPN, byCode } = buildMaps([]);  // empty master
+    const { rid } = resolveAfterOcr({ itemType: selectedItemType, partNumber: null }, byPN, byCode);
+    expect(rid).toBeNull();
+  });
+
+  // 8. OKIA noise still rejected upstream (not a selectBestItemType concern, but verified)
+  it('R8: OKIA noise rejected by fuzzyNoiseCheck — does not reach selectBestItemType', () => {
+    expect(fuzzyNoiseCheck('OKIA')).not.toBeNull();
+  });
+
+  // 9. REET/WHOS low-evidence (single non-D pass) → null, not auto-assigned
+  it('R9: REET single non-D pass → null; WHOS single non-D pass → null', () => {
+    const r1 = selectBestItemType([makeDetail('REET', { passes: ['A'], score: 5 })]);
+    expect(r1.selectedItemType).toBeNull();
+    expect(r1.isItemTypeAmbiguous).toBe(false);
+    const r2 = selectBestItemType([makeDetail('WHOS', { passes: ['B'], score: 5 })]);
+    expect(r2.selectedItemType).toBeNull();
+    expect(r2.isItemTypeAmbiguous).toBe(false);
+  });
+
+  // 10. PN/SN from barcode are never rewritten by OCR correction logic
+  it('R10: PN and SN from Nokia DataMatrix barcode pass through merge unchanged', () => {
+    const r = mergeScanAndOcr({
+      barcode: { serialNumber: 'K9241817927', partNumber: '474800A.102', itemType: null },
+      ocr: makeOcr({ itemType: 'ARGA' }),  // OCR sees ARGA (not AHGA)
+    });
+    expect(r.serialNumber).toBe('K9241817927');  // barcode SN unchanged
+    expect(r.partNumber).toBe('474800A.102');    // barcode PN unchanged
+    expect(r.itemType).toBe('ARGA');             // OCR type is ARGA, not auto-corrected
+    expect(r.source.serialNumber).toBe('BARCODE');
+    expect(r.source.partNumber).toBe('BARCODE');
   });
 });
