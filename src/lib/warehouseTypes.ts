@@ -106,6 +106,9 @@ export interface ScanEntry {
   statusMsg: string | null;
   scannedAt: string;         // ISO timestamp
   manually: boolean;
+  // Diagnostic fields — capture parser decisions for real-world label inspection
+  parsingProfile: string;    // e.g. 'nokia-semicolon', 'generic-unknown'
+  parsedStatus: string;      // 'resolved' | 'partially_resolved' | 'unresolved'
 }
 
 export interface SessionDetails {

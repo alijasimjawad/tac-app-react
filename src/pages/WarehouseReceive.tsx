@@ -185,6 +185,19 @@ export default function WarehouseReceive() {
     const snNorm   = sn ? normalizeSN(sn) : null;
     const resolved = resolveItem(parsed, items);
 
+    // Structured diagnostic log — exact ZXing output before any transformation
+    console.log('[ScanDiag]', {
+      rawValue:   raw,
+      symbology,
+      parsed: {
+        itemType:     parsed.itemType,
+        partNumber:   parsed.partNumber,
+        serialNumber: parsed.serialNumber,
+      },
+      parser:           parsed.parsingProfile,
+      resolutionStatus: parsed.status,
+    });
+
     const localId = crypto.randomUUID();
     const entry: ScanEntry = {
       localId,
@@ -201,6 +214,8 @@ export default function WarehouseReceive() {
       statusMsg:        null,
       scannedAt:        new Date().toISOString(),
       manually,
+      parsingProfile:   parsed.parsingProfile,
+      parsedStatus:     parsed.status,
     };
 
     setScanEntries(prev => {
@@ -661,6 +676,37 @@ export default function WarehouseReceive() {
                           </select>
                         ) : null}
                         {e.statusMsg && <div className={css.scanMsg}>{e.statusMsg}</div>}
+                        {/* Scan diagnostic — shows exact ZXing output for real-world label inspection */}
+                        <div className={css.scanDiag}>
+                          <div className={css.scanDiagRow}>
+                            <span className={css.scanDiagKey}>RAW</span>
+                            <span className={css.scanDiagRaw}>{e.rawValue}</span>
+                          </div>
+                          <div className={css.scanDiagRow}>
+                            <span className={css.scanDiagKey}>SYM</span>
+                            <span className={css.scanDiagVal}>{e.symbology}</span>
+                          </div>
+                          <div className={css.scanDiagRow}>
+                            <span className={css.scanDiagKey}>TYPE</span>
+                            <span className={css.scanDiagVal}>{e.itemTypeRaw ?? '—'}</span>
+                          </div>
+                          <div className={css.scanDiagRow}>
+                            <span className={css.scanDiagKey}>PN</span>
+                            <span className={css.scanDiagVal}>{e.partNumber ?? '—'}</span>
+                          </div>
+                          <div className={css.scanDiagRow}>
+                            <span className={css.scanDiagKey}>SN</span>
+                            <span className={css.scanDiagVal}>{e.serialNumber ?? '—'}</span>
+                          </div>
+                          <div className={css.scanDiagRow}>
+                            <span className={css.scanDiagKey}>PARSER</span>
+                            <span className={css.scanDiagVal}>{e.parsingProfile}</span>
+                          </div>
+                          <div className={css.scanDiagRow}>
+                            <span className={css.scanDiagKey}>PARSED</span>
+                            <span className={css.scanDiagVal}>{e.parsedStatus}</span>
+                          </div>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                         <span className={css.scanTime}>
