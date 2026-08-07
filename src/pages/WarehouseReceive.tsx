@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import {
-  CameraScanner, UsbScanner, parseScan, classifyScan, checkCameraPermission,
-  cameraErrorMessage, getScanDiagnostics,
-  type CameraPermission, type ScanDiagnostics,
+  CameraScanner, UsbScanner, parseScan, classifyScan, decodeAllDIFields,
+  checkCameraPermission, cameraErrorMessage, getScanDiagnostics,
+  type CameraPermission, type ScanDiagnostics, type DIField,
 } from '../lib/warehouseScanner';
 import type { Warehouse, InventoryItem, ScanEntry, SessionDetails } from '../lib/warehouseTypes';
 import { normalizeSN } from '../lib/warehouseTypes';
@@ -295,9 +295,13 @@ export default function WarehouseReceive() {
     setScanEntries(prev => [entry, ...prev]);
 
     console.log('[ScanDiag]', {
-      rawValue: raw, symbology,
-      parsed: { itemType: parsed.itemType, partNumber: parsed.partNumber, serialNumber: parsed.serialNumber },
-      parser: parsed.parsingProfile, classification, parseStatus, matchStatus,
+      rawValue:  raw,
+      symbology,
+      // All GS-separated DI fields — key for Nokia payload investigation
+      diFields:  parsed.diFields ?? decodeAllDIFields(raw),
+      extracted: { itemType: parsed.itemType, partNumber: parsed.partNumber, serialNumber: parsed.serialNumber },
+      parser:    parsed.parsingProfile,
+      classification, parseStatus, matchStatus,
     });
 
     if (resolved.id) {
@@ -792,17 +796,7 @@ export default function WarehouseReceive() {
                           {expandedDiags.has(e.localId) ? '▲ Diagnostics' : '▼ Diagnostics'}
                         </button>
                         {expandedDiags.has(e.localId) && (
-                          <div className={css.scanDiag}>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>RAW</span><span className={css.scanDiagRaw}>{e.rawValue}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>SYM</span><span className={css.scanDiagVal}>{e.symbology}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>TYPE</span><span className={css.scanDiagVal}>{e.itemTypeRaw ?? '—'}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>PN</span><span className={css.scanDiagVal}>{e.partNumber ?? '—'}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>SN</span><span className={css.scanDiagVal}>{e.serialNumber ?? '—'}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>PARSER</span><span className={css.scanDiagVal}>{e.parsingProfile}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>PARSE</span><span className={css.scanDiagVal}>{e.parseStatus}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>MATCH</span><span className={css.scanDiagVal}>{e.matchStatus}</span></div>
-                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>CLASS</span><span className={css.scanDiagVal}>{e.scanClassification}</span></div>
-                          </div>
+                          <NokiaDiagBlock entry={e} />
                         )}
                       </div>
 
@@ -918,6 +912,85 @@ export default function WarehouseReceive() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+// Scan-card diagnostic block — full DI field breakdown for Nokia payloads,
+// standard field list for all other profiles. Expanded via ▼ Diagnostics toggle.
+function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
+  const isNokiaDI = e.parsingProfile === 'nokia-gs1';
+  const diFields: DIField[] = isNokiaDI ? decodeAllDIFields(e.rawValue) : [];
+
+  return (
+    <div className={css.scanDiag}>
+      {/* Always shown */}
+      <DiagRow label="RAW"    val={e.rawValue}   raw />
+      <DiagRow label="SYM"    val={e.symbology} />
+      <DiagRow label="PARSER" val={e.parsingProfile} />
+
+      {/* Nokia DI payload: decoded field-by-field */}
+      {isNokiaDI && diFields.length > 0 && (
+        <>
+          <div className={css.scanDiagRow} style={{ marginTop: 5, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
+            <span className={css.scanDiagKey} style={{ color: '#818cf8', minWidth: 80 }}>DI FIELDS</span>
+            <span className={css.scanDiagVal} style={{ color: '#475569' }}>VALUE</span>
+            <span className={css.scanDiagVal} style={{ color: '#475569', marginLeft: 8 }}>MEANING</span>
+          </div>
+          {diFields.map((f, i) => (
+            <div key={i} className={css.scanDiagRow}>
+              <span className={css.scanDiagKey} style={{
+                color: f.di === '1P' ? '#34d399' : f.di === 'S' ? '#60a5fa' :
+                       f.di === '??' ? '#f87171' : '#94a3b8',
+              }}>
+                {f.di}
+              </span>
+              <span className={css.scanDiagVal} style={{ flex: 1 }}>{f.value}</span>
+              {f.meaning && (
+                <span className={css.scanDiagVal} style={{ color: '#475569', marginLeft: 6, fontSize: 10 }}>
+                  {f.meaning}
+                </span>
+              )}
+              {!f.meaning && (
+                <span className={css.scanDiagVal} style={{ color: '#f87171', marginLeft: 6, fontSize: 10 }}>
+                  UNKNOWN DI
+                </span>
+              )}
+            </div>
+          ))}
+          <div className={css.scanDiagRow} style={{ marginTop: 5, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
+            <span className={css.scanDiagKey} style={{ color: '#818cf8' }}>EXTRACTED</span>
+          </div>
+          <DiagRow label="TYPE" val={e.itemTypeRaw ?? '(not encoded in barcode)'} />
+          <DiagRow label="PN"   val={e.partNumber ?? '—'} />
+          <DiagRow label="SN"   val={e.serialNumber ?? '—'} />
+        </>
+      )}
+
+      {/* Non-Nokia profiles: standard field list */}
+      {!isNokiaDI && (
+        <>
+          <DiagRow label="TYPE" val={e.itemTypeRaw ?? '—'} />
+          <DiagRow label="PN"   val={e.partNumber ?? '—'} />
+          <DiagRow label="SN"   val={e.serialNumber ?? '—'} />
+        </>
+      )}
+
+      <div className={css.scanDiagRow} style={{ marginTop: 5, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
+        <span className={css.scanDiagKey} style={{ color: '#818cf8' }}>STATUS</span>
+      </div>
+      <DiagRow label="PARSE" val={e.parseStatus} />
+      <DiagRow label="MATCH" val={e.matchStatus} />
+      <DiagRow label="CLASS" val={e.scanClassification} />
+    </div>
+  );
+}
+
+function DiagRow({ label, val, raw }: { label: string; val: string; raw?: boolean }) {
+  return (
+    <div className={css.scanDiagRow}>
+      <span className={css.scanDiagKey}>{label}</span>
+      <span className={raw ? css.scanDiagRaw : css.scanDiagVal}>{val}</span>
+    </div>
+  );
+}
 
 function DiagPanel({ data, loading }: { data: ScanDiagnostics | null; loading: boolean }) {
   if (loading) {

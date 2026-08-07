@@ -23,6 +23,62 @@ export type { ScanClassification };
 
 export type ParsingStatus = 'resolved' | 'partially_resolved' | 'unresolved';
 
+// ── DI field decoder (investigation utility) ──────────────────────────────────
+//
+// Decodes a single GS-separated field from a Nokia / ANSI MH10.8.2 DataMatrix
+// payload. Used for diagnostics — does NOT affect extraction logic.
+//
+// DI table:  [C] = confirmed from real Nokia carton scans
+//            [P] = probable (referenced in ANSI MH10.8.2 / Nokia documentation)
+//            [?] = speculative / unconfirmed
+// Ordered longest-first to prevent shorter DIs from matching as prefix.
+
+export interface DIField {
+  di:      string;        // Data Identifier prefix
+  value:   string;        // Value after stripping the DI
+  meaning: string | null; // Null = not in known-DI table (unknown DI)
+}
+
+const NOKIA_DI_TABLE: Array<{ di: string; meaning: string }> = [
+  // 3-char DIs
+  { di: '13Q', meaning: 'Quantity [P]' },
+  { di: '14S', meaning: 'Hardware Type / Model [?]' },
+  // 2-char DIs
+  { di: '1P',  meaning: 'Supplier Part Number [C]' },
+  { di: '4L',  meaning: 'Item Description [P]' },
+  { di: '9S',  meaning: 'Product Code [P]' },
+  { di: '2P',  meaning: 'Customer Part Number [P]' },
+  // 1-char DIs
+  { di: 'S',   meaning: 'Serial Number [C]' },
+  { di: 'Q',   meaning: 'Quantity [C]' },
+  { di: 'V',   meaning: 'Vendor ID [C]' },
+  { di: 'P',   meaning: 'Customer Part Number [P]' },
+  { di: 'T',   meaning: 'Task / Work Order [?]' },
+  { di: 'D',   meaning: 'Date Code [?]' },
+  { di: 'W',   meaning: 'Date [?]' },
+  { di: 'N',   meaning: 'Serial Number (alt) [?]' },
+];
+
+export function decodeDIField(rawField: string): DIField {
+  const f = rawField.trim();
+  for (const { di, meaning } of NOKIA_DI_TABLE) {
+    if (f.startsWith(di)) {
+      return { di, value: f.slice(di.length), meaning };
+    }
+  }
+  // Unknown DI — expose the entire field so the user can identify it manually
+  return { di: '??', value: f, meaning: null };
+}
+
+// Splits a raw Nokia DataMatrix payload on control-character separators and
+// decodes every field. Used for diagnostic display — does not alter extraction.
+export function decodeAllDIFields(rawValue: string): DIField[] {
+  return rawValue
+    .split(/[\x1d\x1e\x04]/)
+    .filter(Boolean)
+    .map(decodeDIField);
+}
+
 // ── Parsed scan result ────────────────────────────────────────────────────────
 
 export interface ParsedScan {
@@ -36,6 +92,7 @@ export interface ParsedScan {
   parsingProfile: string;
   confidence:     'HIGH' | 'MEDIUM' | 'LOW';
   status:         ParsingStatus;
+  diFields?:      DIField[];        // Populated for Nokia DI payloads — diagnostic only
 }
 
 // ── Parser profile interface ──────────────────────────────────────────────────
@@ -104,6 +161,9 @@ export function parseNokiaDI(fields: string[]): Omit<ParsedScan, 'rawValue' | 's
   let partNumber:   string | null = null;
   let serialNumber: string | null = null;
 
+  // Decode every field for diagnostics — no fields are discarded from this record
+  const diFields = fields.filter(Boolean).map(f => decodeDIField(f.trim()));
+
   for (const field of fields) {
     const f = field.trim();
     if (!f) continue;
@@ -114,15 +174,13 @@ export function parseNokiaDI(fields: string[]): Omit<ParsedScan, 'rawValue' | 's
       continue;
     }
 
-    if (f.length > 1) {
-      if (f[0] === 'S') {
-        // We are in a confirmed Nokia DI context (1P was found in this payload),
-        // so S here is unambiguously the Serial Number DI — strip it.
-        serialNumber = f.slice(1) || null;
-        continue;
-      }
-      // V=Vendor, Q=Quantity, and any unknown DIs are safely ignored.
+    if (f.length > 1 && f[0] === 'S') {
+      // Confirmed Nokia DI context (1P present) → S is unambiguously Serial Number DI
+      serialNumber = f.slice(1) || null;
+      continue;
     }
+    // All other DIs (V, Q, 4L, 9S, etc.) are captured in diFields above.
+    // They are NOT silently discarded — the diagnostic display exposes them.
   }
 
   const status: ParsingStatus =
@@ -138,6 +196,7 @@ export function parseNokiaDI(fields: string[]): Omit<ParsedScan, 'rawValue' | 's
     parsingProfile: 'nokia-gs1',
     confidence: (partNumber || serialNumber) ? 'HIGH' : 'LOW',
     status,
+    diFields,
   };
 }
 
