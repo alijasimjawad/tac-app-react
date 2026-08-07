@@ -263,9 +263,9 @@ describe('classifyScan()', () => {
     expect(classifyScan(parsed)).toBe('VALID_ITEM');
   });
 
-  it('VALID_ITEM — Nokia standalone SN DI (SDH252030925, MEDIUM confidence)', () => {
+  it('AUXILIARY_CODE — Nokia standalone SN DI (SDH252030925) — carton component, enters buffer', () => {
     const parsed = parseScan('SDH252030925', 'CODE_128');
-    expect(classifyScan(parsed)).toBe('VALID_ITEM');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
   });
 
   it('VALID_ITEM — Nokia N-series SN (N90001234567, MEDIUM confidence)', () => {
@@ -424,7 +424,16 @@ describe('Nokia PN barcode with 1P DI prefix', () => {
     expect(parsed.parsingProfile).not.toBe('nokia-pn-only');
   });
 
-  it('K9241817927 → generic-sn-only, PARTIAL_ITEM (aggregated at React level, no parser change)', () => {
+  it('SK9241817927 → nokia-sn-di, AUXILIARY_CODE, SN=K9241817927 (enters bidirectional buffer)', () => {
+    const parsed = parseScan('SK9241817927', 'CODE_128');
+    expect(parsed.parsingProfile).toBe('nokia-sn-di');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    expect(parsed.serialNumber).toBe('K9241817927');
+    expect(parsed.partNumber).toBeNull();
+    expect(parsed.manufacturer).toBe('Nokia');
+  });
+
+  it('K9241817927 (bare, no S prefix) → generic-sn-only, PARTIAL_ITEM (pairs with pending PN at React level)', () => {
     const parsed = parseScan('K9241817927', 'CODE_128');
     expect(parsed.parsingProfile).toBe('generic-sn-only');
     expect(classifyScan(parsed)).toBe('PARTIAL_ITEM');

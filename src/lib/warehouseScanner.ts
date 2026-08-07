@@ -397,8 +397,10 @@ function isAuxiliaryCode(raw: string): boolean {
 
 export function classifyScan(parsed: ParsedScan): ScanClassification {
   if (isAuxiliaryCode(parsed.rawValue)) return 'AUXILIARY_CODE';
-  // Standalone Nokia PN-only barcode — auxiliary metadata, not a distinct carton
+  // Nokia component barcodes — PN or SN from a multi-barcode carton label.
+  // These must enter the CartonScanBuffer, never become standalone entries.
   if (parsed.parsingProfile === 'nokia-pn-only') return 'AUXILIARY_CODE';
+  if (parsed.parsingProfile === 'nokia-sn-di')   return 'AUXILIARY_CODE';
   if (!parsed.serialNumber && !parsed.partNumber) return 'UNKNOWN_CODE';
   if (parsed.serialNumber && parsed.confidence !== 'LOW') return 'VALID_ITEM';
   if (parsed.partNumber || parsed.serialNumber) return 'PARTIAL_ITEM';
