@@ -3,10 +3,16 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { InventoryItem } from '../lib/warehouseTypes';
-import { buildPnCountMap } from '../lib/warehouseStock';
+import { buildPnCountMap, buildPnSearchIndex } from '../lib/warehouseStock';
 import css from './Warehouse.module.css';
 
 type TrackingMethod = 'SERIALIZED' | 'QUANTITY';
+
+interface PnMapping {
+  external_code: string;
+  source:        string;
+  created_at:    string;
+}
 
 interface ItemForm {
   item_code: string;
@@ -32,8 +38,10 @@ const ITEM_TYPES  = ['Nokia', 'Huawei', 'Ericsson', 'Generic', 'Consumable', 'Ot
 
 export default function WarehouseInventory() {
   const { hasPerm, currentUser } = useAuth();
-  const [items,      setItems]      = useState<InventoryItem[]>([]);
-  const [pnCountMap, setPnCountMap] = useState<Map<string, number>>(new Map());
+  const [items,         setItems]         = useState<InventoryItem[]>([]);
+  const [pnCountMap,    setPnCountMap]    = useState<Map<string, number>>(new Map());
+  const [pnSearchIndex, setPnSearchIndex] = useState<Map<string, string[]>>(new Map());
+  const [pnModal,       setPnModal]       = useState<{ item: InventoryItem; mappings: PnMapping[]; loading: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
   const [search,  setSearch]  = useState('');
@@ -66,12 +74,14 @@ export default function WarehouseInventory() {
     setError('');
     const [itemRes, mappingRes] = await Promise.all([
       supabase.from('inventory_items').select('*').order('item_name'),
-      supabase.from('item_code_mappings').select('inventory_item_id')
+      supabase.from('item_code_mappings').select('inventory_item_id, external_code')
         .eq('code_type', 'PART_NUMBER').eq('is_active', true),
     ]);
     if (itemRes.error) { setError(itemRes.error.message); setLoading(false); return; }
     setItems(itemRes.data as InventoryItem[]);
-    setPnCountMap(buildPnCountMap(mappingRes.data || []));
+    const mappings = (mappingRes.data || []) as Array<{ inventory_item_id: string; external_code: string }>;
+    setPnCountMap(buildPnCountMap(mappings));
+    setPnSearchIndex(buildPnSearchIndex(mappings));
     setLoading(false);
   }
 
@@ -87,7 +97,8 @@ export default function WarehouseInventory() {
         it.item_code.toLowerCase().includes(q) ||
         it.item_name.toLowerCase().includes(q) ||
         (it.manufacturer || '').toLowerCase().includes(q) ||
-        (it.part_number  || '').toLowerCase().includes(q)
+        (it.part_number  || '').toLowerCase().includes(q) ||
+        (pnSearchIndex.get(it.id) ?? []).some(pn => pn.includes(q))
       );
     }
     return true;
@@ -164,6 +175,18 @@ export default function WarehouseInventory() {
     showToast(editId ? 'Item updated.' : 'Item created.', true);
     setModal(false);
     load();
+  }
+
+  async function openPnModal(item: InventoryItem) {
+    setPnModal({ item, mappings: [], loading: true });
+    const { data } = await supabase
+      .from('item_code_mappings')
+      .select('external_code, source, created_at')
+      .eq('inventory_item_id', item.id)
+      .eq('code_type', 'PART_NUMBER')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+    setPnModal({ item, mappings: (data as PnMapping[] ?? []), loading: false });
   }
 
   async function toggleActive(item: InventoryItem) {
@@ -255,7 +278,16 @@ export default function WarehouseInventory() {
                       {(() => {
                         const count = pnCountMap.get(it.id);
                         return count
-                          ? <span className={`${css.badge} ${css.badgePurple}`}>{count} PN{count !== 1 ? 's' : ''}</span>
+                          ? (
+                            <button
+                              className={`${css.badge} ${css.badgePurple}`}
+                              style={{ cursor: 'pointer', border: 'none', font: 'inherit' }}
+                              title="View known part numbers"
+                              onClick={() => openPnModal(it)}
+                            >
+                              {count} PN{count !== 1 ? 's' : ''}
+                            </button>
+                          )
                           : <span style={{ fontSize: 12, color: '#94a3b8' }}>—</span>;
                       })()}
                     </td>
@@ -330,10 +362,13 @@ export default function WarehouseInventory() {
                     </datalist>
                   </div>
                   <div className={css.field}>
-                    <label className={css.label}>Part Number</label>
+                    <label className={css.label}>Primary / Seed PN</label>
                     <input className={css.input} value={form.part_number}
                       onChange={e => setForm(f => ({ ...f, part_number: e.target.value }))}
                       placeholder="Manufacturer part #" />
+                    <span style={{ fontSize: 11, color: '#94a3b8', marginTop: 3, display: 'block', lineHeight: 1.4 }}>
+                      Optional bootstrap PN used before learned mappings exist. An item may have multiple learned PNs.
+                    </span>
                   </div>
                 </div>
                 <div className={css.fieldRow}>
@@ -396,6 +431,51 @@ export default function WarehouseInventory() {
               <button className={css.btnAccent} onClick={saveItem} disabled={saving}>
                 {saving ? 'Saving…' : editId ? 'Save Changes' : 'Create Item'}
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {pnModal && createPortal(
+        <div className={css.overlay} onClick={e => { if (e.target === e.currentTarget) setPnModal(null); }}>
+          <div className={css.modal}>
+            <div className={css.modalHdr}>
+              <span className={css.modalTitle}>Known Part Numbers — {pnModal.item.item_code}</span>
+              <button className={css.modalClose} onClick={() => setPnModal(null)}>×</button>
+            </div>
+            <div className={css.modalBody}>
+              {pnModal.loading ? (
+                <p style={{ fontSize: 13, color: '#94a3b8' }}>Loading…</p>
+              ) : pnModal.mappings.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#94a3b8' }}>No learned PN mappings found.</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Part Number</th>
+                      <th style={{ textAlign: 'left' }}>Source</th>
+                      <th style={{ textAlign: 'left' }}>Date Added</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pnModal.mappings.map(m => (
+                      <tr key={m.external_code}>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{m.external_code}</td>
+                        <td>
+                          <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>
+                            {m.source === 'RECEIVING' ? 'Learned from scan' : m.source}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12, color: '#94a3b8' }}>{m.created_at.slice(0, 10)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className={css.modalFtr}>
+              <button className={css.btnGhost} onClick={() => setPnModal(null)}>Close</button>
             </div>
           </div>
         </div>,

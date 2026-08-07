@@ -113,12 +113,6 @@ export default function WarehouseReceive() {
 
   // ── Load master data ──────────────────────────────────────────────────────
   useEffect(() => {
-    // Temporary Phase B build verification marker — remove after confirming deploy
-    console.log('[WarehouseScannerBuild]', {
-      phase: 'B',
-      commit: 'b71ef3b',
-      autoOcrEnabled: true,
-    });
     (async () => {
       const [wRes, iRes] = await Promise.all([
         supabase.from('warehouses').select('*').eq('is_active', true).order('name'),
@@ -997,7 +991,31 @@ export default function WarehouseReceive() {
       barcode_symbology: e.symbology,
       scanned_manually:  e.manually,
     }));
-    if (scanLogs.length) await supabase.from('receiving_scan_log').insert(scanLogs);
+    if (scanLogs.length) {
+      const { error: slErr } = await supabase.from('receiving_scan_log').insert(scanLogs);
+      if (slErr) {
+        // Scan log failure is critical for SERIALIZED items: without scan log rows,
+        // post_goods_receipt() will fail the per-item count check and the receipt
+        // can never be posted. Surface this explicitly; do not navigate as if clean.
+        await learnPnMappings(validEntries);
+        if (currentUser) {
+          await supabase.from('activity_log').insert({
+            user_full_name: currentUser.full_name,
+            action: `PARTIAL SAVE — ${receipt.receipt_number} created but scan log failed: ${slErr.message}`,
+          });
+        }
+        // Override the auto-dismiss timer: keep this error visible for 30 seconds
+        // so the user can note the receipt number before it disappears.
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        setToast({
+          msg: `PARTIAL SAVE — ${receipt.receipt_number} was created but the scan log failed to save: ${slErr.message}. Serialized items CANNOT be posted until this is resolved. Note this receipt number.`,
+          ok: false,
+        });
+        toastTimer.current = setTimeout(() => setToast(null), 30_000);
+        setSaving(false);
+        return; // Stay on Step 3; do NOT navigate away
+      }
+    }
 
     // Learn PN mappings from this receipt (non-fatal if pre-migration)
     await learnPnMappings(validEntries);
@@ -1102,18 +1120,6 @@ export default function WarehouseReceive() {
       {/* ── Step 2: Scan ─────────────────────────────────────────────────── */}
       {step === 2 && (
         <>
-          {/* Temporary Phase B build verification banner — remove after confirming deploy */}
-          <div style={{
-            background: '#0f172a', color: '#818cf8', fontFamily: 'monospace',
-            fontSize: 10, padding: '4px 10px', borderRadius: 6, marginBottom: 10,
-            display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap',
-            border: '1px solid #1e293b',
-          }}>
-            <span>BUILD: PHASE-B</span>
-            <span style={{ color: '#94a3b8' }}>COMMIT: b71ef3b</span>
-            <span style={{ color: '#34d399' }}>AUTO OCR: READY</span>
-          </div>
-
           {/* KPI strip */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <KpiChip label="Scanned"      value={scanEntries.length} color="#6366f1" />

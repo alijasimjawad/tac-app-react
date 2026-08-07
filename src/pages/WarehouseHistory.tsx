@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { GoodsReceipt, GoodsReceiptItem, InventoryItem, Warehouse } from '../lib/warehouseTypes';
 import { friendlyPostingError, formatPostingToast, type PostReceiptSuccess } from '../lib/warehousePosting';
+import { computeLineItemPn } from '../lib/warehouseStock';
 import css from './Warehouse.module.css';
 
 interface ReceiptRow extends GoodsReceipt {
@@ -325,16 +326,23 @@ export default function WarehouseHistory() {
                     </tr>
                   </thead>
                   <tbody>
-                    {detail.lineItems.map(li => (
-                      <tr key={li.id}>
-                        <td>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12 }}>{li.itemCode}</span>
-                          {' '}<span style={{ color: '#64748b' }}>{li.itemName}</span>
-                        </td>
-                        <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{li.part_number || '—'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{li.quantity}</td>
-                      </tr>
-                    ))}
+                    {detail.lineItems.map(li => {
+                      const itemLogs = detail.scanLogs.filter(s => s.inventory_item_id === li.inventory_item_id);
+                      const pnDisplay = computeLineItemPn(itemLogs, li.part_number);
+                      const isMultiple = pnDisplay.startsWith('Multiple');
+                      return (
+                        <tr key={li.id}>
+                          <td>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12 }}>{li.itemCode}</span>
+                            {' '}<span style={{ color: '#64748b' }}>{li.itemName}</span>
+                          </td>
+                          <td style={{ fontFamily: 'monospace', fontSize: 12, color: isMultiple ? '#ca8a04' : undefined }}>
+                            {pnDisplay}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{li.quantity}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
