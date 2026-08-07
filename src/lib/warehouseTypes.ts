@@ -125,6 +125,18 @@ export interface ScanEntry {
   mergeConflicts?:  string[];
   mergeScenario?:   MergeScenario;
   ocrDurationMs?:   number;
+  // Phase B+ OCR diagnostics
+  ocrStatus?:       'RUNNING' | 'DONE' | 'FAILED';
+  ocrCanvasSize?:   string;   // "1280×720" — captured at scan time
+  ocrMergeApplied?: boolean;  // whether OCR added meaningful data
+  ocrPasses?: Array<{
+    passId:     string;   // 'A' | 'B' | 'C'
+    label:      string;   // 'Full frame' | 'Center 50%' | 'Upper 40%'
+    rawText:    string;
+    confidence: number;   // 0–100 from Tesseract
+    durationMs: number;
+    candidates: string[]; // item type tokens accepted in this pass
+  }>;
 }
 
 export interface SessionDetails {

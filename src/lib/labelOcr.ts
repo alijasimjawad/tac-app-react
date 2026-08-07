@@ -1,15 +1,33 @@
 // On-device OCR for warehouse label reading using Tesseract.js (WebAssembly).
 // No label images are uploaded or retained — all recognition is performed locally.
 // The Tesseract worker is lazily initialized on first use and reused within the session.
+//
+// Multi-pass strategy:
+//   Pass A — Full frame at native resolution (broad coverage)
+//   Pass B — Center 50%×50% crop, upscaled to ≥1600 px (main label area, higher detail)
+//   Pass C — Upper 40% strip, upscaled to ≥1600 px (Nokia item codes often at label top)
+// Candidates from all passes are merged and deduplicated.
+
+export interface OcrPassResult {
+  passId:     string;   // 'A' | 'B' | 'C'
+  label:      string;   // human-readable description
+  rawText:    string;   // exact Tesseract output for this pass
+  confidence: number;   // 0–100 from Tesseract
+  durationMs: number;
+  candidates: string[]; // item type tokens accepted in this pass
+}
 
 export interface OcrResult {
-  rawText:                string;
+  rawText:                string;               // merged text from all passes (separator: \n---\n)
   itemTypeCandidates:     string[];
   partNumberCandidates:   string[];
   serialNumberCandidates: string[];
-  confidence:             number;   // 0–100 from Tesseract
+  confidence:             number;               // average across passes
   source:                 'OCR';
-  durationMs:             number;
+  durationMs:             number;               // wall-clock total
+  passes?:                OcrPassResult[];      // per-pass detail for diagnostics
+  canvasWidth?:           number;               // source frame dimensions at capture time
+  canvasHeight?:          number;
 }
 
 export interface ParsedLabelText {
@@ -30,16 +48,16 @@ const SN_LABELED_RE = /(?:S\/N|Serial(?:\s*N(?:o\.?|umber)?)?|SN)[:\s]+([A-Z0-9]
 // Nokia SN standalone patterns with common Nokia SN prefixes
 const NOKIA_SN_RE   = /\b((?:DH|N9|1M)[A-Z0-9]{7,18})\b/g;
 
-// Generic item type token: 3–8 chars, starts with letter, all uppercase alphanumeric
+// Generic item type token: 3–8 chars starting with a letter, all uppercase alphanumeric.
+// Matches Nokia type codes (AHGA, ABIO, FXDA…) and Item Master codes (variable length).
 const ITEM_TYPE_TOKEN_RE = /\b([A-Z][A-Z0-9]{2,7})\b/g;
 
-// Nokia equipment type code pattern: exactly 4 uppercase letters (AHGA, ABIO, FXDA…)
-// No digits — distinguishes codes from alphanumeric SNs/PNs
+// Nokia equipment type code pattern: exactly 4 uppercase letters, no digits.
+// Catches AHGA, ABIO, FXDA, FXEA, etc. without requiring a hardcoded list.
 const NOKIA_EQUIP_CODE_RE = /^[A-Z]{4}$/;
 
-// Common label words that must NOT be extracted as item type codes.
-// Checked before Item Master lookup so vocabulary entries that are also noise words
-// (e.g. MADE, NOKIA) are still rejected.
+// Words that must never be extracted as item type codes.
+// Checked BEFORE Item Master lookup so even vocabulary words are rejected if noisy.
 const EXCLUDED_TOKENS = new Set([
   // English label noise
   'FROM', 'WITH', 'THIS', 'THAT', 'MADE', 'DATE', 'OVER', 'ALSO',
@@ -48,7 +66,7 @@ const EXCLUDED_TOKENS = new Set([
   // Nokia brand / geography / generic hardware words
   'NOKIA', 'CHINA', 'NETWORKS', 'SOLUTIONS', 'SYSTEMS', 'OUTDOOR',
   'INDOOR', 'VENDOR', 'INTL', 'CORP', 'ORIG', 'ASSY', 'OPER',
-  // Shipping / freight label words
+  // Shipping / freight label words (must not false-positive as Nokia type codes)
   'CARE', 'SIDE', 'KEEP', 'COOL', 'HAND', 'FRAG', 'PACK', 'LIFT',
   'PUSH', 'PULL', 'STOP', 'READ', 'SIGN', 'NOTE', 'WARD', 'HOLD',
   // Item field label words
@@ -65,11 +83,11 @@ export function parseLabel(text: string, itemTypeCodes: Set<string>): ParsedLabe
   const itemTypes = new Set<string>();
 
   // Generic candidate extraction:
-  //   1. Token 3–8 chars starting with letter (catches AHGA, ABIO, etc.)
-  //   2. Reject known noise words
-  //   3. Add if in Item Master vocabulary (HIGH confidence)
-  //   4. OR if it matches Nokia 4-letter equipment code pattern (MEDIUM confidence)
-  //      — these are all-uppercase 4-letter codes like AHGA, ABIO, FXDA
+  //   1. Token 3–8 chars starting with [A-Z], all [A-Z0-9]
+  //   2. Reject noise words
+  //   3. Accept if in Item Master vocabulary (HIGH confidence)
+  //   4. Accept if matches Nokia 4-letter equipment code pattern (MEDIUM confidence)
+  //      — all-uppercase 4-letter codes: AHGA, ABIO, FXDA, FXEA, etc.
   for (const m of upper.matchAll(ITEM_TYPE_TOKEN_RE)) {
     const tok = m[1];
     if (EXCLUDED_TOKENS.has(tok)) continue;
@@ -116,15 +134,33 @@ export function captureVideoFrame(video: HTMLVideoElement): HTMLCanvasElement {
   return canvas;
 }
 
-// ── Image preprocessing ───────────────────────────────────────────────────────
-// Upscales if too small, converts to grayscale, and stretches contrast.
-// Better Tesseract accuracy on phone camera frames (often low-contrast, small).
-// The returned canvas is a NEW canvas — caller must discard it after OCR.
+// ── Canvas utilities ──────────────────────────────────────────────────────────
 
-function preprocessCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+// Crop a rectangular region from src (by fraction of dimensions) into a new canvas.
+// Does NOT modify src — caller must discard src separately.
+function cropRegion(
+  src: HTMLCanvasElement,
+  xf: number, yf: number,
+  wf: number, hf: number,
+): HTMLCanvasElement {
+  const sx = Math.round(src.width  * xf);
+  const sy = Math.round(src.height * yf);
+  const sw = Math.max(1, Math.round(src.width  * wf));
+  const sh = Math.max(1, Math.round(src.height * hf));
   const dst = document.createElement('canvas');
-  // Upscale to at least 1200 px wide for Tesseract accuracy; cap at 3×
-  const scale = Math.max(1, Math.min(3, Math.round(1200 / Math.max(src.width, 1))));
+  dst.width  = sw;
+  dst.height = sh;
+  const ctx = dst.getContext('2d');
+  if (ctx) ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+  return dst;
+}
+
+// Preprocess for Tesseract: upscale to targetWidth (min), convert to grayscale,
+// apply contrast stretch. Returns a NEW canvas — caller discards it after OCR.
+function preprocessCanvas(src: HTMLCanvasElement, targetWidth = 1200): HTMLCanvasElement {
+  const dst = document.createElement('canvas');
+  // Use ceil so ROI crops smaller than targetWidth are always upscaled
+  const scale = Math.max(1, Math.min(4, Math.ceil(targetWidth / Math.max(src.width, 1))));
   dst.width  = src.width  * scale;
   dst.height = src.height * scale;
 
@@ -151,7 +187,6 @@ function preprocessCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
     );
     const v = Math.max(0, Math.min(255, lum));
     d[i] = d[i + 1] = d[i + 2] = v;
-    // alpha (d[i+3]) unchanged
   }
   ctx.putImageData(imgData, 0, 0);
   return dst;
@@ -183,52 +218,125 @@ function getOcrWorker(): Promise<OcrWorker> {
 }
 
 // ── Core OCR runner (private) ─────────────────────────────────────────────────
+// Preprocesses the canvas at targetWidth, runs Tesseract, discards the processed copy.
+// Does NOT discard the source canvas — caller manages source lifecycle.
 
 async function runOcrOnCanvas(
   canvas: HTMLCanvasElement,
+  targetWidth = 1200,
 ): Promise<{ text: string; confidence: number; durationMs: number }> {
   const t0 = Date.now();
-  const processed = preprocessCanvas(canvas);
+  const processed = preprocessCanvas(canvas, targetWidth);
   const worker = await getOcrWorker();
   const { data } = await worker.recognize(processed);
-  processed.width = 0; processed.height = 0; // discard preprocessed copy
+  processed.width = 0; processed.height = 0; // discard preprocessed copy immediately
   return { text: data.text, confidence: Math.round(data.confidence), durationMs: Date.now() - t0 };
 }
 
-// ── Public: OCR on a pre-captured canvas (Phase B auto-capture flow) ──────────
-// The caller captures the frame synchronously at barcode-decode time, then passes
-// the canvas here for async processing. Caller must NOT reuse or discard the
-// canvas before this returns — this function discards it after OCR.
+// ── Public: Multi-pass OCR on a pre-captured canvas ───────────────────────────
+// Three passes with increasing ROI focus:
+//   A  Full frame (broad coverage, lower per-character resolution)
+//   B  Center 50%×50% crop upscaled to 1600 px (label typically centred)
+//   C  Upper 40% strip upscaled to 1600 px (Nokia item codes at top of label)
+// Candidates and fields from all passes are merged and deduplicated.
+// The canvas is DISCARDED inside this function — do not reuse after calling.
 
 export async function ocrCanvasFrame(
   canvas: HTMLCanvasElement,
   itemTypeCodes: Set<string>,
 ): Promise<OcrResult> {
-  const { text, confidence, durationMs } = await runOcrOnCanvas(canvas);
-  // Discard source frame immediately — no label images are retained
-  canvas.width = 0; canvas.height = 0;
-  const parsed = parseLabel(text, itemTypeCodes);
+  const t0 = Date.now();
+  const canvasWidth  = canvas.width;
+  const canvasHeight = canvas.height;
+
+  const passes: OcrPassResult[]  = [];
+  const allTypes   = new Set<string>();
+  const allPNs     = new Set<string>();
+  const allSNs     = new Set<string>();
+  const rawTexts: string[] = [];
+  let sumConf = 0;
+
+  // ── Pass A: Full frame ───────────────────────────────────────────────────
+  {
+    const pt = Date.now();
+    const { text, confidence } = await runOcrOnCanvas(canvas, 1200);
+    const parsed = parseLabel(text, itemTypeCodes);
+    parsed.itemTypes.forEach(t => allTypes.add(t));
+    parsed.partNumbers.forEach(p => allPNs.add(p));
+    parsed.serialNumbers.forEach(s => allSNs.add(s));
+    rawTexts.push(text);
+    sumConf += confidence;
+    passes.push({
+      passId: 'A', label: 'Full frame',
+      rawText: text, confidence, durationMs: Date.now() - pt,
+      candidates: parsed.itemTypes,
+    });
+  }
+
+  // ── Pass B: Center 50%×50% crop — label usually centred in frame ─────────
+  {
+    const pt = Date.now();
+    const crop = cropRegion(canvas, 0.25, 0.25, 0.5, 0.5);
+    const { text, confidence } = await runOcrOnCanvas(crop, 1600);
+    crop.width = 0; crop.height = 0;
+    const parsed = parseLabel(text, itemTypeCodes);
+    parsed.itemTypes.forEach(t => allTypes.add(t));
+    parsed.partNumbers.forEach(p => allPNs.add(p));
+    parsed.serialNumbers.forEach(s => allSNs.add(s));
+    rawTexts.push(text);
+    sumConf += confidence;
+    passes.push({
+      passId: 'B', label: 'Center 50%',
+      rawText: text, confidence, durationMs: Date.now() - pt,
+      candidates: parsed.itemTypes,
+    });
+  }
+
+  // ── Pass C: Upper 40% strip — Nokia item codes printed above DataMatrix ───
+  {
+    const pt = Date.now();
+    const crop = cropRegion(canvas, 0, 0, 1, 0.4);
+    const { text, confidence } = await runOcrOnCanvas(crop, 1600);
+    crop.width = 0; crop.height = 0;
+    const parsed = parseLabel(text, itemTypeCodes);
+    parsed.itemTypes.forEach(t => allTypes.add(t));
+    parsed.partNumbers.forEach(p => allPNs.add(p));
+    parsed.serialNumbers.forEach(s => allSNs.add(s));
+    rawTexts.push(text);
+    sumConf += confidence;
+    passes.push({
+      passId: 'C', label: 'Upper 40%',
+      rawText: text, confidence, durationMs: Date.now() - pt,
+      candidates: parsed.itemTypes,
+    });
+  }
+
+  // Discard source canvas — no label images are retained after OCR
+  canvas.width  = 0;
+  canvas.height = 0;
+
   return {
-    rawText:                text,
-    itemTypeCandidates:     parsed.itemTypes,
-    partNumberCandidates:   parsed.partNumbers,
-    serialNumberCandidates: parsed.serialNumbers,
-    confidence,
-    source:    'OCR',
-    durationMs,
+    rawText:                rawTexts.join('\n\n---\n\n'),
+    itemTypeCandidates:     [...allTypes],
+    partNumberCandidates:   [...allPNs],
+    serialNumberCandidates: [...allSNs],
+    confidence:             Math.round(sumConf / passes.length),
+    source:                 'OCR',
+    durationMs:             Date.now() - t0,
+    passes,
+    canvasWidth,
+    canvasHeight,
   };
 }
 
 // ── Public: OCR from live video (manual fallback) ─────────────────────────────
-// Captures a frame from the video element, runs preprocessing, then OCR.
-// Use ocrCanvasFrame() instead when you need to capture at barcode-decode time.
 
 export async function readLabel(
   video: HTMLVideoElement,
   itemTypeCodes: Set<string>,
 ): Promise<OcrResult> {
   const canvas = captureVideoFrame(video);
-  return ocrCanvasFrame(canvas, itemTypeCodes);
+  return ocrCanvasFrame(canvas, itemTypeCodes); // canvas discarded inside
 }
 
 // Call on component unmount to release WebAssembly memory

@@ -261,6 +261,11 @@ export default function WarehouseReceive() {
         mergeConflicts:   merged.conflicts,
         mergeScenario:    merged.scenario,
         ocrDurationMs:    ocr.durationMs,
+        ocrStatus:        'DONE' as const,
+        ocrPasses:        ocr.passes,
+        ocrMergeApplied:  !!(merged.itemType && !e.itemTypeRaw)
+                          || !!(merged.partNumber && !e.partNumber)
+                          || !!(merged.serialNumber && !e.serialNumber),
       };
     }));
   }
@@ -281,6 +286,9 @@ export default function WarehouseReceive() {
     } catch {
       // Silent failure — barcode data is already saved; OCR is supplemental
       canvas.width = 0; canvas.height = 0;
+      setScanEntries(prev => prev.map(e =>
+        e.localId === localId ? { ...e, ocrStatus: 'FAILED' as const } : e
+      ));
     }
   }
 
@@ -497,6 +505,8 @@ export default function WarehouseReceive() {
       parseStatus,
       matchStatus,
       scanClassification: classification,
+      ocrStatus:          autoOcrCanvas ? 'RUNNING' : undefined,
+      ocrCanvasSize:      autoOcrCanvas ? `${autoOcrCanvas.width}×${autoOcrCanvas.height}` : undefined,
     };
 
     if (snNorm) sessionSNs.current.add(snNorm);
@@ -1022,6 +1032,16 @@ export default function WarehouseReceive() {
                         <div className={css.scanSN}>{e.serialNumber || e.rawValue}</div>
                         {e.partNumber && <div className={css.scanPN}>PN: {e.partNumber}</div>}
 
+                        {/* OCR-detected item type — visible even when not in Item Master */}
+                        {e.itemTypeRaw && !e.resolvedItemCode && (
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#818cf8', marginTop: 2 }}>
+                            TYPE: {e.itemTypeRaw}{e.ocrItemType ? ' [OCR]' : ''}
+                          </div>
+                        )}
+                        {e.ocrStatus === 'RUNNING' && (
+                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>⏳ OCR…</div>
+                        )}
+
                         {/* Resolved item name */}
                         {e.resolvedItemName && (
                           <div className={css.scanItem}>{e.resolvedItemName}</div>
@@ -1235,15 +1255,16 @@ function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
       <DiagRow label="MATCH" val={e.matchStatus} />
       <DiagRow label="CLASS" val={e.scanClassification} />
 
-      {/* OCR section — shown only when OCR was run on this entry */}
-      {e.mergeScenario != null && (
+      {/* OCR section — shown whenever OCR status is known */}
+      {(e.mergeScenario != null || e.ocrStatus) && (
         <>
           <div className={css.scanDiagRow} style={{ marginTop: 5, paddingTop: 4, borderTop: '1px solid #1e293b' }}>
             <span className={css.scanDiagKey} style={{ color: '#818cf8' }}>OCR</span>
             <span className={css.scanDiagVal} style={{ color: '#475569' }}>
-              {e.mergeScenario} · {e.ocrDurationMs ?? '?'}ms
+              {e.ocrStatus ?? '?'}{e.mergeScenario ? ` · ${e.mergeScenario}` : ''}{e.ocrDurationMs != null ? ` · ${e.ocrDurationMs}ms` : ''}
             </span>
           </div>
+          {e.ocrCanvasSize && <DiagRow label="FRAME"    val={e.ocrCanvasSize} />}
           {e.ocrItemType    && <DiagRow label="TYPE"     val={e.ocrItemType} />}
           {e.ocrPartNumber  && <DiagRow label="PN"       val={e.ocrPartNumber} />}
           {e.ocrSerialNumber && <DiagRow label="SN"      val={e.ocrSerialNumber} />}
@@ -1254,6 +1275,33 @@ function NokiaDiagBlock({ entry: e }: { entry: ScanEntry }) {
             <DiagRow label="TEXT" val={
               e.ocrRawText.substring(0, 60) + (e.ocrRawText.length > 60 ? '…' : '')
             } />
+          )}
+          {/* Per-pass breakdown — key for diagnosing which region found the type code */}
+          {e.ocrPasses && e.ocrPasses.length > 0 && (
+            <>
+              <div className={css.scanDiagRow} style={{ marginTop: 3 }}>
+                <span className={css.scanDiagKey} style={{ color: '#64748b', fontSize: 10 }}>PASSES</span>
+                <span className={css.scanDiagVal} style={{ color: '#475569', fontSize: 10 }}>CANDIDATES · CONF · TIME</span>
+              </div>
+              {e.ocrPasses.map(p => (
+                <div key={p.passId} className={css.scanDiagRow}>
+                  <span className={css.scanDiagKey} style={{
+                    color: p.candidates.length > 0 ? '#34d399' : '#475569', fontSize: 10, minWidth: 70,
+                  }}>
+                    {p.passId}:{p.label}
+                  </span>
+                  <span className={css.scanDiagVal} style={{ fontSize: 10 }}>
+                    {p.candidates.length > 0 ? p.candidates.join(', ') : '—'} · {p.confidence}% · {p.durationMs}ms
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+          {e.ocrMergeApplied === true && (
+            <div className={css.scanDiagRow}>
+              <span className={css.scanDiagKey} style={{ color: '#34d399', fontSize: 10 }}>MERGE</span>
+              <span className={css.scanDiagVal} style={{ fontSize: 10, color: '#34d399' }}>OCR added new data</span>
+            </div>
           )}
         </>
       )}
