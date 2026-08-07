@@ -96,6 +96,12 @@ export default function WarehouseReceive() {
 
   // ── Load master data ──────────────────────────────────────────────────────
   useEffect(() => {
+    // Temporary Phase B build verification marker — remove after confirming deploy
+    console.log('[WarehouseScannerBuild]', {
+      phase: 'B',
+      commit: 'b71ef3b',
+      autoOcrEnabled: true,
+    });
     (async () => {
       const [wRes, iRes] = await Promise.all([
         supabase.from('warehouses').select('*').eq('is_active', true).order('name'),
@@ -740,6 +746,18 @@ export default function WarehouseReceive() {
       {/* ── Step 2: Scan ─────────────────────────────────────────────────── */}
       {step === 2 && (
         <>
+          {/* Temporary Phase B build verification banner — remove after confirming deploy */}
+          <div style={{
+            background: '#0f172a', color: '#818cf8', fontFamily: 'monospace',
+            fontSize: 10, padding: '4px 10px', borderRadius: 6, marginBottom: 10,
+            display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap',
+            border: '1px solid #1e293b',
+          }}>
+            <span>BUILD: PHASE-B</span>
+            <span style={{ color: '#94a3b8' }}>COMMIT: b71ef3b</span>
+            <span style={{ color: '#34d399' }}>AUTO OCR: READY</span>
+          </div>
+
           {/* KPI strip */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
             <KpiChip label="Scanned"      value={scanEntries.length} color="#6366f1" />
@@ -1275,6 +1293,9 @@ function DiagPanel({ data, loading }: { data: ScanDiagnostics | null; loading: b
   if (!data) return null;
 
   const rows: Array<{ label: string; ok: boolean; value: string }> = [
+    { label: 'Build phase',  ok: true, value: 'PHASE-B (auto-snapshot OCR)' },
+    { label: 'Commit',       ok: true, value: 'b71ef3b' },
+    { label: 'Auto OCR',     ok: true, value: 'READY — fires at barcode decode' },
     { label: 'Secure Context (HTTPS)', ok: data.secureContext, value: data.secureContext ? 'Yes' : 'No — camera requires HTTPS' },
     { label: 'navigator.mediaDevices', ok: data.mediaDevicesAvailable, value: data.mediaDevicesAvailable ? 'Available' : 'Not available' },
     { label: 'getUserMedia', ok: data.getUserMediaAvailable, value: data.getUserMediaAvailable ? 'Available' : 'Not available' },
