@@ -89,7 +89,11 @@ export interface StockMovement {
 
 // ── Scan session types (client-side) ─────────────────────────────────────────
 
-export type ScanEntryStatus = 'VALID' | 'PENDING' | 'DUPLICATE' | 'ERROR';
+// Classification of a raw scan's content (independent of item master match)
+export type ScanClassification = 'VALID_ITEM' | 'PARTIAL_ITEM' | 'AUXILIARY_CODE' | 'UNKNOWN_CODE' | 'DUPLICATE';
+
+// Duplicate scans never become entries; 'ERROR' reserved for future use
+export type ScanEntryStatus = 'VALID' | 'PENDING' | 'ERROR';
 
 export interface ScanEntry {
   localId: string;           // client-side UUID (crypto.randomUUID())
@@ -106,9 +110,10 @@ export interface ScanEntry {
   statusMsg: string | null;
   scannedAt: string;         // ISO timestamp
   manually: boolean;
-  // Diagnostic fields — capture parser decisions for real-world label inspection
-  parsingProfile: string;    // e.g. 'nokia-semicolon', 'generic-unknown'
-  parsedStatus: string;      // 'resolved' | 'partially_resolved' | 'unresolved'
+  parsingProfile: string;
+  parseStatus: 'RESOLVED' | 'PARTIAL' | 'FAILED';   // parser-level outcome
+  matchStatus: 'MATCHED' | 'UNMATCHED' | 'NO_PN';   // item master lookup outcome
+  scanClassification: ScanClassification;
 }
 
 export interface SessionDetails {

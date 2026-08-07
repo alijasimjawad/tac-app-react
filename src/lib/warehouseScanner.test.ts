@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseScan, hasNokiaDI, parseNokiaDI } from './warehouseScanner';
+import { parseScan, hasNokiaDI, parseNokiaDI, classifyScan } from './warehouseScanner';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -239,5 +239,81 @@ describe('Malformed and edge-case payloads', () => {
     const raw = '\x1d1P475266B.102\x1dSDH252030925\x1d';
     const result = parseScan(raw, 'DATA_MATRIX');
     expect(result.rawValue).toBe(raw);
+  });
+});
+
+// ── classifyScan() ────────────────────────────────────────────────────────────
+
+describe('classifyScan()', () => {
+  it('VALID_ITEM — Nokia DataMatrix with both PN and SN (HIGH confidence)', () => {
+    const raw = gs1('1P475266B.102', 'SDH252030925');
+    const parsed = parseScan(raw, 'DATA_MATRIX');
+    expect(classifyScan(parsed)).toBe('VALID_ITEM');
+  });
+
+  it('VALID_ITEM — Nokia standalone SN DI (SDH252030925, MEDIUM confidence)', () => {
+    const parsed = parseScan('SDH252030925', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('VALID_ITEM');
+  });
+
+  it('VALID_ITEM — Nokia N-series SN (N90001234567, MEDIUM confidence)', () => {
+    const parsed = parseScan('N90001234567', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('VALID_ITEM');
+  });
+
+  it('PARTIAL_ITEM — generic SN only (LOW confidence)', () => {
+    const parsed = parseScan('ABC123456', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('PARTIAL_ITEM');
+  });
+
+  it('AUXILIARY_CODE — Q1 (two chars)', () => {
+    const parsed = parseScan('Q1', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('AUXILIARY_CODE — single char V', () => {
+    const parsed = parseScan('V', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('AUXILIARY_CODE — pure numeric 8569', () => {
+    const parsed = parseScan('8569', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('AUXILIARY_CODE — pure numeric 915208 (six digits)', () => {
+    const parsed = parseScan('915208', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('AUXILIARY_CODE — Nokia quantity DI Q001', () => {
+    const parsed = parseScan('Q001', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('AUXILIARY_CODE — 12345678 (eight digit numeric limit)', () => {
+    const parsed = parseScan('12345678', 'CODE_128');
+    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+  });
+
+  it('UNKNOWN_CODE — random garbage with no SN or PN', () => {
+    const parsed = parseScan('!!!@@@###', 'UNKNOWN');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_CODE');
+  });
+
+  it('UNKNOWN_CODE — control characters only', () => {
+    const parsed = parseScan('\x1d\x1e\x04', 'DATA_MATRIX');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_CODE');
+  });
+
+  it('not AUXILIARY_CODE for 9-digit numeric (could be a SN)', () => {
+    const parsed = parseScan('123456789', 'CODE_128');
+    // 9 digits exceeds the 1-8 limit — not filtered as auxiliary
+    expect(classifyScan(parsed)).not.toBe('AUXILIARY_CODE');
+  });
+
+  it('not AUXILIARY_CODE for alphanumeric SN (ABC123456)', () => {
+    const parsed = parseScan('ABC123456', 'CODE_128');
+    expect(classifyScan(parsed)).not.toBe('AUXILIARY_CODE');
   });
 });

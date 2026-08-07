@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import {
-  CameraScanner, UsbScanner, parseScan, checkCameraPermission,
+  CameraScanner, UsbScanner, parseScan, classifyScan, checkCameraPermission,
   cameraErrorMessage, getScanDiagnostics,
   type CameraPermission, type ScanDiagnostics,
 } from '../lib/warehouseScanner';
@@ -13,6 +13,7 @@ import css from './Warehouse.module.css';
 
 type Step = 1 | 2 | 3;
 type InputMode = 'camera' | 'usb' | 'manual';
+type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN';
 
 const EMPTY_SESSION: SessionDetails = {
   warehouseId: '', receiptDate: new Date().toISOString().slice(0, 10),
@@ -38,11 +39,28 @@ export default function WarehouseReceive() {
   const [diagLoading, setDiagLoading] = useState(false);
   const [scanFlash, setScanFlash] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const scannerRef = useRef<CameraScanner | null>(null);
-  const usbRef = useRef<UsbScanner | null>(null);
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // HUD overlay
+  const [hudState, setHudState] = useState<HudState>('IDLE');
+  // Duplicate highlight — briefly marks the existing entry
+  const [highlightSN, setHighlightSN] = useState<string | null>(null);
+  // Duplicate event counter (not entry count)
+  const [duplicateCount, setDuplicateCount] = useState(0);
+  // Collapsed/expanded diagnostics per scan card
+  const [expandedDiags, setExpandedDiags] = useState<Set<string>>(new Set());
+
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const scannerRef  = useRef<CameraScanner | null>(null);
+  const usbRef      = useRef<UsbScanner | null>(null);
+  const flashTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hudTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hlTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // O(1) session dedup — holds normalized SNs of all entries in this session
+  const sessionSNs  = useRef<Set<string>>(new Set());
+  // O(1) item master lookup maps built when items load
+  const itemsByPN   = useRef<Map<string, InventoryItem>>(new Map());
+  const itemsByCode = useRef<Map<string, InventoryItem>>(new Map());
 
   const [scanEntries, setScanEntries] = useState<ScanEntry[]>([]);
 
@@ -77,7 +95,20 @@ export default function WarehouseReceive() {
         supabase.from('inventory_items').select('*').eq('is_active', true).order('item_name'),
       ]);
       if (wRes.data) setWarehouses(wRes.data as Warehouse[]);
-      if (iRes.data) setItems(iRes.data as InventoryItem[]);
+      if (iRes.data) {
+        const rows = iRes.data as InventoryItem[];
+        setItems(rows);
+        // Build O(1) lookup maps
+        const byPN   = new Map<string, InventoryItem>();
+        const byCode = new Map<string, InventoryItem>();
+        for (const it of rows) {
+          if (it.part_number) byPN.set(it.part_number.toUpperCase(), it);
+          byCode.set(it.item_code.toUpperCase(), it);
+          if (it.item_type) byCode.set(it.item_type.toUpperCase(), it);
+        }
+        itemsByPN.current   = byPN;
+        itemsByCode.current = byCode;
+      }
       const perm = await checkCameraPermission();
       setCamPerm(perm);
     })();
@@ -92,9 +123,34 @@ export default function WarehouseReceive() {
     setDiagLoading(false);
   }
 
+  // ── HUD overlay ───────────────────────────────────────────────────────────
+  function setHud(state: 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN') {
+    setHudState(state);
+    if (hudTimer.current) clearTimeout(hudTimer.current);
+    hudTimer.current = setTimeout(() => setHudState('IDLE'), 1200);
+  }
+
+  // ── Audio / haptic feedback ───────────────────────────────────────────────
+  function playSuccessBeep() {
+    try {
+      type AC = typeof AudioContext;
+      const Ctor: AC = window.AudioContext ??
+        (window as unknown as { webkitAudioContext: AC }).webkitAudioContext;
+      if (!Ctor) return;
+      const ctx  = new Ctor();
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 1200;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start(); osc.stop(ctx.currentTime + 0.15);
+    } catch { /* AudioContext not available */ }
+  }
+  function vibrateOnce() { navigator.vibrate?.(50); }
+  function vibrateDup()  { navigator.vibrate?.([50, 50, 50]); }
+
   // ── Camera ────────────────────────────────────────────────────────────────
-  // FIX: <video> is always in the DOM when inputMode === 'camera'.
-  // startCamera() now always finds videoRef.current !== null.
   async function startCamera() {
     if (!videoRef.current) return;
     setCamErr(null);
@@ -126,6 +182,7 @@ export default function WarehouseReceive() {
     scannerRef.current = null;
     setCamActive(false);
     setTorch(false);
+    setHudState('IDLE');
   }
 
   async function toggleTorch() {
@@ -158,105 +215,125 @@ export default function WarehouseReceive() {
     return () => { usb.detach(); usbRef.current = null; };
   }, [step, inputMode]);
 
-  // ── Resolve item from parsed scan ─────────────────────────────────────────
-  const resolveItem = useCallback((parsed: ReturnType<typeof parseScan>, itemList: InventoryItem[]) => {
-    if (!itemList.length) return { id: null, name: null, code: null };
-    if (parsed.partNumber) {
-      const pn = parsed.partNumber.toUpperCase();
-      const m = itemList.find(it => (it.part_number || '').toUpperCase() === pn);
-      if (m) return { id: m.id, name: m.item_name, code: m.item_code };
-    }
-    if (parsed.itemType) {
-      const it = parsed.itemType.toUpperCase();
-      const m = itemList.find(i => (i.item_type || '').toUpperCase() === it || i.item_code.toUpperCase() === it);
-      if (m) return { id: m.id, name: m.item_name, code: m.item_code };
-    }
-    return { id: null, name: null, code: null };
-  }, []);
-
+  // ── Core scan handler ─────────────────────────────────────────────────────
   function handleRawScan(raw: string, symbology: string, manually: boolean) {
-    // Flash the video border green on each successful scan
     setScanFlash(true);
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = setTimeout(() => setScanFlash(false), 250);
 
-    const parsed   = parseScan(raw, symbology);
-    const sn       = parsed.serialNumber;
-    const snNorm   = sn ? normalizeSN(sn) : null;
-    const resolved = resolveItem(parsed, items);
+    const parsed         = parseScan(raw, symbology);
+    const classification = classifyScan(parsed);
 
-    // Structured diagnostic log — exact ZXing output before any transformation
-    console.log('[ScanDiag]', {
-      rawValue:   raw,
-      symbology,
-      parsed: {
-        itemType:     parsed.itemType,
-        partNumber:   parsed.partNumber,
-        serialNumber: parsed.serialNumber,
-      },
-      parser:           parsed.parsingProfile,
-      resolutionStatus: parsed.status,
-    });
+    // Filter auxiliary / unknown noise from camera and USB — not from manual entry
+    if (!manually && (classification === 'AUXILIARY_CODE' || classification === 'UNKNOWN_CODE')) {
+      return;
+    }
+
+    const sn     = parsed.serialNumber;
+    const snNorm = sn ? normalizeSN(sn) : null;
+
+    // O(1) duplicate check
+    if (snNorm && sessionSNs.current.has(snNorm)) {
+      setDuplicateCount(c => c + 1);
+      // Briefly highlight the existing card
+      setHighlightSN(snNorm);
+      if (hlTimer.current) clearTimeout(hlTimer.current);
+      hlTimer.current = setTimeout(() => setHighlightSN(null), 2000);
+      setHud('DUPLICATE');
+      vibrateDup();
+      console.log('[ScanDiag] DUPLICATE', { rawValue: raw, snNorm });
+      return;
+    }
+
+    // O(1) item master lookup
+    const resolveItem = (): { id: string | null; name: string | null; code: string | null } => {
+      if (parsed.partNumber) {
+        const it = itemsByPN.current.get(parsed.partNumber.toUpperCase());
+        if (it) return { id: it.id, name: it.item_name, code: it.item_code };
+      }
+      if (parsed.itemType) {
+        const it = itemsByCode.current.get(parsed.itemType.toUpperCase());
+        if (it) return { id: it.id, name: it.item_name, code: it.item_code };
+      }
+      return { id: null, name: null, code: null };
+    };
+    const resolved = resolveItem();
+
+    const parseStatus: ScanEntry['parseStatus'] =
+      parsed.status === 'resolved'           ? 'RESOLVED' :
+      parsed.status === 'partially_resolved' ? 'PARTIAL'  : 'FAILED';
+
+    const matchStatus: ScanEntry['matchStatus'] =
+      resolved.id       ? 'MATCHED'   :
+      parsed.partNumber ? 'UNMATCHED' : 'NO_PN';
+
+    const status: ScanEntry['status'] = resolved.id ? 'VALID' : 'PENDING';
 
     const localId = crypto.randomUUID();
     const entry: ScanEntry = {
       localId,
-      rawValue:         raw,
+      rawValue:           raw,
       symbology,
-      serialNumber:     sn,
-      serialNumberNorm: snNorm,
-      partNumber:       parsed.partNumber,
-      itemTypeRaw:      parsed.itemType,
-      resolvedItemId:   resolved.id,
-      resolvedItemName: resolved.name,
-      resolvedItemCode: resolved.code,
-      status:           'PENDING',
-      statusMsg:        null,
-      scannedAt:        new Date().toISOString(),
+      serialNumber:       sn,
+      serialNumberNorm:   snNorm,
+      partNumber:         parsed.partNumber,
+      itemTypeRaw:        parsed.itemType,
+      resolvedItemId:     resolved.id,
+      resolvedItemName:   resolved.name,
+      resolvedItemCode:   resolved.code,
+      status,
+      statusMsg:          resolved.id ? null : 'Item not matched — select manually',
+      scannedAt:          new Date().toISOString(),
       manually,
-      parsingProfile:   parsed.parsingProfile,
-      parsedStatus:     parsed.status,
+      parsingProfile:     parsed.parsingProfile,
+      parseStatus,
+      matchStatus,
+      scanClassification: classification,
     };
 
-    setScanEntries(prev => {
-      if (snNorm) {
-        const dup = prev.find(e => e.serialNumberNorm === snNorm);
-        if (dup) {
-          return [
-            ...prev.map(e => e.localId === dup.localId
-              ? ({ ...e, status: 'DUPLICATE' as const, statusMsg: 'Duplicate in this session' } satisfies ScanEntry)
-              : e
-            ),
-            { ...entry, status: 'DUPLICATE' as const, statusMsg: 'Already scanned' } satisfies ScanEntry,
-          ];
-        }
-      }
-      if (!resolved.id) {
-        return [{ ...entry, status: 'PENDING' as const, statusMsg: 'Item not matched — select manually' } satisfies ScanEntry, ...prev];
-      }
-      return [{ ...entry, status: 'VALID' as const, statusMsg: null } satisfies ScanEntry, ...prev];
+    if (snNorm) sessionSNs.current.add(snNorm);
+    setScanEntries(prev => [entry, ...prev]);
+
+    console.log('[ScanDiag]', {
+      rawValue: raw, symbology,
+      parsed: { itemType: parsed.itemType, partNumber: parsed.partNumber, serialNumber: parsed.serialNumber },
+      parser: parsed.parsingProfile, classification, parseStatus, matchStatus,
     });
+
+    if (resolved.id) {
+      setHud('SUCCESS');
+      playSuccessBeep();
+      vibrateOnce();
+    } else {
+      setHud('UNKNOWN');
+    }
   }
 
   function removeEntry(localId: string) {
-    setScanEntries(prev => prev.filter(e => e.localId !== localId));
+    setScanEntries(prev => {
+      const entry = prev.find(e => e.localId === localId);
+      if (entry?.serialNumberNorm) sessionSNs.current.delete(entry.serialNumberNorm);
+      return prev.filter(e => e.localId !== localId);
+    });
+  }
+
+  function toggleDiag(localId: string) {
+    setExpandedDiags(prev => {
+      const next = new Set(prev);
+      next.has(localId) ? next.delete(localId) : next.add(localId);
+      return next;
+    });
   }
 
   function manualSubmit() {
-    const sn   = manualVal.trim();
+    const sn = manualVal.trim();
     if (!sn) { setManualErr('Serial number is required.'); return; }
     setManualErr('');
-
-    // Build semicolon-delimited string if Type or PN provided
     const type = manualType.trim();
     const pn   = manualPN.trim();
     const raw  = (type || pn) ? [type, pn, sn].filter(Boolean).join(';') : sn;
-
     setManualVal('');
-    if (!batchMode) {
-      setManualType('');
-      setManualPN('');
-    }
+    if (!batchMode) { setManualType(''); setManualPN(''); }
     handleRawScan(raw, 'MANUAL', true);
   }
 
@@ -264,12 +341,14 @@ export default function WarehouseReceive() {
     const item = items.find(i => i.id === itemId);
     setScanEntries(prev => prev.map(e =>
       e.localId === localId
-        ? { ...e, resolvedItemId: itemId, resolvedItemName: item?.item_name || null, resolvedItemCode: item?.item_code || null, status: 'VALID', statusMsg: null }
+        ? { ...e, resolvedItemId: itemId, resolvedItemName: item?.item_name || null,
+            resolvedItemCode: item?.item_code || null, status: 'VALID' as const,
+            statusMsg: null, matchStatus: 'MATCHED' as const }
         : e
     ));
   }
 
-  // ── Step validation ────────────────────────────────────────────────────────
+  // ── Step navigation ────────────────────────────────────────────────────────
   function goStep2() {
     setSessionErr('');
     if (!session.warehouseId) { setSessionErr('Select a warehouse.'); return; }
@@ -321,7 +400,8 @@ export default function WarehouseReceive() {
     const groupedForSave: Record<string, { itemId: string; entries: ScanEntry[] }> = {};
     for (const e of validEntries) {
       if (!e.resolvedItemId) continue;
-      if (!groupedForSave[e.resolvedItemId]) groupedForSave[e.resolvedItemId] = { itemId: e.resolvedItemId, entries: [] };
+      if (!groupedForSave[e.resolvedItemId])
+        groupedForSave[e.resolvedItemId] = { itemId: e.resolvedItemId, entries: [] };
       groupedForSave[e.resolvedItemId].entries.push(e);
     }
 
@@ -344,14 +424,12 @@ export default function WarehouseReceive() {
       barcode_symbology: e.symbology,
       scanned_manually:  e.manually,
     }));
-    if (scanLogs.length) {
-      await supabase.from('receiving_scan_log').insert(scanLogs);
-    }
+    if (scanLogs.length) await supabase.from('receiving_scan_log').insert(scanLogs);
 
     if (currentUser) {
       await supabase.from('activity_log').insert({
         user_full_name: currentUser.full_name,
-        action:         `Created goods receipt ${receipt.receipt_number} (${validEntries.length} items)`,
+        action: `Created goods receipt ${receipt.receipt_number} (${validEntries.length} items)`,
       });
     }
 
@@ -362,7 +440,6 @@ export default function WarehouseReceive() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const validCount   = scanEntries.filter(e => e.status === 'VALID').length;
-  const dupCount     = scanEntries.filter(e => e.status === 'DUPLICATE').length;
   const pendingCount = scanEntries.filter(e => e.status === 'PENDING').length;
 
   const grouped = scanEntries
@@ -448,13 +525,13 @@ export default function WarehouseReceive() {
         <>
           {/* KPI strip */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-            <KpiChip label="Scanned" value={scanEntries.length} color="#6366f1" />
-            <KpiChip label="Valid"   value={validCount}         color="#16a34a" />
-            <KpiChip label="Pending" value={pendingCount}       color="#f59e0b" />
-            <KpiChip label="Dup"     value={dupCount}           color="#dc2626" />
+            <KpiChip label="Scanned"      value={scanEntries.length} color="#6366f1" />
+            <KpiChip label="Valid"         value={validCount}         color="#16a34a" />
+            <KpiChip label="Needs Review"  value={pendingCount}       color="#f59e0b" />
+            <KpiChip label="Duplicates"    value={duplicateCount}     color="#dc2626" />
           </div>
 
-          {/* Live item tally — only shown once something is scanned */}
+          {/* Live item tally */}
           {validCount > 0 && (
             <div className={css.groupSummary}>
               {Object.entries(grouped).map(([code, entries]) => (
@@ -484,10 +561,9 @@ export default function WarehouseReceive() {
               {inputMode === 'camera' && (
                 <>
                   {/*
-                   * The <video> element is ALWAYS in the DOM when camera mode is selected.
-                   * We show/hide the wrapper div with CSS display. This ensures videoRef.current
-                   * is non-null when startCamera() is called — previously the video was
-                   * conditionally rendered which caused videoRef.current to be null at click time.
+                   * <video> is ALWAYS in the DOM when camera mode is active.
+                   * We toggle visibility via display. This ensures videoRef.current
+                   * is non-null when startCamera() is called.
                    */}
                   <div style={{ display: camActive ? 'block' : 'none' }}>
                     <div
@@ -497,13 +573,23 @@ export default function WarehouseReceive() {
                       <div className={css.videoOverlay}>
                         <div className={css.scanFrame} />
                       </div>
+                      {/* HUD state banner */}
+                      {hudState !== 'IDLE' && (
+                        <div className={`${css.hudBanner} ${
+                          hudState === 'SUCCESS'   ? css.hudSuccess   :
+                          hudState === 'DUPLICATE' ? css.hudDuplicate : css.hudUnknown
+                        }`}>
+                          {hudState === 'SUCCESS'   ? '✓ Added' :
+                           hudState === 'DUPLICATE' ? '⊘ Duplicate' : '? Unknown'}
+                        </div>
+                      )}
                       <div className={css.videoActions}>
                         {scannerRef.current?.hasTorch() && (
                           <button className={css.videoBtn} onClick={toggleTorch} title="Toggle torch">
                             {torch ? '🔦' : '💡'}
                           </button>
                         )}
-                        <button className={css.videoBtn} onClick={switchCamera} title="Switch camera (front/back)">
+                        <button className={css.videoBtn} onClick={switchCamera} title="Switch camera">
                           🔄
                         </button>
                         <button className={css.videoBtn} onClick={stopCamera} title="Stop camera">
@@ -577,8 +663,6 @@ export default function WarehouseReceive() {
                       </label>
                     </label>
                   </div>
-
-                  {/* Structured fields */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       <div>
@@ -623,7 +707,6 @@ export default function WarehouseReceive() {
                       </div>
                     </div>
                   </div>
-
                   {manualErr && <p className={css.formError} style={{ marginTop: 6 }}>{manualErr}</p>}
                   {batchMode && (
                     <p style={{ fontSize: 11, color: '#6366f1', marginTop: 8, fontWeight: 600 }}>
@@ -643,7 +726,13 @@ export default function WarehouseReceive() {
                 <span className={css.scanCount}>{scanEntries.length} scan{scanEntries.length !== 1 ? 's' : ''}</span>
                 {scanEntries.length > 0 && (
                   <button className={css.btnDanger} style={{ fontSize: 11, height: 26 }}
-                    onClick={() => { if (confirm('Clear all scans?')) setScanEntries([]); }}>
+                    onClick={() => {
+                      if (confirm('Clear all scans?')) {
+                        setScanEntries([]);
+                        sessionSNs.current.clear();
+                        setDuplicateCount(0);
+                      }
+                    }}>
                     Clear all
                   </button>
                 )}
@@ -657,16 +746,36 @@ export default function WarehouseReceive() {
                   {scanEntries.map(e => (
                     <div key={e.localId}
                       className={`${css.scanEntry} ${
-                        e.status === 'VALID'      ? css.scanEntryValid    :
-                        e.status === 'DUPLICATE'  ? css.scanEntryDup     :
-                        e.status === 'ERROR'      ? css.scanEntryError   : css.scanEntryPending
-                      }`}>
+                        e.status === 'VALID' ? css.scanEntryValid :
+                        e.status === 'ERROR' ? css.scanEntryError : css.scanEntryPending
+                      } ${highlightSN && highlightSN === e.serialNumberNorm ? css.scanEntryHighlight : ''}`}>
+
                       <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* Top row: item code badge + match status */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                          {e.resolvedItemCode && (
+                            <span className={css.scanCardItemCode}>{e.resolvedItemCode}</span>
+                          )}
+                          <span className={`${css.badge} ${
+                            e.matchStatus === 'MATCHED'   ? css.badgeGreen :
+                            e.matchStatus === 'UNMATCHED' ? css.badgeAmber : css.badgeSlate
+                          }`} style={{ fontSize: 9, padding: '1px 6px' }}>
+                            {e.matchStatus === 'MATCHED' ? 'MATCHED' :
+                             e.matchStatus === 'UNMATCHED' ? 'NO MATCH' : 'NO PN'}
+                          </span>
+                        </div>
+
+                        {/* SN + PN */}
                         <div className={css.scanSN}>{e.serialNumber || e.rawValue}</div>
                         {e.partNumber && <div className={css.scanPN}>PN: {e.partNumber}</div>}
-                        {e.resolvedItemName ? (
-                          <div className={css.scanItem}>{e.resolvedItemCode} — {e.resolvedItemName}</div>
-                        ) : e.status === 'PENDING' ? (
+
+                        {/* Resolved item name */}
+                        {e.resolvedItemName && (
+                          <div className={css.scanItem}>{e.resolvedItemName}</div>
+                        )}
+
+                        {/* Manual assign dropdown when PENDING */}
+                        {e.status === 'PENDING' && !e.resolvedItemId && (
                           <select
                             style={{ marginTop: 4, fontSize: 11, border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 4px', maxWidth: '100%' }}
                             value=""
@@ -674,40 +783,29 @@ export default function WarehouseReceive() {
                             <option value="">— Assign item —</option>
                             {items.map(it => <option key={it.id} value={it.id}>{it.item_code} — {it.item_name}</option>)}
                           </select>
-                        ) : null}
+                        )}
+
                         {e.statusMsg && <div className={css.scanMsg}>{e.statusMsg}</div>}
-                        {/* Scan diagnostic — shows exact ZXing output for real-world label inspection */}
-                        <div className={css.scanDiag}>
-                          <div className={css.scanDiagRow}>
-                            <span className={css.scanDiagKey}>RAW</span>
-                            <span className={css.scanDiagRaw}>{e.rawValue}</span>
+
+                        {/* Collapsible diagnostics */}
+                        <button className={css.scanDiagToggle} onClick={() => toggleDiag(e.localId)}>
+                          {expandedDiags.has(e.localId) ? '▲ Diagnostics' : '▼ Diagnostics'}
+                        </button>
+                        {expandedDiags.has(e.localId) && (
+                          <div className={css.scanDiag}>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>RAW</span><span className={css.scanDiagRaw}>{e.rawValue}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>SYM</span><span className={css.scanDiagVal}>{e.symbology}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>TYPE</span><span className={css.scanDiagVal}>{e.itemTypeRaw ?? '—'}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>PN</span><span className={css.scanDiagVal}>{e.partNumber ?? '—'}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>SN</span><span className={css.scanDiagVal}>{e.serialNumber ?? '—'}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>PARSER</span><span className={css.scanDiagVal}>{e.parsingProfile}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>PARSE</span><span className={css.scanDiagVal}>{e.parseStatus}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>MATCH</span><span className={css.scanDiagVal}>{e.matchStatus}</span></div>
+                            <div className={css.scanDiagRow}><span className={css.scanDiagKey}>CLASS</span><span className={css.scanDiagVal}>{e.scanClassification}</span></div>
                           </div>
-                          <div className={css.scanDiagRow}>
-                            <span className={css.scanDiagKey}>SYM</span>
-                            <span className={css.scanDiagVal}>{e.symbology}</span>
-                          </div>
-                          <div className={css.scanDiagRow}>
-                            <span className={css.scanDiagKey}>TYPE</span>
-                            <span className={css.scanDiagVal}>{e.itemTypeRaw ?? '—'}</span>
-                          </div>
-                          <div className={css.scanDiagRow}>
-                            <span className={css.scanDiagKey}>PN</span>
-                            <span className={css.scanDiagVal}>{e.partNumber ?? '—'}</span>
-                          </div>
-                          <div className={css.scanDiagRow}>
-                            <span className={css.scanDiagKey}>SN</span>
-                            <span className={css.scanDiagVal}>{e.serialNumber ?? '—'}</span>
-                          </div>
-                          <div className={css.scanDiagRow}>
-                            <span className={css.scanDiagKey}>PARSER</span>
-                            <span className={css.scanDiagVal}>{e.parsingProfile}</span>
-                          </div>
-                          <div className={css.scanDiagRow}>
-                            <span className={css.scanDiagKey}>PARSED</span>
-                            <span className={css.scanDiagVal}>{e.parsedStatus}</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
+
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                         <span className={css.scanTime}>
                           {new Date(e.scannedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -752,9 +850,9 @@ export default function WarehouseReceive() {
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-            <KpiChip label="Valid"     value={validCount}   color="#16a34a" />
-            <KpiChip label="Pending"   value={pendingCount} color="#f59e0b" />
-            <KpiChip label="Duplicate" value={dupCount}     color="#dc2626" />
+            <KpiChip label="Valid"        value={validCount}     color="#16a34a" />
+            <KpiChip label="Needs Review" value={pendingCount}   color="#f59e0b" />
+            <KpiChip label="Duplicates"   value={duplicateCount} color="#dc2626" />
           </div>
 
           {pendingCount > 0 && (
@@ -832,38 +930,12 @@ function DiagPanel({ data, loading }: { data: ScanDiagnostics | null; loading: b
   if (!data) return null;
 
   const rows: Array<{ label: string; ok: boolean; value: string }> = [
-    {
-      label: 'Secure Context (HTTPS)',
-      ok: data.secureContext,
-      value: data.secureContext ? 'Yes' : 'No — camera requires HTTPS',
-    },
-    {
-      label: 'navigator.mediaDevices',
-      ok: data.mediaDevicesAvailable,
-      value: data.mediaDevicesAvailable ? 'Available' : 'Not available',
-    },
-    {
-      label: 'getUserMedia',
-      ok: data.getUserMediaAvailable,
-      value: data.getUserMediaAvailable ? 'Available' : 'Not available',
-    },
-    {
-      label: 'BarcodeDetector (native)',
-      ok: data.barcodeDetectorAvailable,
-      value: data.barcodeDetectorAvailable
-        ? `Yes (${data.barcodeDetectorFormats.length} formats)`
-        : 'No — will use ZXing fallback',
-    },
-    {
-      label: 'ZXing fallback',
-      ok: data.zxingAvailable,
-      value: data.zxingAvailable ? 'Available' : 'Not available',
-    },
-    {
-      label: 'Camera permission',
-      ok: data.cameraPermission === 'granted',
-      value: data.cameraPermission,
-    },
+    { label: 'Secure Context (HTTPS)', ok: data.secureContext, value: data.secureContext ? 'Yes' : 'No — camera requires HTTPS' },
+    { label: 'navigator.mediaDevices', ok: data.mediaDevicesAvailable, value: data.mediaDevicesAvailable ? 'Available' : 'Not available' },
+    { label: 'getUserMedia', ok: data.getUserMediaAvailable, value: data.getUserMediaAvailable ? 'Available' : 'Not available' },
+    { label: 'BarcodeDetector (native)', ok: data.barcodeDetectorAvailable, value: data.barcodeDetectorAvailable ? `Yes (${data.barcodeDetectorFormats.length} formats)` : 'No — will use ZXing fallback' },
+    { label: 'ZXing fallback', ok: data.zxingAvailable, value: data.zxingAvailable ? 'Available' : 'Not available' },
+    { label: 'Camera permission', ok: data.cameraPermission === 'granted', value: data.cameraPermission },
   ];
 
   return (

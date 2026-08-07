@@ -2,9 +2,10 @@
 //
 // Architecture:
 //  1. parseScan()          — stateless parser registry (manufacturer profiles pluggable)
-//  2. CameraScanner        — owns the MediaStream + decode loop lifecycle
-//  3. UsbScanner           — hooks into rapid-keystroke input for USB barcode scanners
-//  4. getScanDiagnostics() — async capability probe for debugging
+//  2. classifyScan()       — classifies parsed output before adding to session
+//  3. CameraScanner        — owns the MediaStream + decode loop lifecycle
+//  4. UsbScanner           — hooks into rapid-keystroke input for USB barcode scanners
+//  5. getScanDiagnostics() — async capability probe for debugging
 //
 // Decoder priority:
 //  1. BarcodeDetector (Chrome/Android native) — fastest, runs natively
@@ -14,6 +15,9 @@
 // The camera opens as soon as getUserMedia succeeds; the decoder initialises
 // in the background. If the decoder fails, onError is surfaced but the
 // camera STAYS OPEN so manual entry or USB can still be used.
+
+import type { ScanClassification } from './warehouseTypes';
+export type { ScanClassification };
 
 // ── Parsing status ────────────────────────────────────────────────────────────
 
@@ -298,6 +302,28 @@ const genericParser: ParserProfile = {
   },
 };
 
+// ── Scan classification ───────────────────────────────────────────────────────
+//
+// Auxiliary codes are metadata fields (quantity, vendor, lot) often co-encoded
+// alongside real item data on Nokia labels. They must not be added as scan entries.
+// Examples: Q1, 8569, 915208, Q001 — short/pure-numeric/quantity-DI patterns.
+
+function isAuxiliaryCode(raw: string): boolean {
+  const t = raw.trim();
+  if (t.length <= 2) return true;           // Q1, single chars, two-char codes
+  if (/^\d{1,8}$/.test(t)) return true;    // pure numeric ≤ 8 digits (site/qty codes)
+  if (/^Q\d+$/i.test(t)) return true;      // Nokia quantity DI: Q001, Q005
+  return false;
+}
+
+export function classifyScan(parsed: ParsedScan): ScanClassification {
+  if (isAuxiliaryCode(parsed.rawValue)) return 'AUXILIARY_CODE';
+  if (!parsed.serialNumber && !parsed.partNumber) return 'UNKNOWN_CODE';
+  if (parsed.serialNumber && parsed.confidence !== 'LOW') return 'VALID_ITEM';
+  if (parsed.partNumber || parsed.serialNumber) return 'PARTIAL_ITEM';
+  return 'UNKNOWN_CODE';
+}
+
 // ── Parser registry ───────────────────────────────────────────────────────────
 // Profiles are checked in order; first canParse() match wins.
 // Add Huawei and Ericsson profiles here in Phase 2.
@@ -450,6 +476,11 @@ export class CameraScanner {
     opts: ScannerCallbacks,
     facingMode: 'environment' | 'user' = 'environment',
   ): Promise<void> {
+    // Defensive: cancel any existing decode loop before starting a new one.
+    // This guards against double-start (e.g., if start() is called without stop()).
+    if (this.rafId !== null) { cancelAnimationFrame(this.rafId); this.rafId = null; }
+    this.zxingCleaner?.(); this.zxingCleaner = null;
+
     this.facingMode = facingMode;
 
     // Verify we're in a secure context before even asking
@@ -530,7 +561,7 @@ export class CameraScanner {
   async switchCamera(videoEl: HTMLVideoElement, opts: ScannerCallbacks): Promise<void> {
     const newFacing: 'environment' | 'user' =
       this.facingMode === 'environment' ? 'user' : 'environment';
-    this.stopStream();          // stop old stream but don't clear rafId/zxing yet
+    this.stop();   // cancel RAF + ZXing + stop stream before restarting
     await this.start(videoEl, opts, newFacing);
   }
 

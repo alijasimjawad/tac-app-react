@@ -483,5 +483,56 @@ tr:hover td { background: #fafbff; }
 .groupSummaryCode { font-size: 12px; font-weight: 700; color: #7c3aed; font-family: monospace; }
 .groupSummaryCount { font-size: 13px; font-weight: 800; color: #6d28d9; }
 
+/* ── HUD banner (camera overlay — SUCCESS / DUPLICATE / UNKNOWN) ─ */
+.hudBanner {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 16px; font-weight: 800; letter-spacing: .5px;
+  pointer-events: none; white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0,0,0,.3);
+  backdrop-filter: blur(4px);
+  z-index: 10;
+  animation: hudPop .15s ease;
+}
+.hudSuccess   { background: rgba(22,163,74,.92);   color: #fff; }
+.hudDuplicate { background: rgba(245,158,11,.92);  color: #fff; }
+.hudUnknown   { background: rgba(100,116,139,.85); color: #fff; }
+@keyframes hudPop {
+  from { opacity: 0; transform: translate(-50%,-50%) scale(.85); }
+  to   { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+}
+
+/* ── Scan entry highlight — pulses when duplicate detected ──────── */
+.scanEntryHighlight {
+  outline: 2px solid #f59e0b;
+  outline-offset: 1px;
+  animation: highlightPulse .5s ease;
+}
+@keyframes highlightPulse {
+  0%   { background: #fffbeb; }
+  40%  { background: #fef3c7; }
+  100% { background: #f8fafc; }
+}
+
+/* ── Diagnostics toggle inside scan card ────────────────────────── */
+.scanDiagToggle {
+  display: inline-flex; align-items: center;
+  margin-top: 5px; padding: 0;
+  border: none; background: none;
+  font-size: 10px; color: #94a3b8;
+  cursor: pointer; font-family: monospace; letter-spacing: .3px;
+}
+.scanDiagToggle:hover { color: #64748b; }
+
+/* ── Scan card item code pill ───────────────────────────────────── */
+.scanCardItemCode {
+  font-family: monospace; font-size: 11px; font-weight: 800;
+  color: #7c3aed; background: #ede9fe;
+  border-radius: 4px; padding: 1px 6px;
+}
+
 /* ── Permission denied ───────────────────────────────── */
 .denied { padding: 40px; text-align: center; color: #94a3b8; font-size: 14px; }
