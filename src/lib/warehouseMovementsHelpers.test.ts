@@ -6,6 +6,8 @@ import {
   buildWarehouseMap,
   matchesMovementSearch,
   enrichMovementRow,
+  formatBaghdadDate,
+  formatBaghdadTime,
 } from './warehouseMovementsHelpers';
 
 // ── deriveDirection ───────────────────────────────────────────────────────────
@@ -272,5 +274,63 @@ describe('enrichMovementRow', () => {
       itemMap, wrhMap, assetMap, perfMap, grMap,
     );
     expect(e.receiptNumber).toBeUndefined();
+  });
+});
+
+// ── formatBaghdadDate ─────────────────────────────────────────────────────────
+// Baghdad = UTC+3, no DST. All midnight-rollover tests use 21:00 UTC as the
+// transition point (21:00 UTC = 00:00 Baghdad).
+
+describe('formatBaghdadDate', () => {
+  it('returns YYYY-MM-DD in Baghdad local time', () => {
+    // 2026-08-08 19:00 UTC = 2026-08-08 22:00 Baghdad — same calendar day
+    expect(formatBaghdadDate('2026-08-08T19:00:00Z')).toBe('2026-08-08');
+  });
+
+  it('UTC timestamp before Baghdad midnight (21:00 UTC) rolls to next day', () => {
+    // 2026-08-07 21:30 UTC = 2026-08-08 00:30 Baghdad
+    expect(formatBaghdadDate('2026-08-07T21:30:00Z')).toBe('2026-08-08');
+  });
+
+  it('UTC timestamp one minute before Baghdad midnight stays on same day', () => {
+    // 2026-08-07 20:59 UTC = 2026-08-07 23:59 Baghdad
+    expect(formatBaghdadDate('2026-08-07T20:59:00Z')).toBe('2026-08-07');
+  });
+
+  it('exact Baghdad midnight (21:00 UTC) is start of next day', () => {
+    // 2026-08-07 21:00 UTC = 2026-08-08 00:00 Baghdad
+    expect(formatBaghdadDate('2026-08-07T21:00:00Z')).toBe('2026-08-08');
+  });
+
+  it('22:21 UTC shown in UI example rolls date forward', () => {
+    // The UTC timestamp the user saw as "22:21 UTC" lives on 2026-08-08 in Baghdad
+    expect(formatBaghdadDate('2026-08-07T22:21:00Z')).toBe('2026-08-08');
+  });
+});
+
+// ── formatBaghdadTime ─────────────────────────────────────────────────────────
+
+describe('formatBaghdadTime', () => {
+  it('returns HH:MM AM/PM in Baghdad local time', () => {
+    // 2026-08-07 19:21 UTC = 2026-08-07 22:21 Baghdad = 10:21 PM
+    expect(formatBaghdadTime('2026-08-07T19:21:00Z')).toBe('10:21 PM');
+  });
+
+  it('UTC midnight shows 03:00 AM in Baghdad', () => {
+    // 2026-08-07 00:00 UTC = 2026-08-07 03:00 Baghdad
+    expect(formatBaghdadTime('2026-08-07T00:00:00Z')).toBe('03:00 AM');
+  });
+
+  it('22:21 UTC shown in user example displays as 01:21 AM Baghdad (midnight rollover)', () => {
+    // This was the exact UTC time the user saw displayed incorrectly as "22:21 UTC"
+    expect(formatBaghdadTime('2026-08-07T22:21:00Z')).toBe('01:21 AM');
+  });
+
+  it('21:30 UTC (30 min past Baghdad midnight) shows 12:30 AM', () => {
+    expect(formatBaghdadTime('2026-08-07T21:30:00Z')).toBe('12:30 AM');
+  });
+
+  it('Baghdad noon (09:00 UTC) shows 12:00 PM', () => {
+    expect(formatBaghdadTime('2026-08-07T09:00:00Z')).toBe('12:00 PM');
   });
 });

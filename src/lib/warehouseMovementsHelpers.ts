@@ -160,3 +160,34 @@ export function enrichMovementRow(
     direction:      deriveDirection(row.quantity),
   };
 }
+
+// ── Baghdad timezone display formatters ───────────────────────────────────────
+// Baghdad is UTC+3 with no DST (permanent offset). Both helpers share one
+// Intl.DateTimeFormat instance and extract parts explicitly so the output
+// format (YYYY-MM-DD and HH:MM AM/PM) is locale-independent.
+
+const _baghdadFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Baghdad',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: true,
+});
+
+function _baghdadParts(isoTimestamp: string): Record<string, string> {
+  const parts: Record<string, string> = {};
+  for (const { type, value } of _baghdadFmt.formatToParts(new Date(isoTimestamp))) {
+    parts[type] = value;
+  }
+  return parts;
+}
+
+/** Returns 'YYYY-MM-DD' for a UTC ISO timestamp converted to Asia/Baghdad local time. */
+export function formatBaghdadDate(isoTimestamp: string): string {
+  const p = _baghdadParts(isoTimestamp);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+/** Returns '01:21 AM' / '10:21 PM' for a UTC ISO timestamp converted to Asia/Baghdad local time. */
+export function formatBaghdadTime(isoTimestamp: string): string {
+  const p = _baghdadParts(isoTimestamp);
+  return `${p.hour}:${p.minute} ${p.dayPeriod}`;
+}

@@ -6,6 +6,7 @@ import type { StockMovement } from '../lib/warehouseTypes';
 import {
   buildAssetMap, buildItemMap, buildWarehouseMap,
   matchesMovementSearch, enrichMovementRow,
+  formatBaghdadDate, formatBaghdadTime,
   type ItemInfo, type MovementDirection,
 } from '../lib/warehouseMovementsHelpers';
 import css from './Warehouse.module.css';
@@ -301,11 +302,11 @@ export default function WarehouseMovements() {
                     style={{ cursor: 'pointer' }}
                     onClick={() => setSelectedMovement(m)}
                   >
-                    {/* Date + time */}
+                    {/* Date + time in Baghdad local time, derived from created_at */}
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <div style={{ fontSize: 12, color: '#1e293b' }}>{m.movement_date}</div>
+                      <div style={{ fontSize: 12, color: '#1e293b' }}>{formatBaghdadDate(m.created_at)}</div>
                       <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace', marginTop: 1 }}>
-                        {m.created_at.slice(11, 16)} UTC
+                        {formatBaghdadTime(m.created_at)}
                       </div>
                     </td>
 
@@ -424,8 +425,8 @@ export default function WarehouseMovements() {
 
               {/* Core fields */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 18 }}>
-                <SF label="Date"       value={selectedMovement.movement_date} />
-                <SF label="Time (UTC)" value={selectedMovement.created_at.slice(11, 19)} />
+                <SF label="Date" value={formatBaghdadDate(selectedMovement.created_at)} />
+                <SF label="Time" value={formatBaghdadTime(selectedMovement.created_at)} />
                 <SF label="Quantity"   value={
                   <span style={{
                     fontWeight: 700,
