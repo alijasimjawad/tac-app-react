@@ -222,6 +222,7 @@ const NOKIA_SN_DI_RE = /^S([A-Z0-9][A-Z0-9]{0,2}[0-9]{6,15})$/;
 const NOKIA_PN_RE     = /^\d{6}-\d{3}\.\d{3}$/;           // legacy dash format: 474234-200.001
 const NOKIA_ALT_PN_RE = /^\d{6}[A-Z]\.\d{3}$/;            // letter format: 474254A.202
 const NOKIA_SN_RE     = /^N[0-9A-Z]{8,18}$/i;             // N-series SN: N is part of the value
+const NOKIA_K_SN_RE   = /^K[A-Z0-9]{9,15}$/i;             // K-series SN (e.g. K9241817927)
 
 const nokiaParser: ParserProfile = {
   name: 'nokia',
@@ -237,6 +238,8 @@ const nokiaParser: ParserProfile = {
     if (clean.startsWith('1P') && (NOKIA_PN_RE.test(clean.slice(2)) || NOKIA_ALT_PN_RE.test(clean.slice(2)))) return true;
     // Nokia N-series SN barcode (N is part of the SN, not a DI)
     if (NOKIA_SN_RE.test(clean)) return true;
+    // Nokia K-series SN barcode (K is part of the SN, not a DI)
+    if (NOKIA_K_SN_RE.test(clean)) return true;
     // Nokia standalone SN with S Data Identifier prefix (e.g. SDH252030925)
     if (NOKIA_SN_DI_RE.test(clean)) return true;
     return false;
@@ -308,6 +311,16 @@ const nokiaParser: ParserProfile = {
       };
     }
 
+    // Nokia K-series SN (K is part of the value, NOT a DI — do not strip)
+    if (NOKIA_K_SN_RE.test(upper)) {
+      return {
+        itemType: null, partNumber: null, manufacturer: 'Nokia',
+        serialNumber: upper,
+        rawFields: [clean], parsingProfile: 'nokia-k-sn',
+        confidence: 'MEDIUM', status: 'partially_resolved' as const,
+      };
+    }
+
     // Fallback: treat as Nokia item type label
     return {
       itemType: upper, serialNumber: null, partNumber: null, manufacturer: 'Nokia',
@@ -324,7 +337,6 @@ const genericParser: ParserProfile = {
   canParse: () => true,
   parse: (raw: string) => {
     const clean = raw.trim();
-    const upper = clean.toUpperCase();
 
     // DataMatrix with control-character separators: GS (0x1D), RS (0x1E), EOT (0x04)
     const gsFields = clean.split(/[\x1d\x1e\x04]/).filter(Boolean);
@@ -363,12 +375,22 @@ const genericParser: ParserProfile = {
       };
     }
 
-    // Pure serial number (alphanumeric, 6–30 chars)
-    if (/^[A-Z0-9\-\/\.]{6,30}$/i.test(clean)) {
+    // URL or JSON QR payload — non-inventory data, do not fabricate SN/PN
+    if (/^https?:\/\//i.test(clean) || (clean.startsWith('{') && clean.endsWith('}'))) {
       return {
-        serialNumber: upper, partNumber: null, itemType: null, manufacturer: null,
-        rawFields: [clean], parsingProfile: 'generic-sn-only',
-        confidence: 'LOW', status: 'partially_resolved' as const,
+        serialNumber: null, partNumber: null, itemType: null, manufacturer: null,
+        rawFields: [clean], parsingProfile: 'url-payload',
+        confidence: 'LOW', status: 'unresolved' as const,
+      };
+    }
+
+    // Unknown identifier (alphanumeric, 3–30 chars) — shown as amber card, NO serial number fabricated.
+    // Previously this path produced generic-sn-only with a fake SN. It no longer does.
+    if (/^[A-Z0-9\-\/\.]{3,30}$/i.test(clean)) {
+      return {
+        serialNumber: null, partNumber: null, itemType: null, manufacturer: null,
+        rawFields: [clean], parsingProfile: 'unknown-identifier',
+        confidence: 'LOW', status: 'unresolved' as const,
       };
     }
 
@@ -389,9 +411,8 @@ const genericParser: ParserProfile = {
 
 function isAuxiliaryCode(raw: string): boolean {
   const t = raw.trim();
-  if (t.length <= 2) return true;           // Q1, single chars, two-char codes
-  if (/^\d{1,8}$/.test(t)) return true;    // pure numeric ≤ 8 digits (site/qty codes)
-  if (/^Q\d+$/i.test(t)) return true;      // Nokia quantity DI: Q001, Q005
+  if (t.length <= 2) return true;      // Q1, single chars, two-char codes
+  if (/^Q\d+$/i.test(t)) return true;  // Nokia quantity DI: Q001, Q005
   return false;
 }
 
@@ -401,6 +422,9 @@ export function classifyScan(parsed: ParsedScan): ScanClassification {
   // These must enter the CartonScanBuffer, never become standalone entries.
   if (parsed.parsingProfile === 'nokia-pn-only') return 'AUXILIARY_CODE';
   if (parsed.parsingProfile === 'nokia-sn-di')   return 'AUXILIARY_CODE';
+  // Unknown identifiers — shown to user as amber cards (no SN fabrication).
+  if (parsed.parsingProfile === 'unknown-identifier') return 'UNKNOWN_IDENTIFIER';
+  if (parsed.parsingProfile === 'url-payload')        return 'UNKNOWN_IDENTIFIER';
   if (!parsed.serialNumber && !parsed.partNumber) return 'UNKNOWN_CODE';
   if (parsed.serialNumber && parsed.confidence !== 'LOW') return 'VALID_ITEM';
   if (parsed.partNumber || parsed.serialNumber) return 'PARTIAL_ITEM';

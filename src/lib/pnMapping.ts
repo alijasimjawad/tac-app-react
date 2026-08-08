@@ -4,8 +4,9 @@
 // state live in WarehouseReceive.tsx; this module contains only the pure logic
 // for filtering, deduplication, and conflict detection.
 
-export const MAPPING_SOURCE_RECEIVING = 'RECEIVING';
-export const MAPPING_CODE_TYPE_PN     = 'PART_NUMBER';
+export const MAPPING_SOURCE_RECEIVING              = 'RECEIVING';
+export const MAPPING_CODE_TYPE_PN                  = 'PART_NUMBER';
+export const MAPPING_CODE_TYPE_GENERIC_IDENTIFIER  = 'GENERIC_IDENTIFIER';
 
 /** Canonical form used as the map key and stored in the DB via UPPER(TRIM(...)). */
 export function normalizePn(pn: string): string {

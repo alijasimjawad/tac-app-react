@@ -273,9 +273,9 @@ describe('classifyScan()', () => {
     expect(classifyScan(parsed)).toBe('VALID_ITEM');
   });
 
-  it('PARTIAL_ITEM — generic SN only (LOW confidence)', () => {
+  it('UNKNOWN_IDENTIFIER — unrecognized alphanumeric code (no SN fabrication)', () => {
     const parsed = parseScan('ABC123456', 'CODE_128');
-    expect(classifyScan(parsed)).toBe('PARTIAL_ITEM');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_IDENTIFIER');
   });
 
   it('AUXILIARY_CODE — Q1 (two chars)', () => {
@@ -288,14 +288,14 @@ describe('classifyScan()', () => {
     expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
   });
 
-  it('AUXILIARY_CODE — pure numeric 8569', () => {
+  it('UNKNOWN_IDENTIFIER — pure numeric 8569 (no longer silently dropped)', () => {
     const parsed = parseScan('8569', 'CODE_128');
-    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_IDENTIFIER');
   });
 
-  it('AUXILIARY_CODE — pure numeric 915208 (six digits)', () => {
+  it('UNKNOWN_IDENTIFIER — pure numeric 915208 (six digits, no longer auxiliary)', () => {
     const parsed = parseScan('915208', 'CODE_128');
-    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_IDENTIFIER');
   });
 
   it('AUXILIARY_CODE — Nokia quantity DI Q001', () => {
@@ -303,9 +303,9 @@ describe('classifyScan()', () => {
     expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
   });
 
-  it('AUXILIARY_CODE — 12345678 (eight digit numeric limit)', () => {
+  it('UNKNOWN_IDENTIFIER — 12345678 (eight digits, numeric limit rule removed)', () => {
     const parsed = parseScan('12345678', 'CODE_128');
-    expect(classifyScan(parsed)).toBe('AUXILIARY_CODE');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_IDENTIFIER');
   });
 
   it('UNKNOWN_CODE — random garbage with no SN or PN', () => {
@@ -318,15 +318,16 @@ describe('classifyScan()', () => {
     expect(classifyScan(parsed)).toBe('UNKNOWN_CODE');
   });
 
-  it('not AUXILIARY_CODE for 9-digit numeric (could be a SN)', () => {
+  it('UNKNOWN_IDENTIFIER for 9-digit numeric — serialNumber is null', () => {
     const parsed = parseScan('123456789', 'CODE_128');
-    // 9 digits exceeds the 1-8 limit — not filtered as auxiliary
-    expect(classifyScan(parsed)).not.toBe('AUXILIARY_CODE');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_IDENTIFIER');
+    expect(parsed.serialNumber).toBeNull();
   });
 
-  it('not AUXILIARY_CODE for alphanumeric SN (ABC123456)', () => {
+  it('not AUXILIARY_CODE for alphanumeric (ABC123456) — is UNKNOWN_IDENTIFIER', () => {
     const parsed = parseScan('ABC123456', 'CODE_128');
     expect(classifyScan(parsed)).not.toBe('AUXILIARY_CODE');
+    expect(classifyScan(parsed)).toBe('UNKNOWN_IDENTIFIER');
   });
 });
 
@@ -433,11 +434,12 @@ describe('Nokia PN barcode with 1P DI prefix', () => {
     expect(parsed.manufacturer).toBe('Nokia');
   });
 
-  it('K9241817927 (bare, no S prefix) → generic-sn-only, PARTIAL_ITEM (pairs with pending PN at React level)', () => {
+  it('K9241817927 (bare, no S prefix) → nokia-k-sn, VALID_ITEM, serialNumber=K9241817927', () => {
     const parsed = parseScan('K9241817927', 'CODE_128');
-    expect(parsed.parsingProfile).toBe('generic-sn-only');
-    expect(classifyScan(parsed)).toBe('PARTIAL_ITEM');
+    expect(parsed.parsingProfile).toBe('nokia-k-sn');
+    expect(classifyScan(parsed)).toBe('VALID_ITEM');
     expect(parsed.serialNumber).toBe('K9241817927');
+    expect(parsed.manufacturer).toBe('Nokia');
   });
 
   it('DataMatrix 1P+S DI fields still route to nokia-gs1 (not intercepted by 1P linear fix)', () => {
@@ -521,5 +523,129 @@ describe('Continuous scanning — SN dedup and secondary barcode handling', () =
     expect(classifyScan(parsedB)).toBe('VALID_ITEM');
     expect(parsedA.serialNumber).toBe('1M000001');
     expect(parsedB.serialNumber).toBe('1M000002');
+  });
+});
+
+// ── Phase 3E-C: Universal Scanner — unknown identifier / generic codes ─────────
+
+describe('Phase 3E-C — unknown-identifier and url-payload profiles', () => {
+  // ── unknown-identifier profile (replaces generic-sn-only) ────────────────
+
+  it('unknown-identifier: 8569 → profile=unknown-identifier, serialNumber=null', () => {
+    const p = parseScan('8569', 'CODE_128');
+    expect(p.parsingProfile).toBe('unknown-identifier');
+    expect(p.serialNumber).toBeNull();
+    expect(p.partNumber).toBeNull();
+  });
+
+  it('unknown-identifier: 915208 → UNKNOWN_IDENTIFIER, serialNumber=null', () => {
+    const p = parseScan('915208', 'CODE_128');
+    expect(classifyScan(p)).toBe('UNKNOWN_IDENTIFIER');
+    expect(p.serialNumber).toBeNull();
+  });
+
+  it('unknown-identifier: ABC123456 → profile=unknown-identifier, serialNumber=null (no fabrication)', () => {
+    const p = parseScan('ABC123456', 'CODE_128');
+    expect(p.parsingProfile).toBe('unknown-identifier');
+    expect(p.serialNumber).toBeNull();
+    expect(classifyScan(p)).toBe('UNKNOWN_IDENTIFIER');
+  });
+
+  it('unknown-identifier: XQZABC123456 → unknown-identifier, serialNumber=null', () => {
+    const p = parseScan('XQZABC123456', 'CODE_128');
+    expect(p.parsingProfile).toBe('unknown-identifier');
+    expect(p.serialNumber).toBeNull();
+  });
+
+  it('generic-sn-only profile is NEVER produced by the parser', () => {
+    // Any alphanumeric 6–30 char string that would previously produce generic-sn-only
+    // now produces unknown-identifier with no serial number
+    const candidates = ['ABC123456', 'ZYXWVU9876', 'SIM10116110', 'MODEMDEVICE'];
+    for (const raw of candidates) {
+      const p = parseScan(raw, 'CODE_128');
+      expect(p.parsingProfile).not.toBe('generic-sn-only');
+    }
+  });
+
+  // ── url-payload profile ───────────────────────────────────────────────────
+
+  it('url-payload: https URL → profile=url-payload, UNKNOWN_IDENTIFIER, no SN/PN', () => {
+    const p = parseScan('https://example.com', 'QR_CODE');
+    expect(p.parsingProfile).toBe('url-payload');
+    expect(classifyScan(p)).toBe('UNKNOWN_IDENTIFIER');
+    expect(p.serialNumber).toBeNull();
+    expect(p.partNumber).toBeNull();
+  });
+
+  it('url-payload: http URL → url-payload', () => {
+    const p = parseScan('http://vendor.zain.com/qr?id=123456', 'QR_CODE');
+    expect(p.parsingProfile).toBe('url-payload');
+    expect(classifyScan(p)).toBe('UNKNOWN_IDENTIFIER');
+  });
+
+  it('url-payload: JSON QR → url-payload, UNKNOWN_IDENTIFIER', () => {
+    const p = parseScan('{"id":"SIM123","type":"SIM_CARD"}', 'QR_CODE');
+    expect(p.parsingProfile).toBe('url-payload');
+    expect(classifyScan(p)).toBe('UNKNOWN_IDENTIFIER');
+    expect(p.serialNumber).toBeNull();
+  });
+
+  // ── Nokia K-series SN ─────────────────────────────────────────────────────
+
+  it('nokia-k-sn: K9241817927 → nokia-k-sn, VALID_ITEM, serialNumber=K9241817927, Nokia', () => {
+    const p = parseScan('K9241817927', 'CODE_128');
+    expect(p.parsingProfile).toBe('nokia-k-sn');
+    expect(classifyScan(p)).toBe('VALID_ITEM');
+    expect(p.serialNumber).toBe('K9241817927');
+    expect(p.manufacturer).toBe('Nokia');
+    expect(p.confidence).toBe('MEDIUM');
+  });
+
+  it('nokia-k-sn: KABCDE12345 → nokia-k-sn, VALID_ITEM', () => {
+    const p = parseScan('KABCDE12345', 'CODE_128');
+    expect(p.parsingProfile).toBe('nokia-k-sn');
+    expect(classifyScan(p)).toBe('VALID_ITEM');
+    expect(p.serialNumber).toBe('KABCDE12345');
+  });
+
+  it('nokia-k-sn: K123 (too short, 4 chars) → NOT nokia-k-sn', () => {
+    const p = parseScan('K123', 'CODE_128');
+    expect(p.parsingProfile).not.toBe('nokia-k-sn');
+  });
+
+  it('nokia-k-sn: SK9241817927 still → nokia-sn-di, AUXILIARY_CODE, SN=K9241817927 (unchanged)', () => {
+    const p = parseScan('SK9241817927', 'CODE_128');
+    expect(p.parsingProfile).toBe('nokia-sn-di');
+    expect(classifyScan(p)).toBe('AUXILIARY_CODE');
+    expect(p.serialNumber).toBe('K9241817927');
+  });
+
+  // ── Nokia quantity DI still works ─────────────────────────────────────────
+
+  it('Q001 → AUXILIARY_CODE (Nokia quantity DI rule unchanged)', () => {
+    expect(classifyScan(parseScan('Q001', 'CODE_128'))).toBe('AUXILIARY_CODE');
+  });
+
+  it('Q1 → AUXILIARY_CODE (two-char length rule unchanged)', () => {
+    expect(classifyScan(parseScan('Q1', 'CODE_128'))).toBe('AUXILIARY_CODE');
+  });
+
+  // ── UNKNOWN_IDENTIFIER never fabricates a serial number ──────────────────
+
+  it('UNKNOWN_IDENTIFIER entries always have serialNumber=null', () => {
+    const codes = ['8569', '915208', '12345678', 'ABC123456', '123456789'];
+    for (const raw of codes) {
+      const p = parseScan(raw, 'CODE_128');
+      if (classifyScan(p) === 'UNKNOWN_IDENTIFIER') {
+        expect(p.serialNumber).toBeNull();
+      }
+    }
+  });
+
+  it('url-payload: rawValue preserved exactly', () => {
+    const url = 'https://example.com/barcode?id=SIM-999';
+    const p   = parseScan(url, 'QR_CODE');
+    expect(p.rawValue).toBe(url);
+    expect(p.parsingProfile).toBe('url-payload');
   });
 });

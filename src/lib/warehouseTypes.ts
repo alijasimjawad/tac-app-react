@@ -92,7 +92,7 @@ export interface StockMovement {
 // ── Scan session types (client-side) ─────────────────────────────────────────
 
 // Classification of a raw scan's content (independent of item master match)
-export type ScanClassification = 'VALID_ITEM' | 'PARTIAL_ITEM' | 'AUXILIARY_CODE' | 'UNKNOWN_CODE' | 'DUPLICATE';
+export type ScanClassification = 'VALID_ITEM' | 'PARTIAL_ITEM' | 'AUXILIARY_CODE' | 'UNKNOWN_CODE' | 'DUPLICATE' | 'UNKNOWN_IDENTIFIER';
 
 // Duplicate scans never become entries; 'ERROR' reserved for future use
 export type ScanEntryStatus = 'VALID' | 'PENDING' | 'ERROR';
@@ -155,6 +155,8 @@ export interface ScanEntry {
     durationMs: number;
     candidates: string[]; // item type tokens accepted in this pass
   }>;
+  // Set for UNKNOWN_IDENTIFIER entries — the raw scan value that was not recognizable
+  unknownIdentifierRaw?: string | null;
 }
 
 export interface SessionDetails {

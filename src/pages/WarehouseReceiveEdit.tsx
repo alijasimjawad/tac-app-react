@@ -16,7 +16,7 @@ import type { Warehouse, InventoryItem, ScanEntry } from '../lib/warehouseTypes'
 import { normalizeSN } from '../lib/warehouseTypes';
 import {
   normalizePn, filterAndDeduplicateMappings, detectMappingConflict,
-  MAPPING_SOURCE_RECEIVING, MAPPING_CODE_TYPE_PN,
+  MAPPING_SOURCE_RECEIVING, MAPPING_CODE_TYPE_PN, MAPPING_CODE_TYPE_GENERIC_IDENTIFIER,
 } from '../lib/pnMapping';
 import { captureVideoFrame, ocrCanvasFrame, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
 import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
@@ -118,6 +118,7 @@ export default function WarehouseReceiveEdit() {
   const itemsByPN             = useRef<Map<string, InventoryItem>>(new Map());
   const itemsByCode           = useRef<Map<string, InventoryItem>>(new Map());
   const learnedByPN           = useRef<Map<string, InventoryItem>>(new Map());
+  const learnedByCode         = useRef<Map<string, InventoryItem>>(new Map());
   const itemTypeCodes         = useRef<Set<string>>(new Set());
   const existingAssets        = useRef<Map<string, KnownAsset>>(new Map());
   const grRefMap              = useRef<Map<string, string>>(new Map());
@@ -247,6 +248,23 @@ export default function WarehouseReceiveEdit() {
         }
       }
 
+      // Load learned generic code → item mappings
+      if (byId) {
+        const gcRes = await supabase
+          .from('item_code_mappings')
+          .select('external_code, inventory_item_id')
+          .eq('code_type', MAPPING_CODE_TYPE_GENERIC_IDENTIFIER)
+          .eq('is_active', true);
+        if (gcRes.data && !gcRes.error) {
+          const byCode = new Map<string, InventoryItem>();
+          for (const row of gcRes.data as { external_code: string; inventory_item_id: string }[]) {
+            const item = byId.get(row.inventory_item_id);
+            if (item) byCode.set(row.external_code.trim(), item);
+          }
+          learnedByCode.current = byCode;
+        }
+      }
+
       // Build existing-asset map (for Phase 3E-A blocking on new scans)
       if (assetRes.data) {
         existingAssets.current = buildExistingAssetsMap(
@@ -337,6 +355,10 @@ export default function WarehouseReceiveEdit() {
     const byPn   = itemsByPN.current.get(key);
     if (byPn)  return { item: byPn,   fromMapping: false };
     return null;
+  }
+
+  function resolveByGenericCode(raw: string): InventoryItem | null {
+    return learnedByCode.current.get(raw.trim()) ?? null;
   }
 
   // ── Existing-asset block check ────────────────────────────────────────────
@@ -460,16 +482,22 @@ export default function WarehouseReceiveEdit() {
       const newResolvedByMapping = mappingConflict ? false : e.resolvedByMapping ?? (rid ? ridFromMapping : undefined);
       const matchStatus: ScanEntry['matchStatus'] =
         mappingConflict ? 'NEEDS_REVIEW' : newRid ? 'MATCHED' : mergedPn ? 'UNMATCHED' : 'NO_PN';
+      const requiresSn = !mergedSn && e.scanClassification === 'UNKNOWN_IDENTIFIER';
+      const resolvedItem = newRid ? items.find(i => i.id === newRid) : null;
+      const staysPending = requiresSn && resolvedItem?.tracking_method === 'SERIALIZED';
+
       return {
         ...e,
         partNumber: mergedPn, serialNumber: mergedSn, serialNumberNorm: mergedSnNorm,
         itemTypeRaw: merged.itemType ?? e.itemTypeRaw,
         resolvedItemId: newRid, resolvedItemName: newRname, resolvedItemCode: newRcode,
         resolvedByMapping: newResolvedByMapping,
-        status: newRid ? 'VALID' as const : 'PENDING' as const,
-        statusMsg: mappingConflict
-          ? `Mapping (${priorItemCode ?? '?'}) vs OCR (${rcode ?? '?'}) — select correct item below`
-          : newRid ? null : merged.itemType ? `${merged.itemType} not in Item Master — assign manually` : 'Item not matched — select manually',
+        status: staysPending ? 'PENDING' as const : (newRid ? 'VALID' as const : 'PENDING' as const),
+        statusMsg: staysPending
+          ? `${resolvedItem?.item_name ?? 'Item'} is serialized — scan SN barcode to complete`
+          : mappingConflict
+            ? `Mapping (${priorItemCode ?? '?'}) vs OCR (${rcode ?? '?'}) — select correct item below`
+            : newRid ? null : merged.itemType ? `${merged.itemType} not in Item Master — assign manually` : 'Item not matched — select manually',
         matchStatus,
         ocrRawText: ocr.rawText.substring(0, 500),
         ocrItemType:     merged.source.itemType     === 'OCR' ? merged.itemType     : null,
@@ -633,6 +661,57 @@ export default function WarehouseReceiveEdit() {
       return;
     }
 
+    if (classification === 'UNKNOWN_IDENTIFIER') {
+      const mappedItem = resolveByGenericCode(raw);
+
+      let unknownFrame: HTMLCanvasElement | null = null;
+      if (!manually && symbology !== 'USB_HID' && parsed.parsingProfile !== 'url-payload'
+          && videoEl?.videoWidth) {
+        try { unknownFrame = captureVideoFrame(videoEl); } catch { /* non-fatal */ }
+      }
+
+      const uid = crypto.randomUUID();
+      const isSerialized = mappedItem?.tracking_method === 'SERIALIZED';
+      const unknownEntry: ScanEntry = {
+        localId:              uid,
+        rawValue:             raw,
+        symbology,
+        serialNumber:         null,
+        serialNumberNorm:     null,
+        partNumber:           null,
+        itemTypeRaw:          null,
+        resolvedItemId:       mappedItem?.id ?? null,
+        resolvedItemName:     mappedItem?.item_name ?? null,
+        resolvedItemCode:     mappedItem?.item_code ?? null,
+        resolvedByMapping:    mappedItem ? false : undefined,
+        status:               (mappedItem && !isSerialized) ? 'VALID' as const : 'PENDING' as const,
+        statusMsg:            isSerialized && mappedItem
+          ? `${mappedItem.item_name} is serialized — scan SN barcode to complete`
+          : parsed.parsingProfile === 'url-payload'
+            ? 'Non-inventory QR payload — not an item barcode'
+            : 'Unknown code — assign item if needed',
+        scannedAt:            new Date().toISOString(),
+        manually,
+        parsingProfile:       parsed.parsingProfile,
+        parseStatus:          'FAILED',
+        matchStatus:          mappedItem ? 'MATCHED' : 'NO_PN',
+        scanClassification:   classification,
+        unknownIdentifierRaw: raw,
+        ocrStatus:            unknownFrame ? 'RUNNING' as const : undefined,
+        ocrCanvasSize:        unknownFrame ? `${unknownFrame.width}×${unknownFrame.height}` : undefined,
+      };
+
+      setBlockedAsset(null);
+      setScanEntries(prev => [unknownEntry, ...prev]);
+
+      if (unknownFrame) {
+        void launchAutoOcr(uid, { serialNumber: null, partNumber: null, itemType: null }, unknownFrame);
+      }
+
+      setHud('UNKNOWN');
+      return;
+    }
+
     if (!manually && (classification === 'AUXILIARY_CODE' || classification === 'UNKNOWN_CODE')) return;
 
     if (pendingCarton.current && isPendingExpired(pendingCarton.current)) clearPendingCarton();
@@ -714,13 +793,42 @@ export default function WarehouseReceiveEdit() {
 
   function resolveEntryItem(localId: string, itemId: string) {
     const item = items.find(i => i.id === itemId);
-    setScanEntries(prev => prev.map(e =>
-      e.localId === localId
-        ? { ...e, resolvedItemId: itemId, resolvedItemName: item?.item_name || null,
-            resolvedItemCode: item?.item_code || null, resolvedByMapping: false,
-            status: 'VALID' as const, statusMsg: null, matchStatus: 'MATCHED' as const }
-        : e
-    ));
+    if (!item) return;
+
+    setScanEntries(prev => prev.map(e => {
+      if (e.localId !== localId) return e;
+      const needsSn = e.scanClassification === 'UNKNOWN_IDENTIFIER' && item.tracking_method === 'SERIALIZED';
+      return {
+        ...e,
+        resolvedItemId:   itemId,
+        resolvedItemName: item.item_name,
+        resolvedItemCode: item.item_code,
+        resolvedByMapping: false,
+        status:    needsSn ? 'PENDING' as const : 'VALID' as const,
+        statusMsg: needsSn ? `${item.item_name} is serialized — scan SN barcode to complete` : null,
+        matchStatus: 'MATCHED' as const,
+      };
+    }));
+
+    const entry = scanEntries.find(e => e.localId === localId);
+    if (entry?.scanClassification === 'UNKNOWN_IDENTIFIER' && item.tracking_method === 'QUANTITY') {
+      const row = {
+        inventory_item_id: itemId,
+        manufacturer:      null as string | null,
+        code_type:         MAPPING_CODE_TYPE_GENERIC_IDENTIFIER,
+        external_code:     entry.rawValue.trim(),
+        parsing_profile:   null as string | null,
+        is_active:         true,
+        source:            MAPPING_SOURCE_RECEIVING,
+        created_by:        currentUser?.id ?? null,
+      };
+      void supabase.from('item_code_mappings')
+        .upsert([row], { ignoreDuplicates: true })
+        .then(
+          ({ error }) => { if (!error) learnedByCode.current.set(entry.rawValue.trim(), item); },
+          () => { /* non-fatal */ },
+        );
+    }
   }
 
   function removeExistingRow(rowId: string) {
@@ -1151,10 +1259,18 @@ export default function WarehouseReceiveEdit() {
                           {e.matchStatus === 'MATCHED' ? 'MATCHED' : e.matchStatus === 'NEEDS_REVIEW' ? 'NEEDS REVIEW' : e.matchStatus === 'UNMATCHED' ? 'NO MATCH' : 'NO PN'}
                         </span>
                       </div>
-                      <div className={css.scanSN}>{e.serialNumber || e.rawValue}</div>
+                      <div className={css.scanSN}>{e.serialNumber ?? '—'}</div>
+                      {e.unknownIdentifierRaw && !e.serialNumber && (
+                        <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace', marginTop: 2, wordBreak: 'break-all' }}>
+                          {e.parsingProfile === 'url-payload' ? '🔗' : '?'}{' '}
+                          {e.unknownIdentifierRaw.length > 60
+                            ? e.unknownIdentifierRaw.substring(0, 60) + '…'
+                            : e.unknownIdentifierRaw}
+                        </div>
+                      )}
                       {e.partNumber && <div className={css.scanPN}>PN: {e.partNumber}</div>}
                       {e.resolvedItemName && <div className={css.scanItem}>{e.resolvedItemName}</div>}
-                      {e.status === 'PENDING' && !e.resolvedItemId && (
+                      {e.status === 'PENDING' && !e.resolvedItemId && e.parsingProfile !== 'url-payload' && (
                         <select style={{ marginTop: 4, fontSize: 11, border: '1px solid #e2e8f0', borderRadius: 4, padding: '2px 4px', maxWidth: '100%' }}
                           value="" onChange={ev => resolveEntryItem(e.localId, ev.target.value)}>
                           <option value="">— Assign item —</option>
