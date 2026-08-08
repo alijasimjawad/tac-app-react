@@ -21,11 +21,12 @@ import {
 import { captureVideoFrame, ocrCanvasFrame, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
 import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
 import { buildExistingAssetsMap, getBlockMessage, type KnownAsset, type BlockedMessage } from '../lib/existingAssetCheck';
+import { makeIdentifierKey } from '../lib/identifierDedup';
 import css from './Warehouse.module.css';
 
 type Step = 1 | 2 | 3;
 type InputMode = 'camera' | 'usb' | 'manual';
-type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN' | 'WAITING_PN' | 'INCOMPLETE_CARTON' | 'EXISTING_ASSET';
+type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'DUPLICATE_CODE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN' | 'WAITING_PN' | 'INCOMPLETE_CARTON' | 'EXISTING_ASSET';
 
 const EMPTY_SESSION: SessionDetails = {
   warehouseId: '', receiptDate: new Date().toISOString().slice(0, 10),
@@ -55,6 +56,8 @@ export default function WarehouseReceive() {
   const [hudState, setHudState] = useState<HudState>('IDLE');
   // Duplicate highlight — briefly marks the existing entry
   const [highlightSN, setHighlightSN] = useState<string | null>(null);
+  // Duplicate-code highlight — briefly marks an existing UNKNOWN_IDENTIFIER card
+  const [highlightRawKey, setHighlightRawKey] = useState<string | null>(null);
   // Duplicate event counter (not entry count)
   const [duplicateCount, setDuplicateCount] = useState(0);
   // Collapsed/expanded diagnostics per scan card
@@ -69,10 +72,13 @@ export default function WarehouseReceive() {
   const flashTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hudTimer    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hlTimer     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hlTimer        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hlRawKeyTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // O(1) session dedup — holds normalized SNs of all entries in this session
   const sessionSNs  = useRef<Set<string>>(new Set());
+  // O(1) session dedup for UNKNOWN_IDENTIFIER entries — keyed by raw.trim()
+  const sessionIdentifiers = useRef<Set<string>>(new Set());
   // O(1) item master lookup maps built when items load
   const itemsByPN    = useRef<Map<string, InventoryItem>>(new Map());
   const itemsByCode  = useRef<Map<string, InventoryItem>>(new Map());
@@ -214,7 +220,7 @@ export default function WarehouseReceive() {
   }
 
   // ── HUD overlay ───────────────────────────────────────────────────────────
-  function setHud(state: 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN') {
+  function setHud(state: 'SUCCESS' | 'DUPLICATE' | 'DUPLICATE_CODE' | 'UNKNOWN') {
     setHudState(state);
     if (hudTimer.current) clearTimeout(hudTimer.current);
     hudTimer.current = setTimeout(() => setHudState('IDLE'), 1200);
@@ -779,6 +785,18 @@ export default function WarehouseReceive() {
     // url-payload: no OCR (could be a navigation URL — never navigate).
     // unknown-identifier: run OCR for item-type hint (e.g. Zain logo → SIM_CARD).
     if (classification === 'UNKNOWN_IDENTIFIER') {
+      // Session-level dedup: same raw code (trim-only, case-sensitive) → duplicate
+      const idKey = makeIdentifierKey(raw);
+      if (sessionIdentifiers.current.has(idKey)) {
+        setDuplicateCount(c => c + 1);
+        setHighlightRawKey(idKey);
+        if (hlRawKeyTimer.current) clearTimeout(hlRawKeyTimer.current);
+        hlRawKeyTimer.current = setTimeout(() => setHighlightRawKey(null), 2000);
+        setHud('DUPLICATE_CODE');
+        navigator.vibrate?.([50, 50, 50]);
+        return;
+      }
+
       const mappedItem = resolveByGenericCode(raw);
 
       let unknownFrame: HTMLCanvasElement | null = null;
@@ -820,6 +838,7 @@ export default function WarehouseReceive() {
 
       setBlockedAsset(null);
       setScanEntries(prev => [unknownEntry, ...prev]);
+      sessionIdentifiers.current.add(idKey);
 
       if (unknownFrame) {
         void launchAutoOcr(uid, { serialNumber: null, partNumber: null, itemType: null }, unknownFrame);
@@ -973,6 +992,9 @@ export default function WarehouseReceive() {
     setScanEntries(prev => {
       const entry = prev.find(e => e.localId === localId);
       if (entry?.serialNumberNorm) sessionSNs.current.delete(entry.serialNumberNorm);
+      if (entry?.scanClassification === 'UNKNOWN_IDENTIFIER' && entry.unknownIdentifierRaw != null) {
+        sessionIdentifiers.current.delete(makeIdentifierKey(entry.unknownIdentifierRaw));
+      }
       return prev.filter(e => e.localId !== localId);
     });
   }
@@ -1386,6 +1408,7 @@ export default function WarehouseReceive() {
                         <div className={`${css.hudBanner} ${
                           hudState === 'SUCCESS'            ? css.hudSuccess    :
                           hudState === 'DUPLICATE'          ? css.hudDuplicate  :
+                          hudState === 'DUPLICATE_CODE'     ? css.hudDuplicate  :
                           hudState === 'EXISTING_ASSET'     ? css.hudDuplicate  :
                           hudState === 'OCR_PROCESSING'     ? css.hudOcrProcess :
                           hudState === 'OCR_SUCCESS'        ? css.hudOcrSuccess :
@@ -1394,6 +1417,7 @@ export default function WarehouseReceive() {
                         }`}>
                           {hudState === 'SUCCESS'           ? '✓ Added'                        :
                            hudState === 'DUPLICATE'         ? '⊘ Duplicate'                    :
+                           hudState === 'DUPLICATE_CODE'    ? '⊘ Duplicate Code'               :
                            hudState === 'EXISTING_ASSET'    ? '⊘ Already Known — see details'  :
                            hudState === 'OCR_PROCESSING'    ? '⏳ Reading Label…'               :
                            hudState === 'OCR_SUCCESS'       ? '✓ Label Read'                    :
@@ -1606,6 +1630,7 @@ export default function WarehouseReceive() {
                       if (confirm('Clear all scans?')) {
                         setScanEntries([]);
                         sessionSNs.current.clear();
+                        sessionIdentifiers.current.clear();
                         setDuplicateCount(0);
                       }
                     }}>
@@ -1624,7 +1649,7 @@ export default function WarehouseReceive() {
                       className={`${css.scanEntry} ${
                         e.status === 'VALID' ? css.scanEntryValid :
                         e.status === 'ERROR' ? css.scanEntryError : css.scanEntryPending
-                      } ${highlightSN && highlightSN === e.serialNumberNorm ? css.scanEntryHighlight : ''}`}>
+                      } ${(highlightSN && highlightSN === e.serialNumberNorm) || (highlightRawKey && e.unknownIdentifierRaw != null && highlightRawKey === makeIdentifierKey(e.unknownIdentifierRaw)) ? css.scanEntryHighlight : ''}`}>
 
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {/* Top row: item code badge + match status */}

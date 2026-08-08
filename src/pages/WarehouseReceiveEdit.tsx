@@ -21,11 +21,12 @@ import {
 import { captureVideoFrame, ocrCanvasFrame, terminateOcrWorker, type OcrResult } from '../lib/labelOcr';
 import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
 import { buildExistingAssetsMap, getBlockMessage, type KnownAsset, type BlockedMessage } from '../lib/existingAssetCheck';
+import { makeIdentifierKey } from '../lib/identifierDedup';
 import type { EditScanEntryForRpc } from '../lib/editReceiptHelpers';
 import css from './Warehouse.module.css';
 
 type InputMode = 'camera' | 'usb' | 'manual';
-type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN' | 'WAITING_PN' | 'INCOMPLETE_CARTON' | 'EXISTING_ASSET';
+type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'DUPLICATE_CODE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN' | 'WAITING_PN' | 'INCOMPLETE_CARTON' | 'EXISTING_ASSET';
 
 interface ReceiptHeader {
   id:                    string;
@@ -84,6 +85,7 @@ export default function WarehouseReceiveEdit() {
   const [scanFlash,    setScanFlash]   = useState(false);
   const [hudState,     setHudState]    = useState<HudState>('IDLE');
   const [highlightSN,  setHighlightSN] = useState<string | null>(null);
+  const [highlightRawKey, setHighlightRawKey] = useState<string | null>(null);
   const [duplicateCount, setDuplicateCount] = useState(0);
   const [expandedDiags, setExpandedDiags]   = useState<Set<string>>(new Set());
   const [ocrLoading,   setOcrLoading]  = useState(false);
@@ -114,7 +116,9 @@ export default function WarehouseReceiveEdit() {
   const toastTimer            = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hudTimer              = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hlTimer               = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hlRawKeyTimer         = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionSNs            = useRef<Set<string>>(new Set());
+  const sessionIdentifiers    = useRef<Set<string>>(new Set());
   const itemsByPN             = useRef<Map<string, InventoryItem>>(new Map());
   const itemsByCode           = useRef<Map<string, InventoryItem>>(new Map());
   const learnedByPN           = useRef<Map<string, InventoryItem>>(new Map());
@@ -318,7 +322,7 @@ export default function WarehouseReceiveEdit() {
   }
 
   // ── HUD ───────────────────────────────────────────────────────────────────
-  function setHud(state: 'SUCCESS' | 'DUPLICATE' | 'UNKNOWN') {
+  function setHud(state: 'SUCCESS' | 'DUPLICATE' | 'DUPLICATE_CODE' | 'UNKNOWN') {
     setHudState(state);
     if (hudTimer.current) clearTimeout(hudTimer.current);
     hudTimer.current = setTimeout(() => setHudState('IDLE'), 1200);
@@ -662,6 +666,18 @@ export default function WarehouseReceiveEdit() {
     }
 
     if (classification === 'UNKNOWN_IDENTIFIER') {
+      // Session-level dedup: same raw code (trim-only, case-sensitive) → duplicate
+      const idKey = makeIdentifierKey(raw);
+      if (sessionIdentifiers.current.has(idKey)) {
+        setDuplicateCount(c => c + 1);
+        setHighlightRawKey(idKey);
+        if (hlRawKeyTimer.current) clearTimeout(hlRawKeyTimer.current);
+        hlRawKeyTimer.current = setTimeout(() => setHighlightRawKey(null), 2000);
+        setHud('DUPLICATE_CODE');
+        navigator.vibrate?.([50, 50, 50]);
+        return;
+      }
+
       const mappedItem = resolveByGenericCode(raw);
 
       let unknownFrame: HTMLCanvasElement | null = null;
@@ -703,6 +719,7 @@ export default function WarehouseReceiveEdit() {
 
       setBlockedAsset(null);
       setScanEntries(prev => [unknownEntry, ...prev]);
+      sessionIdentifiers.current.add(idKey);
 
       if (unknownFrame) {
         void launchAutoOcr(uid, { serialNumber: null, partNumber: null, itemType: null }, unknownFrame);
@@ -787,6 +804,9 @@ export default function WarehouseReceiveEdit() {
     setScanEntries(prev => {
       const entry = prev.find(e => e.localId === localId);
       if (entry?.serialNumberNorm) sessionSNs.current.delete(entry.serialNumberNorm);
+      if (entry?.scanClassification === 'UNKNOWN_IDENTIFIER' && entry.unknownIdentifierRaw != null) {
+        sessionIdentifiers.current.delete(makeIdentifierKey(entry.unknownIdentifierRaw));
+      }
       return prev.filter(e => e.localId !== localId);
     });
   }
@@ -1073,6 +1093,7 @@ export default function WarehouseReceiveEdit() {
                     <div className={`${css.hudBanner} ${
                       hudState === 'SUCCESS'           ? css.hudSuccess    :
                       hudState === 'DUPLICATE'         ? css.hudDuplicate  :
+                      hudState === 'DUPLICATE_CODE'    ? css.hudDuplicate  :
                       hudState === 'EXISTING_ASSET'    ? css.hudDuplicate  :
                       hudState === 'OCR_PROCESSING'    ? css.hudOcrProcess :
                       hudState === 'OCR_SUCCESS'       ? css.hudOcrSuccess :
@@ -1081,6 +1102,7 @@ export default function WarehouseReceiveEdit() {
                     }`}>
                       {hudState === 'SUCCESS'           ? '✓ Added'                       :
                        hudState === 'DUPLICATE'         ? '⊘ Duplicate'                   :
+                       hudState === 'DUPLICATE_CODE'    ? '⊘ Duplicate Code'              :
                        hudState === 'EXISTING_ASSET'    ? '⊘ Already Known — see details' :
                        hudState === 'OCR_PROCESSING'    ? '⏳ Reading Label…'              :
                        hudState === 'OCR_SUCCESS'       ? '✓ Label Read'                   :
@@ -1233,6 +1255,9 @@ export default function WarehouseReceiveEdit() {
                     if (confirm('Clear new scans?')) {
                       for (const e of scanEntries) {
                         if (e.serialNumberNorm) sessionSNs.current.delete(e.serialNumberNorm);
+                        if (e.scanClassification === 'UNKNOWN_IDENTIFIER' && e.unknownIdentifierRaw != null) {
+                          sessionIdentifiers.current.delete(makeIdentifierKey(e.unknownIdentifierRaw));
+                        }
                       }
                       setScanEntries([]);
                       setDuplicateCount(0);
@@ -1247,7 +1272,7 @@ export default function WarehouseReceiveEdit() {
                     className={`${css.scanEntry} ${
                       e.status === 'VALID' ? css.scanEntryValid :
                       e.status === 'ERROR' ? css.scanEntryError : css.scanEntryPending
-                    } ${highlightSN && highlightSN === e.serialNumberNorm ? css.scanEntryHighlight : ''}`}>
+                    } ${(highlightSN && highlightSN === e.serialNumberNorm) || (highlightRawKey && e.unknownIdentifierRaw != null && highlightRawKey === makeIdentifierKey(e.unknownIdentifierRaw)) ? css.scanEntryHighlight : ''}`}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
                         {e.resolvedItemCode && <span className={css.scanCardItemCode}>{e.resolvedItemCode}</span>}
