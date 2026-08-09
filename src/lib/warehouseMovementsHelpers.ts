@@ -191,3 +191,69 @@ export function formatBaghdadTime(isoTimestamp: string): string {
   const p = _baghdadParts(isoTimestamp);
   return `${p.hour}:${p.minute} ${p.dayPeriod}`;
 }
+
+// ── Barcode symbology display formatter ───────────────────────────────────────
+// Normalises the raw barcode_symbology DB value to a human-readable label.
+//
+// The DB contains two kinds of values:
+//   1. ZXing numeric enum integers ("5", "4", "11", …) — written by the ZXing
+//      fallback path before the write-path fix was applied.
+//   2. Named strings from BarcodeDetector API ("DATA_MATRIX", "CODE_128", …),
+//      or non-camera inputs ("USB_HID", "MANUAL", "OCR").
+//
+// Both are normalised to a single consistent display label here so historical
+// rows ("5") and future rows ("DATA_MATRIX") display identically.
+
+const _symbologyLabels: Record<string, string> = {
+  // ── ZXing BarcodeFormat numeric enum values (legacy write-path) ──────────
+  '0':  'Aztec',
+  '1':  'Codabar',
+  '2':  'Code 39',
+  '3':  'Code 93',
+  '4':  'Code 128',
+  '5':  'DataMatrix',
+  '6':  'EAN-8',
+  '7':  'EAN-13',
+  '8':  'ITF',
+  '9':  'MaxiCode',
+  '10': 'PDF 417',
+  '11': 'QR Code',
+  '12': 'RSS-14',
+  '13': 'RSS Expanded',
+  '14': 'UPC-A',
+  '15': 'UPC-E',
+  '16': 'UPC/EAN Ext',
+  // ── Named strings from BarcodeDetector API (canonical post-fix values) ───
+  'AZTEC':              'Aztec',
+  'CODABAR':            'Codabar',
+  'CODE_39':            'Code 39',
+  'CODE_93':            'Code 93',
+  'CODE_128':           'Code 128',
+  'DATA_MATRIX':        'DataMatrix',
+  'EAN_8':              'EAN-8',
+  'EAN_13':             'EAN-13',
+  'ITF':                'ITF',
+  'MAXICODE':           'MaxiCode',
+  'PDF_417':            'PDF 417',
+  'QR_CODE':            'QR Code',
+  'RSS_14':             'RSS-14',
+  'RSS_EXPANDED':       'RSS Expanded',
+  'UPC_A':              'UPC-A',
+  'UPC_E':              'UPC-E',
+  'UPC_EAN_EXTENSION':  'UPC/EAN Ext',
+  // ── Non-camera input sources ─────────────────────────────────────────────
+  'USB_HID': 'USB Scanner',
+  'MANUAL':  'Manual',
+  'OCR':     'OCR',
+};
+
+/**
+ * Returns a human-readable barcode symbology label from a raw DB value.
+ * Handles ZXing numeric integers ("5" → "DataMatrix"), BarcodeDetector named
+ * strings ("DATA_MATRIX" → "DataMatrix"), and non-camera sources ("USB_HID" →
+ * "USB Scanner"). Unknown values are returned as-is so nothing crashes.
+ */
+export function formatBarcodeSymbology(raw: string | null | undefined): string {
+  if (!raw) return '—';
+  return _symbologyLabels[raw] ?? _symbologyLabels[raw.toUpperCase()] ?? raw;
+}

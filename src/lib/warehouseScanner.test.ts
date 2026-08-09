@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseScan, hasNokiaDI, parseNokiaDI, classifyScan } from './warehouseScanner';
+import { parseScan, hasNokiaDI, parseNokiaDI, classifyScan, ZXING_FORMAT_NAMES } from './warehouseScanner';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -647,5 +647,34 @@ describe('Phase 3E-C — unknown-identifier and url-payload profiles', () => {
     const p   = parseScan(url, 'QR_CODE');
     expect(p.rawValue).toBe(url);
     expect(p.parsingProfile).toBe('url-payload');
+  });
+});
+
+// ── ZXING_FORMAT_NAMES ────────────────────────────────────────────────────────
+// Verifies the ZXing numeric enum → canonical name map so that the write-path
+// normalization in startZxingLoop() produces the same symbology strings as the
+// native BarcodeDetector path.
+
+describe('ZXING_FORMAT_NAMES', () => {
+  it('maps 5 → DATA_MATRIX (primary Nokia barcode type)', () =>
+    expect(ZXING_FORMAT_NAMES[5]).toBe('DATA_MATRIX'));
+
+  it('maps 4 → CODE_128', () =>
+    expect(ZXING_FORMAT_NAMES[4]).toBe('CODE_128'));
+
+  it('maps 11 → QR_CODE', () =>
+    expect(ZXING_FORMAT_NAMES[11]).toBe('QR_CODE'));
+
+  it('maps 2 → CODE_39', () =>
+    expect(ZXING_FORMAT_NAMES[2]).toBe('CODE_39'));
+
+  it('maps 7 → EAN_13', () =>
+    expect(ZXING_FORMAT_NAMES[7]).toBe('EAN_13'));
+
+  it('all values are uppercase strings with no spaces', () => {
+    for (const [, name] of Object.entries(ZXING_FORMAT_NAMES)) {
+      expect(name).toBe(name.toUpperCase());
+      expect(name).not.toContain(' ');
+    }
   });
 });

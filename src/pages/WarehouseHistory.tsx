@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import type { GoodsReceipt, GoodsReceiptItem, InventoryItem, Warehouse } from '../lib/warehouseTypes';
 import { friendlyPostingError, formatPostingToast, type PostReceiptSuccess } from '../lib/warehousePosting';
 import { computeLineItemPn } from '../lib/warehouseStock';
-import { formatBaghdadDate, formatBaghdadTime } from '../lib/warehouseMovementsHelpers';
+import { formatBaghdadDate, formatBaghdadTime, formatBarcodeSymbology } from '../lib/warehouseMovementsHelpers';
 import css from './Warehouse.module.css';
 
 interface ReceiptRow extends GoodsReceipt {
@@ -410,7 +410,7 @@ export default function WarehouseHistory() {
                           <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.part_number || '—'}</td>
                           <td style={{ fontSize: 11, color: '#64748b' }}>
                             {s.barcode_symbology
-                              ? <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>{s.barcode_symbology}</span>
+                              ? <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>{formatBarcodeSymbology(s.barcode_symbology)}</span>
                               : '—'}
                           </td>
                           <td style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>

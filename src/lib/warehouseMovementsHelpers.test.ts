@@ -8,6 +8,7 @@ import {
   enrichMovementRow,
   formatBaghdadDate,
   formatBaghdadTime,
+  formatBarcodeSymbology,
 } from './warehouseMovementsHelpers';
 
 // ── deriveDirection ───────────────────────────────────────────────────────────
@@ -333,4 +334,56 @@ describe('formatBaghdadTime', () => {
   it('Baghdad noon (09:00 UTC) shows 12:00 PM', () => {
     expect(formatBaghdadTime('2026-08-07T09:00:00Z')).toBe('12:00 PM');
   });
+});
+
+// ── formatBarcodeSymbology ────────────────────────────────────────────────────
+// Covers: ZXing numeric legacy values, BarcodeDetector named values,
+// non-camera sources, null/empty edge cases, unknown pass-through.
+
+describe('formatBarcodeSymbology', () => {
+  // ZXing numeric enum integers (legacy write-path — stored before fix applied)
+  it('"5" (ZXing DATA_MATRIX) → "DataMatrix"', () =>
+    expect(formatBarcodeSymbology('5')).toBe('DataMatrix'));
+
+  it('"4" (ZXing CODE_128) → "Code 128"', () =>
+    expect(formatBarcodeSymbology('4')).toBe('Code 128'));
+
+  it('"11" (ZXing QR_CODE) → "QR Code"', () =>
+    expect(formatBarcodeSymbology('11')).toBe('QR Code'));
+
+  it('"2" (ZXing CODE_39) → "Code 39"', () =>
+    expect(formatBarcodeSymbology('2')).toBe('Code 39'));
+
+  it('"7" (ZXing EAN_13) → "EAN-13"', () =>
+    expect(formatBarcodeSymbology('7')).toBe('EAN-13'));
+
+  // Named strings from BarcodeDetector API (canonical post-fix values)
+  it('"DATA_MATRIX" (BarcodeDetector named) → "DataMatrix"', () =>
+    expect(formatBarcodeSymbology('DATA_MATRIX')).toBe('DataMatrix'));
+
+  it('"CODE_128" (BarcodeDetector named) → "Code 128"', () =>
+    expect(formatBarcodeSymbology('CODE_128')).toBe('Code 128'));
+
+  it('"QR_CODE" (BarcodeDetector named) → "QR Code"', () =>
+    expect(formatBarcodeSymbology('QR_CODE')).toBe('QR Code'));
+
+  // Non-camera input sources
+  it('"USB_HID" → "USB Scanner"', () =>
+    expect(formatBarcodeSymbology('USB_HID')).toBe('USB Scanner'));
+
+  it('"MANUAL" → "Manual"', () =>
+    expect(formatBarcodeSymbology('MANUAL')).toBe('Manual'));
+
+  it('"OCR" → "OCR"', () =>
+    expect(formatBarcodeSymbology('OCR')).toBe('OCR'));
+
+  // Edge cases
+  it('null → "—"', () =>
+    expect(formatBarcodeSymbology(null)).toBe('—'));
+
+  it('empty string → "—"', () =>
+    expect(formatBarcodeSymbology('')).toBe('—'));
+
+  it('unknown value is returned as-is (safe pass-through, no crash)', () =>
+    expect(formatBarcodeSymbology('UNKNOWN_FORMAT_XYZ')).toBe('UNKNOWN_FORMAT_XYZ'));
 });
