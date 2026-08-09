@@ -77,6 +77,7 @@ export default function WarehouseMovements() {
   const [search,    setSearch]    = useState('');
 
   const [selectedMovement, setSelectedMovement] = useState<MovementRow | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -405,7 +406,7 @@ export default function WarehouseMovements() {
       {selectedMovement && createPortal(
         <div
           className={css.overlay}
-          onClick={e => { if (e.target === e.currentTarget) setSelectedMovement(null); }}
+          onClick={e => { if (e.target === e.currentTarget) { setSelectedMovement(null); setCopiedId(false); } }}
         >
           <div className={`${css.modal} ${css.modalWide}`}>
             <div className={css.modalHdr}>
@@ -414,13 +415,10 @@ export default function WarehouseMovements() {
             </div>
 
             <div className={css.modalBody}>
-              {/* Type + direction badges + movement ID */}
+              {/* Type + direction badges */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
                 {movBadge(selectedMovement.movement_type)}
                 {dirBadge(selectedMovement.direction)}
-                <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#94a3b8', marginLeft: 'auto' }}>
-                  {selectedMovement.id}
-                </span>
               </div>
 
               {/* Core fields */}
@@ -485,7 +483,7 @@ export default function WarehouseMovements() {
               {selectedMovement.notes && (
                 <div style={{
                   background: '#f8fafc', borderRadius: 8, padding: 12,
-                  border: '1px solid #e2e8f0',
+                  border: '1px solid #e2e8f0', marginBottom: 14,
                 }}>
                   <div style={{
                     fontSize: 11, fontWeight: 700, color: '#94a3b8',
@@ -498,10 +496,43 @@ export default function WarehouseMovements() {
                   </div>
                 </div>
               )}
+
+              {/* Technical details */}
+              <div style={{
+                background: '#f8fafc', borderRadius: 8, padding: '10px 14px',
+                border: '1px solid #e2e8f0',
+              }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, color: '#94a3b8',
+                  textTransform: 'uppercase', letterSpacing: '.4px', marginBottom: 8,
+                }}>
+                  Technical Details
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, minWidth: 80 }}>
+                    Movement ID
+                  </span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#475569', flex: 1, wordBreak: 'break-all' }}>
+                    {selectedMovement.id}
+                  </span>
+                  <button
+                    className={css.btnGhost}
+                    style={{ fontSize: 11, height: 26, padding: '0 10px', flexShrink: 0 }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(selectedMovement.id).then(() => {
+                        setCopiedId(true);
+                        setTimeout(() => setCopiedId(false), 1500);
+                      });
+                    }}
+                  >
+                    {copiedId ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className={css.modalFtr}>
-              <button className={css.btnGhost} onClick={() => setSelectedMovement(null)}>Close</button>
+              <button className={css.btnGhost} onClick={() => { setSelectedMovement(null); setCopiedId(false); }}>Close</button>
             </div>
           </div>
         </div>,

@@ -9,6 +9,7 @@ import {
   type StockRow,
   type StockStateFilter,
 } from '../lib/warehouseStock';
+import { formatBaghdadDate } from '../lib/warehouseMovementsHelpers';
 import css from './Warehouse.module.css';
 
 interface AssetDetail {
@@ -382,7 +383,7 @@ export default function WarehouseStock() {
                                 </span>
                               </td>
                               <td style={{ fontSize: 12 }}>{a.receiptNumber || '—'}</td>
-                              <td style={{ fontSize: 12, color: '#94a3b8' }}>{a.created_at.slice(0, 10)}</td>
+                              <td style={{ fontSize: 12, color: '#94a3b8' }}>{formatBaghdadDate(a.created_at)}</td>
                             </tr>
                           ))}
                         </tbody>

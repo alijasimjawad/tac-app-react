@@ -23,6 +23,10 @@ import { mergeScanAndOcr, type BarcodeSource } from '../lib/smartLabelMerge';
 import { buildExistingAssetsMap, getBlockMessage, type KnownAsset, type BlockedMessage } from '../lib/existingAssetCheck';
 import { makeIdentifierKey } from '../lib/identifierDedup';
 import type { EditScanEntryForRpc } from '../lib/editReceiptHelpers';
+import {
+  buildQuantityEntries, adjustQuantityLine, setQuantityLineQty, hasQuantityChanges,
+  type QuantityLineItem,
+} from '../lib/warehouseReceiveEditHelpers';
 import css from './Warehouse.module.css';
 
 type InputMode = 'camera' | 'usb' | 'manual';
@@ -63,6 +67,8 @@ export default function WarehouseReceiveEdit() {
   const [receipt,    setReceipt]      = useState<ReceiptHeader | null>(null);
   const [existingRows, setExistingRows] = useState<ExistingRow[]>([]);
   const [removedIds, setRemovedIds]   = useState<Set<string>>(new Set());
+  const [quantityLines, setQuantityLines] = useState<QuantityLineItem[]>([]);
+  const [originalQuantityLines, setOriginalQuantityLines] = useState<QuantityLineItem[]>([]);
   const [items,      setItems]        = useState<InventoryItem[]>([]);
   const [warehouses, setWarehouses]   = useState<Warehouse[]>([]);
 
@@ -138,7 +144,8 @@ export default function WarehouseReceiveEdit() {
   const activeExistingRows  = existingRows.filter(r => !removedIds.has(r.id));
   const keptExistingCount   = activeExistingRows.filter(r => r.inventory_item_id).length;
   const newValidCount       = scanEntries.filter(e => e.status === 'VALID').length;
-  const totalUnits          = keptExistingCount + newValidCount;
+  const quantityTotal       = quantityLines.reduce((s, l) => s + l.quantity, 0);
+  const totalUnits          = keptExistingCount + newValidCount + quantityTotal;
   const needsReviewCount    = scanEntries.filter(e => e.matchStatus === 'NEEDS_REVIEW').length;
 
   const hasChanges = (
@@ -148,7 +155,8 @@ export default function WarehouseReceiveEdit() {
     editDn       !== (receipt?.delivery_note_number   || '') ||
     editPo       !== (receipt?.purchase_order_number  || '') ||
     editDate     !== (receipt?.receipt_date           || '') ||
-    editNotes    !== (receipt?.notes                  || '')
+    editNotes    !== (receipt?.notes                  || '') ||
+    hasQuantityChanges(quantityLines, originalQuantityLines)
   );
   hasChangesRef.current = hasChanges;
 
@@ -170,13 +178,14 @@ export default function WarehouseReceiveEdit() {
     if (!receiptId) { setLoadError('No receipt ID provided.'); setLoading(false); return; }
     (async () => {
       setLoading(true);
-      const [rcptRes, scanRes, itemsRes, wrhRes, assetRes, grRes] = await Promise.all([
+      const [rcptRes, scanRes, itemsRes, wrhRes, assetRes, grRes, lineItemsRes] = await Promise.all([
         supabase.from('goods_receipts').select('*').eq('id', receiptId).single(),
         supabase.from('receiving_scan_log').select('*').eq('goods_receipt_id', receiptId).order('created_at'),
         supabase.from('inventory_items').select('*').eq('is_active', true).order('item_name'),
         supabase.from('warehouses').select('*').eq('is_active', true).order('name'),
         supabase.from('inventory_assets').select('serial_number_normalized, inventory_item_id, part_number, warehouse_id, status, source_receipt_id'),
         supabase.from('goods_receipts').select('id, receipt_number'),
+        supabase.from('goods_receipt_items').select('inventory_item_id, quantity').eq('goods_receipt_id', receiptId),
       ]);
 
       if (rcptRes.error || !rcptRes.data) {
@@ -220,6 +229,26 @@ export default function WarehouseReceiveEdit() {
         itemsByCode.current  = byCode_;
         itemTypeCodes.current = types_;
         byId = byId_;
+      }
+
+      // Load QUANTITY line items from goods_receipt_items
+      if (lineItemsRes.data && byId) {
+        const qLines: QuantityLineItem[] = (lineItemsRes.data as Array<{ inventory_item_id: string; quantity: number }>)
+          .filter(li => {
+            const it = byId!.get(li.inventory_item_id);
+            return it?.tracking_method === 'QUANTITY';
+          })
+          .map(li => {
+            const it = byId!.get(li.inventory_item_id)!;
+            return {
+              inventoryItemId: li.inventory_item_id,
+              itemCode:        it.item_code,
+              itemName:        it.item_name,
+              quantity:        li.quantity,
+            };
+          });
+        setQuantityLines(qLines);
+        setOriginalQuantityLines(qLines);
       }
 
       // Build existing rows with item info + pre-populate sessionSNs
@@ -936,9 +965,10 @@ export default function WarehouseReceiveEdit() {
       }));
 
     const allEntries = [...keptExisting, ...newValidEntries];
+    const quantityEntries = buildQuantityEntries(quantityLines);
 
-    if (allEntries.length === 0) {
-      showToast('Cannot save a receipt with no scanned units.', false);
+    if (allEntries.length === 0 && quantityEntries.length === 0) {
+      showToast('Cannot save a receipt with no units.', false);
       setSaving(false);
       return;
     }
@@ -951,6 +981,7 @@ export default function WarehouseReceiveEdit() {
       p_receipt_date:          editDate,
       p_notes:                 editNotes    || null,
       p_scan_entries:          allEntries,
+      p_quantity_entries:      quantityEntries,
     });
 
     if (rpcErr) {
@@ -1359,7 +1390,59 @@ export default function WarehouseReceiveEdit() {
             </div>
           )}
 
-          {activeExistingRows.length === 0 && scanEntries.length === 0 && (
+          {/* Quantity items from this receipt */}
+          {quantityLines.length > 0 && (
+            <div style={{ marginTop: activeExistingRows.length > 0 || scanEntries.length > 0 ? 16 : 0 }}>
+              <div className={css.scanListHdr}>
+                <span className={css.scanCount}>
+                  {quantityLines.length} quantity item{quantityLines.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                {quantityLines.map(ql => (
+                  <div key={ql.inventoryItemId} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 10px', background: '#f0fdf4',
+                    border: '1px solid #bbf7d0', borderRadius: 8,
+                  }}>
+                    <span className={css.scanCardItemCode} style={{ flexShrink: 0 }}>{ql.itemCode}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{ql.itemName}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                      <button
+                        className={css.btnGhost}
+                        style={{ width: 28, height: 28, padding: 0, fontSize: 16, lineHeight: 1 }}
+                        onClick={() => setQuantityLines(lines => adjustQuantityLine(lines, ql.inventoryItemId, -1))}>
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        style={{ width: 52, height: 28, textAlign: 'center', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 4, padding: '0 4px' }}
+                        value={ql.quantity}
+                        onChange={e => setQuantityLines(lines => setQuantityLineQty(lines, ql.inventoryItemId, e.target.value))}
+                      />
+                      <button
+                        className={css.btnGhost}
+                        style={{ width: 28, height: 28, padding: 0, fontSize: 16, lineHeight: 1 }}
+                        onClick={() => setQuantityLines(lines => adjustQuantityLine(lines, ql.inventoryItemId, 1))}>
+                        +
+                      </button>
+                    </div>
+                    <button
+                      className={`${css.btnIcon} ${css.btnIconDanger}`}
+                      onClick={() => setQuantityLines(lines => lines.filter(l => l.inventoryItemId !== ql.inventoryItemId))}
+                      title="Remove this item">
+                      <TrashIcon />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeExistingRows.length === 0 && scanEntries.length === 0 && quantityLines.length === 0 && (
             <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: 32 }}>
               No units — scan items to add them
             </div>

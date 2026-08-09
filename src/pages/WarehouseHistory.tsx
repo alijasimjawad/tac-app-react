@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import type { GoodsReceipt, GoodsReceiptItem, InventoryItem, Warehouse } from '../lib/warehouseTypes';
 import { friendlyPostingError, formatPostingToast, type PostReceiptSuccess } from '../lib/warehousePosting';
 import { computeLineItemPn } from '../lib/warehouseStock';
+import { formatBaghdadDate, formatBaghdadTime } from '../lib/warehouseMovementsHelpers';
 import css from './Warehouse.module.css';
 
 interface ReceiptRow extends GoodsReceipt {
@@ -28,10 +29,12 @@ interface ScanLogRow {
 }
 
 interface ReceiptDetail {
-  receipt:       ReceiptRow;
-  lineItems:     Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
-  scanLogs:      ScanLogRow[];
-  assetsCreated: number | null;
+  receipt:        ReceiptRow;
+  lineItems:      Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
+  scanLogs:       ScanLogRow[];
+  assetsCreated:  number | null;
+  receivedByName: string | null;
+  postedByName:   string | null;
 }
 
 function statusBadge(s: string) {
@@ -123,12 +126,18 @@ export default function WarehouseHistory() {
   useEffect(() => { load(page); }, [page, warehouses]);
 
   async function openDetail(receipt: ReceiptRow) {
-    const [liRes, scanRes, assetCountRes] = await Promise.all([
+    const [liRes, scanRes, assetCountRes, receiverRes, movRes] = await Promise.all([
       supabase.from('goods_receipt_items').select('*').eq('goods_receipt_id', receipt.id),
       supabase.from('receiving_scan_log').select('*').eq('goods_receipt_id', receipt.id).order('created_at'),
       receipt.status === 'POSTED'
         ? supabase.from('inventory_assets').select('id', { count: 'exact', head: true }).eq('source_receipt_id', receipt.id)
         : Promise.resolve({ count: null }),
+      receipt.received_by
+        ? supabase.from('users').select('id, full_name').eq('id', receipt.received_by).single()
+        : Promise.resolve({ data: null }),
+      receipt.status === 'POSTED'
+        ? supabase.from('stock_movements').select('performed_by').eq('reference_type', 'GOODS_RECEIPT').eq('reference_id', receipt.id).limit(5)
+        : Promise.resolve({ data: null }),
     ]);
 
     const lineItems = (liRes.data || []) as Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
@@ -148,7 +157,22 @@ export default function WarehouseHistory() {
 
     const assetsCreated = receipt.status === 'POSTED' ? ((assetCountRes as { count: number | null }).count ?? null) : null;
 
-    setDetail({ receipt, lineItems, scanLogs, assetsCreated });
+    // Resolve received_by name
+    const receivedByName = (receiverRes as { data: { full_name: string } | null })?.data?.full_name ?? null;
+
+    // Resolve posted_by name from the performers on stock_movements for this receipt
+    let postedByName: string | null = null;
+    const movData = (movRes as { data: Array<{ performed_by: string }> | null })?.data;
+    if (movData && movData.length > 0) {
+      const uniquePerformers = [...new Set(movData.map(m => m.performed_by).filter(Boolean))];
+      if (uniquePerformers.length > 0) {
+        const perfRes = await supabase.from('users').select('id, full_name').in('id', uniquePerformers);
+        const names = (perfRes.data || []).map(u => u.full_name).filter(Boolean);
+        postedByName = names.length === 1 ? names[0] : names.length > 1 ? 'Multiple' : null;
+      }
+    }
+
+    setDetail({ receipt, lineItems, scanLogs, assetsCreated, receivedByName, postedByName });
   }
 
   async function postReceipt(receiptId: string) {
@@ -298,6 +322,17 @@ export default function WarehouseHistory() {
                 <SF label="Supplier"     value={detail.receipt.supplier_name || '—'} />
                 <SF label="Delivery Note" value={detail.receipt.delivery_note_number || '—'} />
                 <SF label="PO Number"    value={detail.receipt.purchase_order_number || '—'} />
+                <SF label="Received By"  value={detail.receivedByName || '—'} />
+                {detail.receipt.status === 'POSTED' && (
+                  <>
+                    <SF label="Posted By" value={detail.postedByName || '—'} />
+                    <SF label="Posted At" value={
+                      detail.receipt.posted_at
+                        ? `${formatBaghdadDate(detail.receipt.posted_at)} ${formatBaghdadTime(detail.receipt.posted_at)}`
+                        : '—'
+                    } />
+                  </>
+                )}
               </div>
               {detail.receipt.notes && (
                 <div style={{ background: '#f8fafc', borderRadius: 8, padding: 10, marginBottom: 16, fontSize: 13, color: '#475569' }}>
@@ -306,10 +341,12 @@ export default function WarehouseHistory() {
               )}
 
               {detail.assetsCreated !== null && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '8px 12px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '8px 12px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0', flexWrap: 'wrap' }}>
                   <span className={`${css.badge} ${css.badgeGreen}`}>Posted to Stock</span>
                   <span style={{ fontSize: 13, color: '#15803d' }}>
                     {detail.assetsCreated} serialized asset{detail.assetsCreated !== 1 ? 's' : ''} created
+                    {detail.postedByName && ` · by ${detail.postedByName}`}
+                    {detail.receipt.posted_at && ` · ${formatBaghdadDate(detail.receipt.posted_at)} ${formatBaghdadTime(detail.receipt.posted_at)}`}
                   </span>
                 </div>
               )}
@@ -376,7 +413,10 @@ export default function WarehouseHistory() {
                               ? <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>{s.barcode_symbology}</span>
                               : '—'}
                           </td>
-                          <td style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{s.created_at.slice(0, 16).replace('T', ' ')}</td>
+                          <td style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                            <div>{formatBaghdadDate(s.created_at)}</div>
+                            <div style={{ fontSize: 10, fontFamily: 'monospace', marginTop: 1 }}>{formatBaghdadTime(s.created_at)}</div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
