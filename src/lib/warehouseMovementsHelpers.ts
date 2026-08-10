@@ -103,10 +103,11 @@ export interface MovementSearchRow {
   serialNumber?:  string | null;
   partNumber?:    string | null;
   receiptNumber?: string;
+  issueNumber?:   string;
 }
 
 /**
- * Client-side movement search across item code, item name, SN, PN, and GR number.
+ * Client-side movement search across item code, item name, SN, PN, GR/GI number.
  * Case-insensitive substring match. Returns true when query is empty.
  * Null/absent fields are skipped gracefully — never produce false positives.
  */
@@ -118,7 +119,8 @@ export function matchesMovementSearch(row: MovementSearchRow, query: string): bo
     row.itemName.toLowerCase().includes(q) ||
     (row.serialNumber  != null && row.serialNumber.toLowerCase().includes(q))  ||
     (row.partNumber    != null && row.partNumber.toLowerCase().includes(q))    ||
-    (row.receiptNumber != null && row.receiptNumber.toLowerCase().includes(q))
+    (row.receiptNumber != null && row.receiptNumber.toLowerCase().includes(q)) ||
+    (row.issueNumber   != null && row.issueNumber.toLowerCase().includes(q))
   );
 }
 
@@ -142,6 +144,7 @@ export interface MovementEnrichment {
   trackingMethod: string | null;
   performerName:  string;
   receiptNumber:  string | undefined;
+  issueNumber:    string | undefined;
   serialNumber:   string | null;
   partNumber:     string | null;
   assetStatus:    string | null;
@@ -166,11 +169,15 @@ export function enrichMovementRow(
   perfMap:    Map<string, string>,
   grMap:      Map<string, string>,
   projectMap: Map<string, string> = new Map(),
+  giMap:      Map<string, string> = new Map(),
 ): MovementEnrichment {
   const item    = itemMap.get(row.inventory_item_id);
   const asset   = row.asset_id != null ? assetMap.get(row.asset_id) : undefined;
   const receipt = (row.reference_type === 'GOODS_RECEIPT' && row.reference_id != null)
     ? grMap.get(row.reference_id)
+    : undefined;
+  const issue = (row.reference_type === 'GOODS_ISSUE' && row.reference_id != null)
+    ? giMap.get(row.reference_id)
     : undefined;
 
   return {
@@ -180,6 +187,7 @@ export function enrichMovementRow(
     trackingMethod: item?.trackingMethod          ?? null,
     performerName:  perfMap.get(row.performed_by) ?? (row.performed_by || '—'),
     receiptNumber:  receipt,
+    issueNumber:    issue,
     serialNumber:   asset?.serialNumber           ?? null,
     partNumber:     asset?.partNumber             ?? null,
     assetStatus:    asset?.assetStatus            ?? null,

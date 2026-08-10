@@ -41,6 +41,8 @@ import WarehouseReceiveEdit from './pages/WarehouseReceiveEdit';
 import WarehouseHistory from './pages/WarehouseHistory';
 import WarehouseMovements from './pages/WarehouseMovements';
 import WarehouseStock from './pages/WarehouseStock';
+import WarehouseIssue from './pages/WarehouseIssue';
+import WarehouseIssueHistory from './pages/WarehouseIssueHistory';
 
 function RoleRedirect() {
   const { currentUser, loading } = useAuth();
@@ -102,6 +104,8 @@ export default function App() {
             <Route path="/warehouse/receive/edit/:receiptId"   element={<WarehouseReceiveEdit />} />
             <Route path="/warehouse/history"                    element={<WarehouseHistory />} />
             <Route path="/warehouse/movements"      element={<WarehouseMovements />} />
+            <Route path="/warehouse/issue"          element={<WarehouseIssue />} />
+            <Route path="/warehouse/issue-history"  element={<WarehouseIssueHistory />} />
             <Route path="/"           element={<RoleRedirect />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

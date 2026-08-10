@@ -307,6 +307,16 @@ export const ACTION_SCOPES: ActionScope[] = [
       { key: 'wrh_mappings_manage',   label: 'Manage Code Mappings' },
     ],
   },
+  {
+    id: 'warehouse_issue',
+    label: 'Warehouse — Goods Issue',
+    actions: [
+      { key: 'wrh_issue_create', label: 'Create Issue' },
+      { key: 'wrh_issue_edit',   label: 'Edit Issue' },
+      { key: 'wrh_issue_post',   label: 'Post to Stock' },
+      { key: 'wrh_issue_cancel', label: 'Cancel Issue' },
+    ],
+  },
 ];
 
 // Flattened list of every scoped action key — used where a page just needs
@@ -418,4 +428,9 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
 
   wrh_warehouses_manage: 'view_warehouse_overview',
   wrh_mappings_manage:   'view_warehouse_inventory',
+
+  wrh_issue_create: 'view_warehouse_issue',
+  wrh_issue_edit:   'view_warehouse_issue_history',
+  wrh_issue_post:   'view_warehouse_issue',
+  wrh_issue_cancel: 'view_warehouse_issue',
 };

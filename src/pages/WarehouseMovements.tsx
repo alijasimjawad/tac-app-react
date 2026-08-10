@@ -20,6 +20,7 @@ interface MovementRow extends StockMovement {
   trackingMethod: string | null;
   performerName:  string;
   receiptNumber?: string;
+  issueNumber?:   string;
   serialNumber:   string | null;
   partNumber:     string | null;
   assetStatus:    string | null;
@@ -156,6 +157,10 @@ export default function WarehouseMovements() {
       raw.filter(r => r.reference_type === 'GOODS_RECEIPT' && r.reference_id)
          .map(r => r.reference_id!),
     )];
+    const giIds    = [...new Set(
+      raw.filter(r => r.reference_type === 'GOODS_ISSUE' && r.reference_id)
+         .map(r => r.reference_id!),
+    )];
     const assetIds = [...new Set(
       raw.map(r => r.asset_id).filter((x): x is string => x != null),
     )];
@@ -163,6 +168,7 @@ export default function WarehouseMovements() {
     // Page-scoped Maps built per load — mutated inside Promise.all callbacks
     const perfMap  = new Map<string, string>();
     const grMap    = new Map<string, string>();
+    const giMap    = new Map<string, string>();
     let   assetMap = buildAssetMap([]);
 
     await Promise.all([
@@ -176,6 +182,12 @@ export default function WarehouseMovements() {
         ? supabase.from('goods_receipts').select('id, receipt_number').in('id', grIds)
             .then(({ data: d }) => {
               if (d) d.forEach(g => grMap.set(g.id, g.receipt_number));
+            })
+        : Promise.resolve(),
+      giIds.length
+        ? supabase.from('goods_issues').select('id, issue_number').in('id', giIds)
+            .then(({ data: d }) => {
+              if (d) d.forEach(g => giMap.set(g.id, g.issue_number));
             })
         : Promise.resolve(),
       assetIds.length
@@ -199,6 +211,7 @@ export default function WarehouseMovements() {
         perfMap,
         grMap,
         metaRef.current.projectMap,
+        giMap,
       ),
     }));
 
@@ -243,7 +256,7 @@ export default function WarehouseMovements() {
             <SearchIcon className={css.searchIcon} />
             <input
               className={css.searchInput}
-              placeholder="Search item, SN, PN, GR number…"
+              placeholder="Search item, SN, PN, GR/GI number…"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -384,6 +397,13 @@ export default function WarehouseMovements() {
                           </div>
                           <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>Goods Receipt</div>
                         </>
+                      ) : m.issueNumber ? (
+                        <>
+                          <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#dc2626', fontSize: 11 }}>
+                            {m.issueNumber}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>Goods Issue</div>
+                        </>
                       ) : m.reference_type ? (
                         <span className={`${css.badge} ${css.badgeSlate}`} style={{ fontSize: 10 }}>
                           {m.reference_type}
@@ -470,6 +490,10 @@ export default function WarehouseMovements() {
                   selectedMovement.receiptNumber
                     ? <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#6366f1' }}>
                         {selectedMovement.receiptNumber}
+                      </span>
+                    : selectedMovement.issueNumber
+                    ? <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#dc2626' }}>
+                        {selectedMovement.issueNumber}
                       </span>
                     : (selectedMovement.reference_type ?? '—')
                 } />

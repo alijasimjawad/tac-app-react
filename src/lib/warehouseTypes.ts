@@ -173,6 +173,44 @@ export interface SessionDetails {
   notes: string;
 }
 
+// ── Goods Issue types ─────────────────────────────────────────────────────────
+
+export type DestinationType = 'SITE' | 'TEAM_MEMBER' | 'USER' | 'VEHICLE' | 'EXTERNAL' | 'OTHER';
+export type GoodsIssueStatus = 'DRAFT' | 'POSTED' | 'CANCELLED';
+
+export interface GoodsIssue {
+  id:                string;
+  issue_number:      string;
+  warehouse_id:      string;
+  project_id:        string;
+  issue_date:        string;
+  destination_type:  DestinationType;
+  destination_id:    string | null;
+  destination_label: string;
+  notes:             string | null;
+  status:            GoodsIssueStatus;
+  issued_by:         string;
+  posted_at:         string | null;
+  created_at:        string;
+  updated_at:        string;
+}
+
+export interface GoodsIssueItem {
+  id:                string;
+  goods_issue_id:    string;
+  inventory_item_id: string;
+  quantity:          number;
+  created_at:        string;
+}
+
+export interface GoodsIssueAsset {
+  id:                  string;
+  goods_issue_id:      string;
+  goods_issue_item_id: string;
+  inventory_asset_id:  string;
+  created_at:          string;
+}
+
 // ── Normalizer ────────────────────────────────────────────────────────────────
 
 export function normalizeSN(sn: string): string {
