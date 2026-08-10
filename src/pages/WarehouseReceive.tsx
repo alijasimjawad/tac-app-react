@@ -29,7 +29,8 @@ type InputMode = 'camera' | 'usb' | 'manual';
 type HudState = 'IDLE' | 'SUCCESS' | 'DUPLICATE' | 'DUPLICATE_CODE' | 'UNKNOWN' | 'OCR_PROCESSING' | 'OCR_SUCCESS' | 'OCR_FAILED' | 'WAITING_SN' | 'WAITING_PN' | 'INCOMPLETE_CARTON' | 'EXISTING_ASSET';
 
 const EMPTY_SESSION: SessionDetails = {
-  warehouseId: '', receiptDate: new Date().toISOString().slice(0, 10),
+  warehouseId: '', projectId: '',
+  receiptDate: new Date().toISOString().slice(0, 10),
   supplierName: '', deliveryNote: '', poNumber: '', notes: '',
 };
 
@@ -110,6 +111,7 @@ export default function WarehouseReceive() {
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; display_name: string }>>([]);
 
   // Step 3 — review
   const [saving, setSaving] = useState(false);
@@ -140,11 +142,13 @@ export default function WarehouseReceive() {
   // ── Load master data ──────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
-      const [wRes, iRes] = await Promise.all([
+      const [wRes, iRes, pRes] = await Promise.all([
         supabase.from('warehouses').select('*').eq('is_active', true).order('name'),
         supabase.from('inventory_items').select('*').eq('is_active', true).order('item_name'),
+        supabase.from('projects').select('id, display_name, sort_order').eq('is_active', true).order('sort_order').order('display_name'),
       ]);
       if (wRes.data) setWarehouses(wRes.data as Warehouse[]);
+      if (pRes.data) setProjects(pRes.data as Array<{ id: string; display_name: string }>);
 
       let itemsById: Map<string, InventoryItem> | null = null;
       if (iRes.data) {
@@ -1066,6 +1070,7 @@ export default function WarehouseReceive() {
   async function goStep2() {
     setSessionErr('');
     if (!session.warehouseId) { setSessionErr('Select a warehouse.'); return; }
+    if (!session.projectId)   { setSessionErr('Select a project.'); return; }
     if (!session.receiptDate) { setSessionErr('Receipt date is required.'); return; }
 
     setLoadingAssets(true);
@@ -1168,6 +1173,7 @@ export default function WarehouseReceive() {
       .from('goods_receipts')
       .insert({
         warehouse_id:          session.warehouseId,
+        project_id:            session.projectId,
         supplier_name:         session.supplierName || null,
         delivery_note_number:  session.deliveryNote || null,
         purchase_order_number: session.poNumber || null,
@@ -1282,6 +1288,7 @@ export default function WarehouseReceive() {
     }, {});
 
   const warehouseName = warehouses.find(w => w.id === session.warehouseId)?.name;
+  const projectName   = projects.find(p => p.id === session.projectId)?.display_name;
 
   return (
     <div className={css.page}>
@@ -1295,6 +1302,10 @@ export default function WarehouseReceive() {
           </div>
           <div className={css.cardBody}>
             <div className={css.fieldset}>
+              {/* Receiving Location */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.6px', marginBottom: 8 }}>
+                Receiving Location
+              </div>
               <div className={css.fieldRow}>
                 <div className={css.field}>
                   <label className={css.label}>Warehouse *</label>
@@ -1306,17 +1317,33 @@ export default function WarehouseReceive() {
                   </select>
                 </div>
                 <div className={css.field}>
+                  <label className={css.label}>Project *</label>
+                  <select className={`${css.input} ${css.fieldSelect}`}
+                    value={session.projectId}
+                    onChange={e => setSession(s => ({ ...s, projectId: e.target.value }))}>
+                    <option value="">— Select project —</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Document Details */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.6px', marginTop: 16, marginBottom: 8 }}>
+                Document Details
+              </div>
+              <div className={css.fieldRow}>
+                <div className={css.field}>
                   <label className={css.label}>Receipt Date *</label>
                   <input type="date" className={css.input}
                     value={session.receiptDate}
                     onChange={e => setSession(s => ({ ...s, receiptDate: e.target.value }))} />
                 </div>
-              </div>
-              <div className={css.field}>
-                <label className={css.label}>Supplier / Vendor</label>
-                <input className={css.input} placeholder="Nokia, Huawei, local vendor…"
-                  value={session.supplierName}
-                  onChange={e => setSession(s => ({ ...s, supplierName: e.target.value }))} />
+                <div className={css.field}>
+                  <label className={css.label}>Supplier / Vendor</label>
+                  <input className={css.input} placeholder="Nokia, Huawei, local vendor…"
+                    value={session.supplierName}
+                    onChange={e => setSession(s => ({ ...s, supplierName: e.target.value }))} />
+                </div>
               </div>
               <div className={css.fieldRow}>
                 <div className={css.field}>
@@ -1761,6 +1788,7 @@ export default function WarehouseReceive() {
             <div className={css.cardBody}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, fontSize: 13 }}>
                 <SummaryField label="Warehouse"    value={warehouseName || '—'} />
+                <SummaryField label="Project"      value={projectName || '—'} />
                 <SummaryField label="Date"         value={session.receiptDate} />
                 <SummaryField label="Supplier"     value={session.supplierName || '—'} />
                 <SummaryField label="Delivery Note" value={session.deliveryNote || '—'} />

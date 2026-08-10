@@ -18,6 +18,8 @@ const baseRow: StockRow = {
   trackingMethod: 'SERIALIZED',
   warehouseId:    'wrh-1',
   warehouseName:  'Hilla Warehouse',
+  projectId:      'proj-1',
+  projectName:    'Nokia Project',
   onHand:         4,
   reserved:       1,
   available:      3,

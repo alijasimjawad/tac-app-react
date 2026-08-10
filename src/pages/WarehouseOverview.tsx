@@ -16,6 +16,7 @@ interface RecentReceipt {
   id: string;
   receipt_number: string;
   warehouse_id: string;
+  project_id: string | null;
   supplier_name: string | null;
   receipt_date: string;
   status: string;
@@ -36,6 +37,8 @@ export default function WarehouseOverview() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
   const [toast,   setToast]   = useState<{ msg: string; ok: boolean } | null>(null);
+  const [projFilter,    setProjFilter]    = useState('');
+  const [activeProjects, setActiveProjects] = useState<Array<{ id: string; display_name: string }>>([]);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!hasPerm('view_warehouse_overview')) return <div className={css.denied}>Access denied.</div>;
@@ -46,16 +49,25 @@ export default function WarehouseOverview() {
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   }
 
-  async function load() {
+  async function load(pFilter = projFilter) {
     setLoading(true);
     setError('');
     try {
-      const [wrhRes, itemRes, assetRes, receiptRes] = await Promise.all([
+      let receiptQ = supabase
+        .from('goods_receipts')
+        .select('id, receipt_number, warehouse_id, project_id, supplier_name, receipt_date, status')
+        .order('created_at', { ascending: false })
+        .limit(8);
+      if (pFilter) receiptQ = receiptQ.eq('project_id', pFilter);
+
+      const [wrhRes, itemRes, assetRes, receiptRes, activeProjRes] = await Promise.all([
         supabase.from('warehouses').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('inventory_items').select('id', { count: 'exact', head: true }).eq('is_active', true),
         supabase.from('inventory_assets').select('id', { count: 'exact', head: true }).eq('status', 'IN_STOCK'),
-        supabase.from('goods_receipts').select('id, receipt_number, warehouse_id, supplier_name, receipt_date, status').order('created_at', { ascending: false }).limit(8),
+        receiptQ,
+        supabase.from('projects').select('id, display_name').eq('is_active', true).order('sort_order').order('display_name'),
       ]);
+      if (activeProjRes.data) setActiveProjects(activeProjRes.data as Array<{ id: string; display_name: string }>);
 
       if (wrhRes.error || itemRes.error || assetRes.error || receiptRes.error) {
         const e = wrhRes.error || itemRes.error || assetRes.error || receiptRes.error;
@@ -91,6 +103,7 @@ export default function WarehouseOverview() {
   }
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { load(projFilter); }, [projFilter]);
 
   return (
     <div className={css.page}>
@@ -147,9 +160,18 @@ export default function WarehouseOverview() {
       <div className={css.card}>
         <div className={css.cardHdr}>
           <span className={css.cardTitle}>Recent Receipts</span>
-          <Link to="/warehouse/history">
-            <button className={css.btnGhost} style={{ fontSize: 12, height: 30 }}>View all</button>
-          </Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {activeProjects.length > 0 && (
+              <select className={css.select} style={{ height: 30, fontSize: 12 }}
+                value={projFilter} onChange={e => setProjFilter(e.target.value)}>
+                <option value="">All Projects</option>
+                {activeProjects.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+              </select>
+            )}
+            <Link to="/warehouse/history">
+              <button className={css.btnGhost} style={{ fontSize: 12, height: 30 }}>View all</button>
+            </Link>
+          </div>
         </div>
         <div className={css.tableWrap}>
           {loading ? (

@@ -9,7 +9,7 @@ import {
   type StockRow,
   type StockStateFilter,
 } from '../lib/warehouseStock';
-import { formatBaghdadDate } from '../lib/warehouseMovementsHelpers';
+import { formatBaghdadDate, buildProjectMap, formatProjectName } from '../lib/warehouseMovementsHelpers';
 import css from './Warehouse.module.css';
 
 interface AssetDetail {
@@ -38,9 +38,12 @@ export default function WarehouseStock() {
 
   const [search,        setSearch]        = useState('');
   const [wrhFilter,     setWrhFilter]     = useState('');
+  const [projFilter,    setProjFilter]    = useState('');
   const [trackFilter,   setTrackFilter]   = useState('');
   const [stockFilter,   setStockFilter]   = useState<StockStateFilter>('in_stock');
   const [showZeroStock, setShowZeroStock] = useState(false);
+
+  const [activeProjects, setActiveProjects] = useState<Array<{ id: string; display_name: string }>>([]);
 
   const [drilldown, setDrilldown] = useState<DrilldownState | null>(null);
 
@@ -61,11 +64,13 @@ export default function WarehouseStock() {
     setLoading(true);
     setError('');
     try {
-      const [balRes, itemRes, wrhRes, assetCountRes] = await Promise.all([
+      const [balRes, itemRes, wrhRes, assetCountRes, allProjRes, activeProjRes] = await Promise.all([
         supabase.from('stock_balances').select('*'),
         supabase.from('inventory_items').select('id, item_code, item_name, tracking_method').eq('is_active', true),
         supabase.from('warehouses').select('id, name').eq('is_active', true).order('name'),
         supabase.from('inventory_assets').select('id', { count: 'exact', head: true }).eq('status', 'IN_STOCK'),
+        supabase.from('projects').select('id, display_name').order('sort_order').order('display_name'),
+        supabase.from('projects').select('id, display_name').eq('is_active', true).order('sort_order').order('display_name'),
       ]);
 
       if (balRes.error)  { setError(balRes.error.message);  setLoading(false); return; }
@@ -73,9 +78,11 @@ export default function WarehouseStock() {
       if (wrhRes.error)  { setError(wrhRes.error.message);  setLoading(false); return; }
 
       setSerializedInStock(assetCountRes.count ?? 0);
+      if (activeProjRes.data) setActiveProjects(activeProjRes.data as Array<{ id: string; display_name: string }>);
 
       const itemMap = new Map((itemRes.data || []).map(i => [i.id, i]));
       const wrhMap  = new Map((wrhRes.data  || []).map(w => [w.id, w.name]));
+      const projMap = buildProjectMap(allProjRes.data ?? []);
       wrhNamesRef.current = Object.fromEntries(wrhMap);
 
       const rows: StockRow[] = (balRes.data || []).flatMap(b => {
@@ -89,6 +96,8 @@ export default function WarehouseStock() {
           trackingMethod: item.tracking_method as 'SERIALIZED' | 'QUANTITY',
           warehouseId:    b.warehouse_id,
           warehouseName:  wrhMap.get(b.warehouse_id) || '—',
+          projectId:      b.project_id ?? null,
+          projectName:    formatProjectName(b.project_id, projMap),
           onHand:         b.quantity_on_hand   ?? 0,
           reserved:       b.quantity_reserved  ?? 0,
           available:      computeAvailable(b.quantity_on_hand ?? 0, b.quantity_reserved ?? 0),
@@ -108,6 +117,8 @@ export default function WarehouseStock() {
             trackingMethod: item.tracking_method as 'SERIALIZED' | 'QUANTITY',
             warehouseId:    '',
             warehouseName:  '—',
+            projectId:      null,
+            projectName:    'Unassigned',
             onHand:         0,
             reserved:       0,
             available:      0,
@@ -139,6 +150,7 @@ export default function WarehouseStock() {
   const displayRows = allRows.filter(r => {
     if (!showZeroStock && r.balanceId === null) return false;
     if (wrhFilter && r.warehouseId !== wrhFilter) return false;
+    if (projFilter && r.projectId !== projFilter) return false;
     if (trackFilter && r.trackingMethod !== trackFilter) return false;
     if (!matchesStockFilter(r, stockFilter)) return false;
     if (!matchesStockSearch(r, search)) return false;
@@ -151,12 +163,17 @@ export default function WarehouseStock() {
     setDrilldown({ row, assets: [], loading: true });
 
     if (row.trackingMethod === 'SERIALIZED' && row.warehouseId) {
-      const { data: aData } = await supabase
+      let assetQ = supabase
         .from('inventory_assets')
         .select('id, serial_number, part_number, status, source_receipt_id, created_at')
         .eq('inventory_item_id', row.itemId)
-        .eq('warehouse_id', row.warehouseId)
-        .order('created_at', { ascending: false });
+        .eq('warehouse_id', row.warehouseId);
+      if (row.projectId === null) {
+        assetQ = assetQ.is('project_id', null);
+      } else {
+        assetQ = assetQ.eq('project_id', row.projectId);
+      }
+      const { data: aData } = await assetQ.order('created_at', { ascending: false });
 
       const assets = (aData || []) as AssetDetail[];
 
@@ -226,6 +243,10 @@ export default function WarehouseStock() {
             <option value="">All Warehouses</option>
             {uniqueWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
+          <select className={css.select} value={projFilter} onChange={e => setProjFilter(e.target.value)}>
+            <option value="">All Projects</option>
+            {activeProjects.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+          </select>
           <select className={css.select} value={trackFilter} onChange={e => setTrackFilter(e.target.value)}>
             <option value="">All Tracking</option>
             <option value="SERIALIZED">Serialized</option>
@@ -245,7 +266,7 @@ export default function WarehouseStock() {
 
         <div className={css.tableWrap}>
           {loading ? (
-            <table><tbody><tr className={css.loadingRow}><td colSpan={9}>Loading…</td></tr></tbody></table>
+            <table><tbody><tr className={css.loadingRow}><td colSpan={10}>Loading…</td></tr></tbody></table>
           ) : !hasAnyStock && !showZeroStock ? (
             <div className={css.emptyState}>
               <div className={css.emptyMsg}>No stock has been posted yet</div>
@@ -263,6 +284,7 @@ export default function WarehouseStock() {
                   <th>Code</th>
                   <th>Item Name</th>
                   <th>Warehouse</th>
+                  <th>Project</th>
                   <th style={{ textAlign: 'right' }}>On Hand</th>
                   <th style={{ textAlign: 'right' }}>Reserved</th>
                   <th style={{ textAlign: 'right' }}>Available</th>
@@ -281,6 +303,7 @@ export default function WarehouseStock() {
                     <td style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12 }}>{r.itemCode}</td>
                     <td style={{ fontWeight: 600 }}>{r.itemName}</td>
                     <td style={{ fontSize: 12, color: '#64748b' }}>{r.warehouseName}</td>
+                    <td style={{ fontSize: 12, color: '#64748b' }}>{r.projectName}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>{r.onHand}</td>
                     <td style={{ textAlign: 'right', color: r.reserved > 0 ? '#ca8a04' : '#94a3b8' }}>{r.reserved}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: r.available > 0 ? '#16a34a' : '#94a3b8' }}>{r.available}</td>

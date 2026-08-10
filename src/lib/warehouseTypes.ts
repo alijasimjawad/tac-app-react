@@ -30,6 +30,7 @@ export interface GoodsReceipt {
   id: string;
   receipt_number: string;
   warehouse_id: string;
+  project_id: string | null;
   supplier_name: string | null;
   delivery_note_number: string | null;
   purchase_order_number: string | null;
@@ -57,6 +58,7 @@ export interface InventoryAsset {
   serial_number_normalized: string;
   part_number: string | null;
   warehouse_id: string | null;
+  project_id: string | null;
   status: 'IN_STOCK' | 'RESERVED' | 'ISSUED' | 'INSTALLED' | 'RETURNED' | 'DAMAGED' | 'SCRAPPED';
   source_receipt_id: string | null;
   raw_scan_value: string | null;
@@ -69,6 +71,7 @@ export interface StockBalance {
   id: string;
   warehouse_id: string;
   inventory_item_id: string;
+  project_id: string | null;
   quantity_on_hand: number;
   quantity_reserved: number;
   updated_at: string;
@@ -79,6 +82,7 @@ export interface StockMovement {
   warehouse_id: string;
   inventory_item_id: string;
   asset_id: string | null;
+  project_id: string | null;
   movement_type: string;
   quantity: number;
   reference_type: string | null;
@@ -161,6 +165,7 @@ export interface ScanEntry {
 
 export interface SessionDetails {
   warehouseId: string;
+  projectId: string;
   receiptDate: string;       // YYYY-MM-DD
   supplierName: string;
   deliveryNote: string;

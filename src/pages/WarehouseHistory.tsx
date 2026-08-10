@@ -11,6 +11,7 @@ import css from './Warehouse.module.css';
 
 interface ReceiptRow extends GoodsReceipt {
   warehouseName?: string;
+  projectName?:   string;
   itemCount?: number;
 }
 
@@ -52,6 +53,8 @@ export default function WarehouseHistory() {
   const navigate = useNavigate();
   const [receipts,   setReceipts]   = useState<ReceiptRow[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [allProjects, setAllProjects] = useState<Array<{ id: string; display_name: string }>>([]);
+  const [activeProjects, setActiveProjects] = useState<Array<{ id: string; display_name: string }>>([]);
   const [items,      setItems]      = useState<InventoryItem[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState('');
@@ -59,6 +62,7 @@ export default function WarehouseHistory() {
   const [page,       setPage]       = useState(1);
 
   const [wrhFilter,    setWrhFilter]    = useState('');
+  const [projFilter,   setProjFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom,     setDateFrom]     = useState('');
   const [dateTo,       setDateTo]       = useState('');
@@ -84,12 +88,16 @@ export default function WarehouseHistory() {
   }
 
   async function loadMeta() {
-    const [wRes, iRes] = await Promise.all([
+    const [wRes, iRes, allProjRes, activeProjRes] = await Promise.all([
       supabase.from('warehouses').select('*').eq('is_active', true).order('name'),
       supabase.from('inventory_items').select('id, item_code, item_name').eq('is_active', true),
+      supabase.from('projects').select('id, display_name').order('sort_order').order('display_name'),
+      supabase.from('projects').select('id, display_name').eq('is_active', true).order('sort_order').order('display_name'),
     ]);
-    if (wRes.data) setWarehouses(wRes.data as Warehouse[]);
-    if (iRes.data) setItems(iRes.data as InventoryItem[]);
+    if (wRes.data)        setWarehouses(wRes.data as Warehouse[]);
+    if (iRes.data)        setItems(iRes.data as InventoryItem[]);
+    if (allProjRes.data)  setAllProjects(allProjRes.data as Array<{ id: string; display_name: string }>);
+    if (activeProjRes.data) setActiveProjects(activeProjRes.data as Array<{ id: string; display_name: string }>);
   }
 
   async function load(p = page) {
@@ -98,6 +106,7 @@ export default function WarehouseHistory() {
 
     let q = supabase.from('goods_receipts').select('*', { count: 'exact' });
     if (wrhFilter)    q = q.eq('warehouse_id', wrhFilter);
+    if (projFilter)   q = q.eq('project_id', projFilter);
     if (statusFilter) q = q.eq('status', statusFilter);
     if (dateFrom)     q = q.gte('receipt_date', dateFrom);
     if (dateTo)       q = q.lte('receipt_date', dateTo);
@@ -113,8 +122,12 @@ export default function WarehouseHistory() {
     if (e) { setError(e.message); setLoading(false); return; }
 
     const rows = (data || []) as ReceiptRow[];
-    const wrhMap = Object.fromEntries(warehouses.map(w => [w.id, w.name]));
-    rows.forEach(r => { r.warehouseName = wrhMap[r.warehouse_id] || '—'; });
+    const wrhMap  = Object.fromEntries(warehouses.map(w => [w.id, w.name]));
+    const projMap = new Map(allProjects.map(p => [p.id, p.display_name]));
+    rows.forEach(r => {
+      r.warehouseName = wrhMap[r.warehouse_id] || '—';
+      r.projectName   = r.project_id == null ? 'Legacy / Unassigned' : (projMap.get(r.project_id) ?? 'Unknown Project');
+    });
 
     setReceipts(rows);
     setTotal(count ?? 0);
@@ -122,8 +135,8 @@ export default function WarehouseHistory() {
   }
 
   useEffect(() => { loadMeta(); }, []);
-  useEffect(() => { if (warehouses.length || !loading) load(1); setPage(1); }, [wrhFilter, statusFilter, dateFrom, dateTo, search]);
-  useEffect(() => { load(page); }, [page, warehouses]);
+  useEffect(() => { if (warehouses.length || !loading) load(1); setPage(1); }, [wrhFilter, projFilter, statusFilter, dateFrom, dateTo, search]);
+  useEffect(() => { load(page); }, [page, warehouses, allProjects]);
 
   async function openDetail(receipt: ReceiptRow) {
     const [liRes, scanRes, assetCountRes, receiverRes, movRes] = await Promise.all([
@@ -234,6 +247,10 @@ export default function WarehouseHistory() {
             <option value="">All Warehouses</option>
             {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
+          <select className={css.select} value={projFilter} onChange={e => setProjFilter(e.target.value)}>
+            <option value="">All Projects</option>
+            {activeProjects.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+          </select>
           <select className={css.select} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Statuses</option>
             <option value="DRAFT">Draft</option>
@@ -249,7 +266,7 @@ export default function WarehouseHistory() {
 
         <div className={css.tableWrap}>
           {loading ? (
-            <table><tbody><tr className={css.loadingRow}><td colSpan={7}>Loading…</td></tr></tbody></table>
+            <table><tbody><tr className={css.loadingRow}><td colSpan={8}>Loading…</td></tr></tbody></table>
           ) : !receipts.length ? (
             <div className={css.emptyState}>
               <div className={css.emptyMsg}>No receipts found</div>
@@ -261,6 +278,7 @@ export default function WarehouseHistory() {
                 <tr>
                   <th>Receipt #</th>
                   <th>Warehouse</th>
+                  <th>Project</th>
                   <th>Supplier</th>
                   <th>DN #</th>
                   <th>Date</th>
@@ -273,6 +291,7 @@ export default function WarehouseHistory() {
                   <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => openDetail(r)}>
                     <td style={{ fontWeight: 700, color: '#6366f1' }}>{r.receipt_number}</td>
                     <td>{r.warehouseName}</td>
+                    <td>{r.projectName || '—'}</td>
                     <td>{r.supplier_name || '—'}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.delivery_note_number || '—'}</td>
                     <td>{r.receipt_date}</td>
@@ -317,6 +336,7 @@ export default function WarehouseHistory() {
             <div className={css.modalBody}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 18, fontSize: 13 }}>
                 <SF label="Warehouse"    value={detail.receipt.warehouseName || '—'} />
+                <SF label="Project"      value={detail.receipt.projectName || '—'} />
                 <SF label="Date"         value={detail.receipt.receipt_date} />
                 <SF label="Status"       value={<span>{statusBadge(detail.receipt.status)}</span>} />
                 <SF label="Supplier"     value={detail.receipt.supplier_name || '—'} />

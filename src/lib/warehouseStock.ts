@@ -38,6 +38,8 @@ export interface StockRow {
   trackingMethod: 'SERIALIZED' | 'QUANTITY';
   warehouseId:    string;
   warehouseName:  string;
+  projectId:      string | null;
+  projectName:    string;
   onHand:         number;
   reserved:       number;
   available:      number;
@@ -58,7 +60,8 @@ export function matchesStockSearch(row: StockRow, q: string): boolean {
   const lower = q.toLowerCase();
   return (
     row.itemCode.toLowerCase().includes(lower) ||
-    row.itemName.toLowerCase().includes(lower)
+    row.itemName.toLowerCase().includes(lower) ||
+    row.projectName.toLowerCase().includes(lower)
   );
 }
 

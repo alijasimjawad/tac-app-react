@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { StockMovement } from '../lib/warehouseTypes';
 import {
-  buildAssetMap, buildItemMap, buildWarehouseMap,
+  buildAssetMap, buildItemMap, buildWarehouseMap, buildProjectMap,
   matchesMovementSearch, enrichMovementRow,
   formatBaghdadDate, formatBaghdadTime,
   type ItemInfo, type MovementDirection,
@@ -24,6 +24,7 @@ interface MovementRow extends StockMovement {
   partNumber:     string | null;
   assetStatus:    string | null;
   direction:      MovementDirection;
+  projectName:    string;
 }
 
 type DirectionFilter = '' | 'IN' | 'OUT';
@@ -66,8 +67,11 @@ export default function WarehouseMovements() {
   const [total,      setTotal]      = useState(0);
   const [page,       setPage]       = useState(1);
 
+  const [projects, setProjects] = useState<Array<{ id: string; display_name: string }>>([]);
+
   // Server-side filters — each change triggers a new DB query + page reset
   const [wrhFilter,  setWrhFilter]  = useState('');
+  const [projFilter, setProjFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [dateFrom,   setDateFrom]   = useState('');
   const [dateTo,     setDateTo]     = useState('');
@@ -81,12 +85,13 @@ export default function WarehouseMovements() {
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Loaded once at mount — all items/warehouses without is_active filter so that
-  // historical movements referencing deactivated items/warehouses still resolve.
+  // Loaded once at mount — all items/warehouses/projects without is_active filter so that
+  // historical movements referencing deactivated rows still resolve.
   const metaRef = useRef<{
-    itemMap: Map<string, ItemInfo>;
-    wrhMap:  Map<string, string>;
-  }>({ itemMap: new Map(), wrhMap: new Map() });
+    itemMap:    Map<string, ItemInfo>;
+    wrhMap:     Map<string, string>;
+    projectMap: Map<string, string>;
+  }>({ itemMap: new Map(), wrhMap: new Map(), projectMap: new Map() });
 
   if (!hasPerm('view_warehouse_movements')) return <div className={css.denied}>Access denied.</div>;
 
@@ -97,10 +102,12 @@ export default function WarehouseMovements() {
   }
 
   async function loadMeta() {
-    // No is_active filter — audit pages must resolve deactivated items/warehouses.
-    const [wRes, iRes] = await Promise.all([
+    // No is_active filter — audit pages must resolve deactivated items/warehouses/projects.
+    const [wRes, iRes, allProjRes, activeProjRes] = await Promise.all([
       supabase.from('warehouses').select('id, name').order('name'),
       supabase.from('inventory_items').select('id, item_code, item_name, tracking_method'),
+      supabase.from('projects').select('id, display_name').order('sort_order').order('display_name'),
+      supabase.from('projects').select('id, display_name').eq('is_active', true).order('sort_order').order('display_name'),
     ]);
     if (wRes.data) {
       setWarehouses(wRes.data);
@@ -108,6 +115,12 @@ export default function WarehouseMovements() {
     }
     if (iRes.data) {
       metaRef.current.itemMap = buildItemMap(iRes.data);
+    }
+    if (allProjRes.data) {
+      metaRef.current.projectMap = buildProjectMap(allProjRes.data);
+    }
+    if (activeProjRes.data) {
+      setProjects(activeProjRes.data as Array<{ id: string; display_name: string }>);
     }
   }
 
@@ -117,6 +130,7 @@ export default function WarehouseMovements() {
 
     let q = supabase.from('stock_movements').select('*', { count: 'exact' });
     if (wrhFilter)  q = q.eq('warehouse_id', wrhFilter);
+    if (projFilter) q = q.eq('project_id', projFilter);
     if (typeFilter) q = q.eq('movement_type', typeFilter);
     if (dateFrom)   q = q.gte('movement_date', dateFrom);
     if (dateTo)     q = q.lte('movement_date', dateTo);
@@ -184,6 +198,7 @@ export default function WarehouseMovements() {
         assetMap,
         perfMap,
         grMap,
+        metaRef.current.projectMap,
       ),
     }));
 
@@ -194,8 +209,8 @@ export default function WarehouseMovements() {
 
   useEffect(() => { loadMeta(); }, []);
   // Server-filter changes reset to page 1 and trigger a new load via the page effect
-  useEffect(() => { setPage(1); }, [wrhFilter, typeFilter, dateFrom, dateTo]);
-  useEffect(() => { load(page); }, [page, wrhFilter, typeFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [wrhFilter, projFilter, typeFilter, dateFrom, dateTo]);
+  useEffect(() => { load(page); }, [page, wrhFilter, projFilter, typeFilter, dateFrom, dateTo]);
   // search and dirFilter are client-side — they filter displayMovements at render time,
   // no re-fetch needed.
 
@@ -237,6 +252,10 @@ export default function WarehouseMovements() {
             <option value="">All Warehouses</option>
             {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
+          <select className={css.select} value={projFilter} onChange={e => setProjFilter(e.target.value)}>
+            <option value="">All Projects</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+          </select>
           <select className={css.select} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
             <option value="">All Types</option>
             {Object.entries(MOVEMENT_TYPES).map(([k, v]) => (
@@ -269,7 +288,7 @@ export default function WarehouseMovements() {
           {loading ? (
             <table>
               <tbody>
-                <tr className={css.loadingRow}><td colSpan={9}>Loading…</td></tr>
+                <tr className={css.loadingRow}><td colSpan={10}>Loading…</td></tr>
               </tbody>
             </table>
           ) : !displayMovements.length ? (
@@ -290,6 +309,7 @@ export default function WarehouseMovements() {
                   <th>Type</th>
                   <th>Item</th>
                   <th>Warehouse</th>
+                  <th>Project</th>
                   <th style={{ textAlign: 'right' }}>Qty</th>
                   <th>SN / PN</th>
                   <th>Reference</th>
@@ -327,6 +347,9 @@ export default function WarehouseMovements() {
 
                     {/* Warehouse */}
                     <td style={{ fontSize: 12 }}>{m.warehouseName}</td>
+
+                    {/* Project */}
+                    <td style={{ fontSize: 12, color: '#64748b' }}>{m.projectName}</td>
 
                     {/* Quantity */}
                     <td style={{
@@ -441,6 +464,7 @@ export default function WarehouseMovements() {
                 <SF label="Item Name"  value={selectedMovement.itemName} />
                 <SF label="Tracking"   value={selectedMovement.trackingMethod ?? '—'} />
                 <SF label="Warehouse"  value={selectedMovement.warehouseName} />
+                <SF label="Project"    value={selectedMovement.projectName} />
                 <SF label="Performed By" value={selectedMovement.performerName} />
                 <SF label="Reference"  value={
                   selectedMovement.receiptNumber

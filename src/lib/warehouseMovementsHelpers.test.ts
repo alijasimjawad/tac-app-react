@@ -4,6 +4,8 @@ import {
   buildAssetMap,
   buildItemMap,
   buildWarehouseMap,
+  buildProjectMap,
+  formatProjectName,
   matchesMovementSearch,
   enrichMovementRow,
   formatBaghdadDate,
@@ -386,4 +388,60 @@ describe('formatBarcodeSymbology', () => {
 
   it('unknown value is returned as-is (safe pass-through, no crash)', () =>
     expect(formatBarcodeSymbology('UNKNOWN_FORMAT_XYZ')).toBe('UNKNOWN_FORMAT_XYZ'));
+});
+
+// ── buildProjectMap ───────────────────────────────────────────────────────────
+
+describe('buildProjectMap', () => {
+  it('maps project id to display_name', () => {
+    const map = buildProjectMap([
+      { id: 'p1', display_name: 'Nokia Project' },
+      { id: 'p2', display_name: 'Huawei Project' },
+    ]);
+    expect(map.get('p1')).toBe('Nokia Project');
+    expect(map.get('p2')).toBe('Huawei Project');
+  });
+
+  it('empty input returns empty map', () => {
+    expect(buildProjectMap([]).size).toBe(0);
+  });
+
+  it('includes inactive projects (no is_active filter assumed by caller)', () => {
+    const map = buildProjectMap([
+      { id: 'p3', display_name: 'Old Project' },
+    ]);
+    expect(map.get('p3')).toBe('Old Project');
+  });
+
+  it('returns undefined for unknown id', () => {
+    const map = buildProjectMap([{ id: 'p1', display_name: 'Nokia Project' }]);
+    expect(map.get('does-not-exist')).toBeUndefined();
+  });
+});
+
+// ── formatProjectName ─────────────────────────────────────────────────────────
+
+describe('formatProjectName', () => {
+  const map = new Map([
+    ['p1', 'Nokia Project'],
+    ['p2', 'Huawei Project'],
+  ]);
+
+  it('resolves known project id to display_name', () =>
+    expect(formatProjectName('p1', map)).toBe('Nokia Project'));
+
+  it('resolves second known project id', () =>
+    expect(formatProjectName('p2', map)).toBe('Huawei Project'));
+
+  it('null project_id → "Unassigned" (legacy test data)', () =>
+    expect(formatProjectName(null, map)).toBe('Unassigned'));
+
+  it('undefined project_id → "Unassigned"', () =>
+    expect(formatProjectName(undefined, map)).toBe('Unassigned'));
+
+  it('unknown project_id (FK dangling) → "Unassigned"', () =>
+    expect(formatProjectName('unknown-uuid', map)).toBe('Unassigned'));
+
+  it('empty map with null → "Unassigned"', () =>
+    expect(formatProjectName(null, new Map())).toBe('Unassigned'));
 });

@@ -72,6 +72,29 @@ export function buildWarehouseMap(
   return new Map(warehouses.map(w => [w.id, w.name]));
 }
 
+/**
+ * Builds an O(1) project display_name lookup map.
+ * Must be called without is_active filtering so inactive projects still resolve
+ * correctly in historical movement and receipt views.
+ */
+export function buildProjectMap(
+  projects: Array<{ id: string; display_name: string }>,
+): Map<string, string> {
+  return new Map(projects.map(p => [p.id, p.display_name]));
+}
+
+/**
+ * Returns a project's display name, or 'Unassigned' for legacy rows with
+ * null project_id (test data before Stage E NOT NULL enforcement).
+ */
+export function formatProjectName(
+  projectId: string | null | undefined,
+  projectMap: Map<string, string>,
+): string {
+  if (projectId == null) return 'Unassigned';
+  return projectMap.get(projectId) ?? 'Unassigned';
+}
+
 // ── Search ────────────────────────────────────────────────────────────────────
 
 export interface MovementSearchRow {
@@ -109,6 +132,7 @@ export interface RawMovementInput {
   performed_by:      string;
   reference_type:    string | null;
   reference_id:      string | null;
+  project_id?:       string | null;
 }
 
 export interface MovementEnrichment {
@@ -122,6 +146,7 @@ export interface MovementEnrichment {
   partNumber:     string | null;
   assetStatus:    string | null;
   direction:      MovementDirection;
+  projectName:    string;
 }
 
 /**
@@ -134,12 +159,13 @@ export interface MovementEnrichment {
  *   - receiptNumber: undefined when reference_type !== 'GOODS_RECEIPT' or reference_id is null
  */
 export function enrichMovementRow(
-  row:      RawMovementInput,
-  itemMap:  Map<string, ItemInfo>,
-  wrhMap:   Map<string, string>,
-  assetMap: Map<string, AssetInfo>,
-  perfMap:  Map<string, string>,
-  grMap:    Map<string, string>,
+  row:        RawMovementInput,
+  itemMap:    Map<string, ItemInfo>,
+  wrhMap:     Map<string, string>,
+  assetMap:   Map<string, AssetInfo>,
+  perfMap:    Map<string, string>,
+  grMap:      Map<string, string>,
+  projectMap: Map<string, string> = new Map(),
 ): MovementEnrichment {
   const item    = itemMap.get(row.inventory_item_id);
   const asset   = row.asset_id != null ? assetMap.get(row.asset_id) : undefined;
@@ -158,6 +184,7 @@ export function enrichMovementRow(
     partNumber:     asset?.partNumber             ?? null,
     assetStatus:    asset?.assetStatus            ?? null,
     direction:      deriveDirection(row.quantity),
+    projectName:    formatProjectName(row.project_id, projectMap),
   };
 }
 

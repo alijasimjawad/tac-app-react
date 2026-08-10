@@ -36,6 +36,7 @@ interface ReceiptHeader {
   id:                    string;
   receipt_number:        string;
   warehouse_id:          string;
+  project_id:            string | null;
   supplier_name:         string | null;
   delivery_note_number:  string | null;
   purchase_order_number: string | null;
@@ -71,6 +72,7 @@ export default function WarehouseReceiveEdit() {
   const [originalQuantityLines, setOriginalQuantityLines] = useState<QuantityLineItem[]>([]);
   const [items,      setItems]        = useState<InventoryItem[]>([]);
   const [warehouses, setWarehouses]   = useState<Warehouse[]>([]);
+  const [projectName, setProjectName] = useState<string>('');
 
   // Editable header fields
   const [editSupplier, setEditSupplier] = useState('');
@@ -178,7 +180,7 @@ export default function WarehouseReceiveEdit() {
     if (!receiptId) { setLoadError('No receipt ID provided.'); setLoading(false); return; }
     (async () => {
       setLoading(true);
-      const [rcptRes, scanRes, itemsRes, wrhRes, assetRes, grRes, lineItemsRes] = await Promise.all([
+      const [rcptRes, scanRes, itemsRes, wrhRes, assetRes, grRes, lineItemsRes, projRes] = await Promise.all([
         supabase.from('goods_receipts').select('*').eq('id', receiptId).single(),
         supabase.from('receiving_scan_log').select('*').eq('goods_receipt_id', receiptId).order('created_at'),
         supabase.from('inventory_items').select('*').eq('is_active', true).order('item_name'),
@@ -186,6 +188,7 @@ export default function WarehouseReceiveEdit() {
         supabase.from('inventory_assets').select('serial_number_normalized, inventory_item_id, part_number, warehouse_id, status, source_receipt_id'),
         supabase.from('goods_receipts').select('id, receipt_number'),
         supabase.from('goods_receipt_items').select('inventory_item_id, quantity').eq('goods_receipt_id', receiptId),
+        supabase.from('projects').select('id, display_name').order('sort_order').order('display_name'),
       ]);
 
       if (rcptRes.error || !rcptRes.data) {
@@ -206,6 +209,15 @@ export default function WarehouseReceiveEdit() {
       setEditPo(rcpt.purchase_order_number        || '');
       setEditDate(rcpt.receipt_date);
       setEditNotes(rcpt.notes                     || '');
+
+      if (projRes.data) {
+        const projMap = new Map((projRes.data as Array<{ id: string; display_name: string }>).map(p => [p.id, p.display_name]));
+        setProjectName(
+          rcpt.project_id == null
+            ? 'Legacy / Unassigned Project'
+            : (projMap.get(rcpt.project_id) ?? 'Unknown Project')
+        );
+      }
 
       if (wrhRes.data) setWarehouses(wrhRes.data as Warehouse[]);
 
@@ -1047,7 +1059,7 @@ export default function WarehouseReceiveEdit() {
         <div>
           <h1 className={css.pageTitle}>Edit Goods Receipt {receipt?.receipt_number}</h1>
           <p className={css.pageSubtitle}>
-            {warehouseName} · <span style={{ color: '#f59e0b' }}>Pending Review</span>
+            {warehouseName} · {projectName} · <span style={{ color: '#f59e0b' }}>Pending Review</span>
           </p>
         </div>
       </div>
@@ -1057,6 +1069,18 @@ export default function WarehouseReceiveEdit() {
         <div className={css.cardHdr}><span className={css.cardTitle}>Receipt Details</span></div>
         <div className={css.cardBody}>
           <div className={css.fieldset}>
+            <div className={css.fieldRow}>
+              <div className={css.field}>
+                <label className={css.label}>Warehouse</label>
+                <input className={css.input} value={warehouseName ?? '—'} readOnly
+                  style={{ background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' }} />
+              </div>
+              <div className={css.field}>
+                <label className={css.label}>Project</label>
+                <input className={css.input} value={projectName || '—'} readOnly
+                  style={{ background: '#f1f5f9', color: '#64748b', cursor: 'not-allowed' }} />
+              </div>
+            </div>
             <div className={css.fieldRow}>
               <div className={css.field}>
                 <label className={css.label}>Supplier / Vendor</label>
