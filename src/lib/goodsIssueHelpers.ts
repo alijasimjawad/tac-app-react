@@ -3,7 +3,7 @@
 export type DestinationType = 'SITE' | 'TEAM_MEMBER' | 'USER' | 'VEHICLE' | 'EXTERNAL' | 'OTHER';
 export type GoodsIssueStatus = 'DRAFT' | 'POSTED' | 'CANCELLED';
 
-const ID_REQUIRED: ReadonlySet<DestinationType> = new Set(['SITE', 'TEAM_MEMBER', 'USER']);
+const ID_REQUIRED: ReadonlySet<DestinationType> = new Set(['TEAM_MEMBER', 'USER']);
 
 export function destinationTypeRequiresId(type: DestinationType): boolean {
   return ID_REQUIRED.has(type);

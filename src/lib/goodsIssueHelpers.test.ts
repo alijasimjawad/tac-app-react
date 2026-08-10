@@ -17,10 +17,10 @@ import {
 // ── destinationTypeRequiresId() ───────────────────────────────────────────────
 
 describe('destinationTypeRequiresId()', () => {
-  it.each<DestinationType>(['SITE', 'TEAM_MEMBER', 'USER'])('%s requires id', type => {
+  it.each<DestinationType>(['TEAM_MEMBER', 'USER'])('%s requires id', type => {
     expect(destinationTypeRequiresId(type)).toBe(true);
   });
-  it.each<DestinationType>(['VEHICLE', 'EXTERNAL', 'OTHER'])('%s does not require id', type => {
+  it.each<DestinationType>(['SITE', 'VEHICLE', 'EXTERNAL', 'OTHER'])('%s does not require id', type => {
     expect(destinationTypeRequiresId(type)).toBe(false);
   });
 });
@@ -37,11 +37,17 @@ describe('validateDestination()', () => {
   it('returns error when label is whitespace-only', () => {
     expect(validateDestination('OTHER', null, '   ')).not.toBeNull();
   });
-  it('returns null for SITE with id and label', () => {
+  it('returns null for SITE with id and label (matched)', () => {
     expect(validateDestination('SITE', 'site-uuid', 'AL-001 — Main Site')).toBeNull();
   });
-  it('returns error for SITE without id', () => {
-    expect(validateDestination('SITE', null, 'AL-001 — Main Site')).not.toBeNull();
+  it('returns null for SITE without id when label provided (unmatched site)', () => {
+    expect(validateDestination('SITE', null, 'AL-001 — Main Site')).toBeNull();
+  });
+  it('returns null for SITE with free-text label and no id', () => {
+    expect(validateDestination('SITE', null, 'CUSTOM-SITE-123')).toBeNull();
+  });
+  it('returns error for SITE without id AND without label', () => {
+    expect(validateDestination('SITE', null, '')).not.toBeNull();
   });
   it('returns error for TEAM_MEMBER without id', () => {
     expect(validateDestination('TEAM_MEMBER', null, 'John Doe')).not.toBeNull();
