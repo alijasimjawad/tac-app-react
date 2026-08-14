@@ -341,7 +341,7 @@ export default function NetworkScopes() {
           .from('revenue').select('id')
           .eq('project_name', revProjName).eq('site_id', newSiteId).limit(1);
         if (!existingRev?.length) {
-          await supabase.from('revenue').insert({
+          const { error: revErr } = await supabase.from('revenue').insert({
             project_name: revProjName,
             section_name: secMeta.section_label || sec,
             site_id: newSiteId, amount: 0,
@@ -349,6 +349,10 @@ export default function NetworkScopes() {
             status: 'Implemented - Pending ATP',
             notes: null, added_by: currentUser?.full_name || '',
           });
+          if (revErr) {
+            console.error('[Revenue sync] insert failed:', revErr);
+            showToast('Site added, but revenue sync failed: ' + revErr.message, false);
+          }
         }
       }
     }
@@ -384,10 +388,11 @@ export default function NetworkScopes() {
     // Remove the matching revenue row (if any) when a site is deleted.
     const rawSiteId = modal.cells[0]?.trim();
     if (rawSiteId) {
-      await supabase.from('revenue')
+      const { error: revDelErr } = await supabase.from('revenue')
         .delete()
         .eq('project_name', proj ? (PROJ_NAMES[proj] || proj) : '')
         .eq('site_id', rawSiteId);
+      if (revDelErr) console.error('[Revenue sync] delete failed:', revDelErr);
     }
     setDeleteConfirm(false);
     setModal(null);
