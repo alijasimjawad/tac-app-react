@@ -341,11 +341,14 @@ export default function NetworkScopes() {
           .from('revenue').select('id')
           .eq('project_name', revProjName).eq('site_id', newSiteId).limit(1);
         if (!existingRev?.length) {
+          const today = new Date();
           const { error: revErr } = await supabase.from('revenue').insert({
             project_name: revProjName,
             section_name: secMeta.section_label || sec,
             site_id: newSiteId, amount: 0,
-            invoice_date: null, month: null, year: null,
+            invoice_date: today.toISOString().slice(0, 10),
+            month: today.getMonth() + 1,
+            year: today.getFullYear(),
             status: 'Implemented - Pending ATP',
             notes: null, added_by: currentUser?.full_name || '',
           });
@@ -525,9 +528,10 @@ export default function NetworkScopes() {
           (existingRev || []).map((r: { site_id: string }) => r.site_id),
         );
         const seen = new Set<string>();
+        const bulkToday = new Date();
         const revToInsert: {
           project_name: string; section_name: string | null; site_id: string;
-          amount: number; invoice_date: null; month: null; year: null;
+          amount: number; invoice_date: string; month: number; year: number;
           status: string; notes: null; added_by: string;
         }[] = [];
         for (const cells of allRowCells) {
@@ -538,7 +542,9 @@ export default function NetworkScopes() {
             project_name: revProjName,
             section_name: secMeta.section_label || sec || null,
             site_id: siteId, amount: 0,
-            invoice_date: null, month: null, year: null,
+            invoice_date: bulkToday.toISOString().slice(0, 10),
+            month: bulkToday.getMonth() + 1,
+            year: bulkToday.getFullYear(),
             status: 'Implemented - Pending ATP',
             notes: null, added_by: currentUser?.full_name || '',
           });
