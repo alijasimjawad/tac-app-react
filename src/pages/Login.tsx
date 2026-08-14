@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import tacLogoLight from '../assets/tac-logo-light.png';
 import tareeqLogo from '../assets/tareeq-al-ahmadi-logo.png';
 import styles from './Login.module.css';
 
@@ -166,7 +165,7 @@ export default function Login() {
           <div className={styles.mobileRing2} aria-hidden="true"/>
           <div className={styles.mobileGlow}  aria-hidden="true"/>
           <div className={styles.mobileLogoWrap}>
-            <img src={tacLogoLight} alt="TAC Network" className={styles.mobileBrandLogoImg}/>
+            <img src={tareeqLogo} alt="TAC Network" className={styles.mobileBrandLogoImg}/>
             <span className={styles.mobileTagline}>Secure employee access</span>
           </div>
         </div>
