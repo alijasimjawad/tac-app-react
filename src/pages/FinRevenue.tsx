@@ -130,11 +130,12 @@ export default function FinRevenue() {
   }
 
   function filteredRows(): RevRow[] {
-    return rows.filter(r =>
-      (!fProj  || r.project_name === fProj) &&
-      (!fMonth || r.month === fMonth) &&
-      (!fYear  || r.year  === fYear)
-    );
+    return rows.filter(r => {
+      if (!(!fProj || r.project_name === fProj)) return false;
+      const isPending = r.month == null && r.year == null;
+      if (isPending) return true;
+      return (!fMonth || r.month === fMonth) && (!fYear || r.year === fYear);
+    });
   }
 
   async function updateAmount(id: string, val: number) {
