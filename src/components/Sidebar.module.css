@@ -137,8 +137,8 @@
   justify-content: space-between;
   gap: 10px;
   padding: 0 14px;
-  height: 64px;
-  min-height: 64px;
+  height: 72px;
+  min-height: 72px;
   border-bottom: 1px solid rgba(255, 255, 255, .07);
   flex-shrink: 0;
   box-sizing: border-box;
@@ -147,8 +147,8 @@
 .sidebarCollapsed .brand {
   justify-content: center;
   padding: 0 12px;
-  height: 64px;
-  min-height: 64px;
+  height: 72px;
+  min-height: 72px;
 }
 
 .brandIcon {
@@ -170,7 +170,7 @@
 .sidebarCollapsed .brandIcon { display: flex; }
 
 .brandLogoImg {
-  height: 48px;
+  height: 60px;
   width: auto;
   display: block;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .35));
