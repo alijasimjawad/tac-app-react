@@ -8,7 +8,7 @@ import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
 import i18n from '../lib/i18n';
 import styles from './Sidebar.module.css';
-import tacLogoLight from '../assets/tac-logo-light.png';
+import tacLogoLight from '../assets/tareeq-al-ahmadi-logo.png';
 import { SiteLookupIcon } from '../pages/SiteLookup';
 import { ProfileIcon } from '../pages/MyProfile';
 import { MySitesIcon } from '../pages/MySites';
