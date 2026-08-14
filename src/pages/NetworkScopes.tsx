@@ -330,6 +330,29 @@ export default function NetworkScopes() {
     setModalSaving(false);
     if (saveErr) { showToast('Save failed: ' + saveErr.message, false); return; }
     const isNew = modal.rowId === null;
+
+    // Keep revenue table in sync: insert a placeholder row for the new site
+    // so it appears immediately in Finance/Revenue for someone to fill in.
+    if (isNew) {
+      const newSiteId = modal.cells[0]?.trim();
+      if (newSiteId) {
+        const revProjName = PROJ_NAMES[proj] || proj;
+        const { data: existingRev } = await supabase
+          .from('revenue').select('id')
+          .eq('project_name', revProjName).eq('site_id', newSiteId).limit(1);
+        if (!existingRev?.length) {
+          await supabase.from('revenue').insert({
+            project_name: revProjName,
+            section_name: secMeta.section_label || sec,
+            site_id: newSiteId, amount: 0,
+            invoice_date: null, month: null, year: null,
+            status: 'Implemented - Pending ATP',
+            notes: null, added_by: currentUser?.full_name || '',
+          });
+        }
+      }
+    }
+
     setModal(null);
     showToast(isNew ? 'Site added' : 'Changes saved', true);
     const siteId = modal.cells[0] || '(empty)';
@@ -358,6 +381,14 @@ export default function NetworkScopes() {
     const { error } = await supabase.from('rows').delete().eq('id', modal.rowId);
     setModalSaving(false);
     if (error) { showToast('Delete failed: ' + error.message, false); return; }
+    // Remove the matching revenue row (if any) when a site is deleted.
+    const rawSiteId = modal.cells[0]?.trim();
+    if (rawSiteId) {
+      await supabase.from('revenue')
+        .delete()
+        .eq('project_name', proj ? (PROJ_NAMES[proj] || proj) : '')
+        .eq('site_id', rawSiteId);
+    }
     setDeleteConfirm(false);
     setModal(null);
     showToast('Site deleted', true);
@@ -477,6 +508,40 @@ export default function NetworkScopes() {
       for (let i = 0; i < toInsert.length; i += 500) {
         const { error: insErr } = await supabase.from('rows').insert(toInsert.slice(i, i + 500));
         if (insErr) throw new Error('Row insert failed: ' + insErr.message);
+      }
+
+      // Bulk-sync imported sites into the revenue table (same dedup pattern
+      // as the Sync button in Finance/Revenue — works for every capex project).
+      const revProjName = proj ? (PROJ_NAMES[proj] || proj) : '';
+      if (revProjName) {
+        const { data: existingRev } = await supabase
+          .from('revenue').select('site_id').eq('project_name', revProjName);
+        const existingRevSet = new Set(
+          (existingRev || []).map((r: { site_id: string }) => r.site_id),
+        );
+        const seen = new Set<string>();
+        const revToInsert: {
+          project_name: string; section_name: string | null; site_id: string;
+          amount: number; invoice_date: null; month: null; year: null;
+          status: string; notes: null; added_by: string;
+        }[] = [];
+        for (const cells of allRowCells) {
+          const siteId = (cells[0] ?? '').trim();
+          if (!siteId || existingRevSet.has(siteId) || seen.has(siteId)) continue;
+          seen.add(siteId);
+          revToInsert.push({
+            project_name: revProjName,
+            section_name: secMeta.section_label || sec || null,
+            site_id: siteId, amount: 0,
+            invoice_date: null, month: null, year: null,
+            status: 'Implemented - Pending ATP',
+            notes: null, added_by: currentUser?.full_name || '',
+          });
+        }
+        for (let i = 0; i < revToInsert.length; i += 500) {
+          const { error: revErr } = await supabase.from('revenue').insert(revToInsert.slice(i, i + 500));
+          if (revErr) throw new Error('Revenue sync failed: ' + revErr.message);
+        }
       }
 
       const count = allRowCells.length;
