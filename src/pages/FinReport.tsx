@@ -477,15 +477,36 @@ export default function FinReport() {
     rows.push(['TOTAL', '', '', '', '', expTotalProjExp]);
     rows.push([]);
     rows.push([`TEAM MEMBER SALARIES (${workDays} working days)`]);
-    rows.push(['Name', 'Role', 'Active From', 'Days Active', 'Actual Salary (IQD)']);
-    exTeam.forEach(t => {
-      rows.push([t.full_name, t.role || '—', fmtActFrom(t.activated_at), `${t.daysActive}/${workDays} days`, t.proratedSalary]);
+    rows.push(['Name', 'Role', 'Active From', 'Days Active', 'Actual Salary (IQD)', 'Adjustment Type', 'Adjustment Amount (IQD)', 'Final Salary (IQD)']);
+    // Uses teamWithSalary (same data driving the on-screen table) so the
+    // exported figures — including bonuses/deductions/overrides — always
+    // match what's shown on the page, not just the pre-adjustment base.
+    teamWithSalary.forEach(t => {
+      const adjTypeLabel = t.isAdjusted
+        ? (t.adjType === 'bonus' ? 'Bonus' : t.adjType === 'deduction' ? 'Deduction' : 'Override')
+        : '—';
+      rows.push([
+        t.full_name,
+        t.role || '—',
+        fmtActFrom(t.activated_at),
+        `${t.daysActive}/${t.totalCalDays} days`,
+        t.proratedSalary,
+        adjTypeLabel + (t.isAdjusted && t.adjReason ? ` — ${t.adjReason}` : ''),
+        t.isAdjusted ? t.adjAmount : 0,
+        t.effectiveSalary,
+      ]);
     });
-    rows.push(['TOTAL', '', '', '', expTotalSal]);
+    rows.push([
+      'TOTAL', '', '', '',
+      teamWithSalary.reduce((s, t) => s + t.proratedSalary, 0),
+      '',
+      teamWithSalary.reduce((s, t) => s + (t.isAdjusted ? t.adjAmount : 0), 0),
+      teamWithSalary.reduce((s, t) => s + t.effectiveSalary, 0),
+    ]);
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [28, 20, 20, 24, 20, 12].map(w => ({ wch: w }));
+    ws['!cols'] = [28, 20, 20, 24, 20, 18, 22, 18].map(w => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws, 'Monthly Report');
     XLSX.writeFile(wb, `Finance_Report_${FIN_MONTHS[month - 1]}_${year}.xlsx`);
   }
