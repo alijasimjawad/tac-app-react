@@ -31,13 +31,23 @@ interface TeamMember {
   deactivated_at: string | null;
 }
 interface RevRow    { project_name: string; site_id: string | null; amount: number | null; month: number; year: number; }
-interface GenExpRow { amount: number | null; month: number; year: number; }
+interface GenExpRow {
+  amount: number | null;
+  month: number;
+  year: number;
+  description: string | null;
+  category: string | null;
+  expense_date: string | null;
+}
 interface ProjExpRow {
   project_name: string | null;
   amount: number | null;
   month: number;
   year: number;
   activity_date: string | null;
+  description: string | null;
+  category: string | null;
+  site_id: string | null;
 }
 interface SalAdj {
   member_id: string;
@@ -183,8 +193,8 @@ export default function FinReport() {
     const [t, r, g, p, sm] = await Promise.all([
       supabase.from('team_members').select('id,full_name,role,monthly_salary,is_active,activated_at,deactivated_at').order('full_name'),
       supabase.from('revenue').select('project_name,site_id,amount,month,year'),
-      supabase.from('general_expenses').select('amount,month,year'),
-      supabase.from('project_expenses').select('project_name,amount,month,year,activity_date'),
+      supabase.from('general_expenses').select('amount,month,year,description,category,expense_date'),
+      supabase.from('project_expenses').select('project_name,amount,month,year,activity_date,description,category,site_id'),
       loadStageMap().catch(() => ({} as Record<string, StageDone>)),
     ]);
     if (t.error || r.error || g.error || p.error) { setError('Failed to load data.'); return; }
@@ -341,7 +351,10 @@ export default function FinReport() {
 
   // ── Export ───────────────────────────────────────────────────
   async function handleExport() {
-    const XLSX = (await import('xlsx')).default;
+    // Named exports only — the `xlsx` package has no default export, so
+    // `(await import('xlsx')).default` was always undefined and silently
+    // threw when `.utils` was accessed, which is why this button did nothing.
+    const XLSX = await import('xlsx');
     // Recompute independently (old app behavior — no adjustments applied in export)
     const expRevMap: Record<string, number> = {};
     allRev.filter(r => r.month === month && r.year === year).forEach(r => {
@@ -390,6 +403,24 @@ export default function FinReport() {
       return { proj, revenue, weight, salaryCost, projExp, netProfit, margin: revenue > 0 ? (netProfit / revenue * 100) : 0 };
     });
 
+    // Line-item detail (not just totals) so the file reflects every entry
+    // recorded for the period, not just the aggregated figures.
+    const expRevDetail = allRev
+      .filter(r => r.month === month && r.year === year)
+      .map(r => ({ ...r, current: currentRevenueOf(r) }))
+      .sort((a, b) => (a.project_name || '').localeCompare(b.project_name || ''));
+
+    const expGenDetail = allGen
+      .filter(r => r.month === month && r.year === year)
+      .sort((a, b) => (a.expense_date || '').localeCompare(b.expense_date || ''));
+
+    const expProjDetail = allProj
+      .filter(r => {
+        if (r.activity_date) { const d = new Date(r.activity_date); return d.getMonth() + 1 === month && d.getFullYear() === year; }
+        return r.month === month && r.year === year;
+      })
+      .sort((a, b) => (a.project_name || '').localeCompare(b.project_name || ''));
+
     const rows: (string | number)[][] = [];
     rows.push([`Monthly Financial Report — ${FIN_MONTHS[month - 1]} ${year}`]);
     rows.push([]);
@@ -405,6 +436,15 @@ export default function FinReport() {
     expProjRows.forEach(r => rows.push([r.proj, r.revenue, pct(r.weight * 100)]));
     rows.push(['TOTAL', expTotalRev, '100.0%']);
     rows.push([]);
+    rows.push(['REVENUE DETAIL (BY SITE)']);
+    rows.push(['Project', 'Site ID', 'Invoiced Amount (IQD)', 'Recognized Revenue (IQD)']);
+    if (expRevDetail.length === 0) {
+      rows.push(['No revenue entries recorded for this period.']);
+    } else {
+      expRevDetail.forEach(r => rows.push([r.project_name || '—', r.site_id || '—', +(r.amount ?? 0), r.current]));
+    }
+    rows.push(['TOTAL', '', expRevDetail.reduce((s, r) => s + (+(r.amount ?? 0)), 0), expTotalRev]);
+    rows.push([]);
     rows.push(['SALARY DISTRIBUTION']);
     rows.push(['Project', 'Weight %', 'Salary Cost (IQD)']);
     expProjRows.forEach(r => rows.push([r.proj, pct(r.weight * 100), r.salaryCost]));
@@ -416,6 +456,26 @@ export default function FinReport() {
     const tn = expProjRows.reduce((s, r) => s + r.netProfit, 0);
     rows.push(['TOTAL', expTotalRev, expProjRows.reduce((s, r) => s + r.salaryCost, 0), expTotalProjExp, tn, pct(expTotalRev > 0 ? tn / expTotalRev * 100 : 0)]);
     rows.push([]);
+    rows.push(['GENERAL EXPENSES (DETAIL)']);
+    rows.push(['Date', 'Category', 'Description', 'Amount (IQD)']);
+    if (expGenDetail.length === 0) {
+      rows.push(['No general expenses recorded for this period.']);
+    } else {
+      expGenDetail.forEach(r => rows.push([fmtActFrom(r.expense_date), r.category || '—', r.description || '—', +(r.amount ?? 0)]));
+    }
+    rows.push(['TOTAL', '', '', expTotalGenExp]);
+    rows.push([]);
+    rows.push(['PROJECT EXPENSES (DETAIL)']);
+    rows.push(['Date', 'Project', 'Site ID', 'Category', 'Description', 'Amount (IQD)']);
+    if (expProjDetail.length === 0) {
+      rows.push(['No project expenses recorded for this period.']);
+    } else {
+      expProjDetail.forEach(r => rows.push([
+        fmtActFrom(r.activity_date), r.project_name || '—', r.site_id || '—', r.category || '—', r.description || '—', +(r.amount ?? 0),
+      ]));
+    }
+    rows.push(['TOTAL', '', '', '', '', expTotalProjExp]);
+    rows.push([]);
     rows.push([`TEAM MEMBER SALARIES (${workDays} working days)`]);
     rows.push(['Name', 'Role', 'Active From', 'Days Active', 'Actual Salary (IQD)']);
     exTeam.forEach(t => {
@@ -425,7 +485,7 @@ export default function FinReport() {
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [28, 20, 18, 20, 12].map(w => ({ wch: w }));
+    ws['!cols'] = [28, 20, 20, 24, 20, 12].map(w => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws, 'Monthly Report');
     XLSX.writeFile(wb, `Finance_Report_${FIN_MONTHS[month - 1]}_${year}.xlsx`);
   }
