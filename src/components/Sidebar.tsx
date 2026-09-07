@@ -909,6 +909,11 @@ function FieldRoleNav({ expandedGroup, toggleGroup, roleLower }: { expandedGroup
         <span className={styles.navLabel}>{t('nav_myExpenses')}</span>
       </NavLink>
 
+      <NavLink to="/my-advances" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+        <AdvancesIcon />
+        <span className={styles.navLabel}>{t('nav_myAdvances')}</span>
+      </NavLink>
+
       {/* Finance/HR/Warehouse/Admin sub-page permissions are granted
           per-user like any other permission and must reflect here too —
           these groups already self-hide (return null) when the user has
@@ -1036,6 +1041,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
     ...(hasPerm(myAttendanceDef.key)  ? [{ to: myAttendanceDef.to,  label: myAttendanceDef.label,  icon: ClockIcon }]      : []),
     ...(hasPerm(myTripsDef.key)       ? [{ to: myTripsDef.to,       label: myTripsDef.label,       icon: CarIcon }]        : []),
     { to: '/my-expenses', label: t('nav_myExpenses'), icon: ReceiptIcon },
+    { to: '/my-advances', label: t('nav_myAdvances'), icon: AdvancesIcon },
   ];
 
   const navLinks = (items: typeof NAV_TOP) => items.map(({ to, label, icon: Icon }) => (
@@ -1209,6 +1215,16 @@ function ReceiptIcon() {
       <line x1="9" y1="9" x2="15" y2="9"/>
       <line x1="9" y1="13" x2="15" y2="13"/>
       <line x1="9" y1="17" x2="12" y2="17"/>
+    </svg>
+  );
+}
+
+function AdvancesIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="6" width="20" height="14" rx="2"/>
+      <path d="M2 10h20"/>
+      <circle cx="16" cy="15" r="1.5"/>
     </svg>
   );
 }

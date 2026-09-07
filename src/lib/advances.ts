@@ -1,18 +1,28 @@
 import { supabase } from './supabase';
 
+// ── Model ────────────────────────────────────────────────────────────────────
+//
+// An admin/team leader gives ONE lump-sum cash advance to a "holder" team
+// member (e.g. 150,000 IQD). The holder can then hand out portions of that
+// lump sum to OTHER team members — each portion (an `AdvanceDistribution`)
+// is deducted in FULL from the recipient's payslip for the advance's
+// settlement_month/settlement_year. Whatever part of the lump sum the holder
+// never redistributes ("leftover") is instead deducted from the HOLDER's own
+// payslip for that same period. The leftover has no row of its own — it's
+// always derived as amount − SUM(distributions for that advance).
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface Advance {
   id: string;
-  member_id: string;
-  member_name: string;
+  holder_member_id: string;
+  holder_member_name: string;
   amount: number;
   date_given: string | null;
-  installments: number;
-  start_month: number;
-  start_year: number;
+  settlement_month: number;
+  settlement_year: number;
   reason: string | null;
-  status: 'active' | 'completed' | 'cancelled';
+  status: 'pending' | 'settled' | 'cancelled';
   notes: string | null;
   added_by: string | null;
   created_at?: string;
@@ -21,70 +31,26 @@ export interface Advance {
 export interface AdvanceDistribution {
   id: string;
   advance_id: string;
-  member_id: string;
-  member_name: string;
-  month: number;
-  year: number;
+  recipient_member_id: string;
+  recipient_member_name: string;
   amount: number;
+  notes: string | null;
+  created_at?: string;
 }
 
 export interface AdvanceFormInput {
-  member_id: string;
-  member_name: string;
+  holder_member_id: string;
+  holder_member_name: string;
   amount: number;
   date_given: string;
-  installments: number;
-  start_month: number;
-  start_year: number;
+  settlement_month: number;
+  settlement_year: number;
   reason: string;
   notes: string;
   added_by: string;
 }
 
-// ── Distribution schedule ────────────────────────────────────────────────────
-
-/** Splits `amount` evenly across `installments` consecutive months starting
- *  at start_month/start_year. If the amount doesn't divide evenly, the
- *  remainder is absorbed into the LAST installment so the schedule always
- *  sums to exactly `amount`. */
-export function generateDistributionSchedule(
-  amount: number,
-  installments: number,
-  startMonth: number,
-  startYear: number,
-): Array<{ month: number; year: number; amount: number }> {
-  const n = Math.max(1, Math.floor(installments) || 1);
-  const base = Math.floor(amount / n);
-  const schedule: Array<{ month: number; year: number; amount: number }> = [];
-  let month = startMonth;
-  let year = startYear;
-  let allocated = 0;
-  for (let i = 0; i < n; i++) {
-    const isLast = i === n - 1;
-    const amt = isLast ? (amount - allocated) : base;
-    allocated += amt;
-    schedule.push({ month, year, amount: amt });
-    month += 1;
-    if (month > 12) { month = 1; year += 1; }
-  }
-  return schedule;
-}
-
-async function writeDistributions(advanceId: string, input: AdvanceFormInput): Promise<void> {
-  const schedule = generateDistributionSchedule(input.amount, input.installments, input.start_month, input.start_year);
-  const rows = schedule.map(s => ({
-    advance_id: advanceId,
-    member_id: input.member_id,
-    member_name: input.member_name,
-    month: s.month,
-    year: s.year,
-    amount: s.amount,
-  }));
-  const { error } = await supabase.from('advance_distributions').insert(rows);
-  if (error) throw error;
-}
-
-// ── CRUD ──────────────────────────────────────────────────────────────────────
+// ── CRUD: advances ───────────────────────────────────────────────────────────
 
 export async function fetchAdvances(): Promise<Advance[]> {
   const { data, error } = await supabase.from('advances').select('*').order('date_given', { ascending: false });
@@ -92,59 +58,37 @@ export async function fetchAdvances(): Promise<Advance[]> {
   return (data as Advance[]) || [];
 }
 
-export async function fetchAdvanceDistributions(): Promise<AdvanceDistribution[]> {
-  const { data, error } = await supabase.from('advance_distributions').select('*').order('year').order('month');
-  if (error) throw error;
-  return (data as AdvanceDistribution[]) || [];
-}
-
-/** Scoped to one payroll period, across all members — used by
- *  FinPayslips.tsx's loadAll() alongside team/adjustments/claims. */
-export async function fetchAdvanceDistributionsForMonth(month: number, year: number): Promise<AdvanceDistribution[]> {
-  const { data, error } = await supabase.from('advance_distributions').select('*').eq('month', month).eq('year', year);
-  if (error) throw error;
-  return (data as AdvanceDistribution[]) || [];
-}
-
 export async function createAdvance(input: AdvanceFormInput): Promise<Advance> {
   const { data, error } = await supabase.from('advances').insert({
-    member_id: input.member_id,
-    member_name: input.member_name,
+    holder_member_id: input.holder_member_id,
+    holder_member_name: input.holder_member_name,
     amount: input.amount,
     date_given: input.date_given || null,
-    installments: input.installments,
-    start_month: input.start_month,
-    start_year: input.start_year,
+    settlement_month: input.settlement_month,
+    settlement_year: input.settlement_year,
     reason: input.reason.trim() || null,
     notes: input.notes.trim() || null,
     added_by: input.added_by || null,
   }).select('*').single();
   if (error) throw error;
-  const advance = data as Advance;
-  await writeDistributions(advance.id, input);
-  return advance;
+  return data as Advance;
 }
 
-/** Updates the advance row and regenerates its distribution schedule from
- *  scratch (delete + reinsert) — simplest way to keep the schedule correct
- *  whenever amount/installments/start period change. */
+/** Distributions are NOT touched here — editing the lump sum, holder, or
+ *  settlement period doesn't change portions already handed out; the
+ *  holder's leftover simply recomputes against the new amount/period. */
 export async function updateAdvance(id: string, input: AdvanceFormInput): Promise<void> {
   const { error } = await supabase.from('advances').update({
-    member_id: input.member_id,
-    member_name: input.member_name,
+    holder_member_id: input.holder_member_id,
+    holder_member_name: input.holder_member_name,
     amount: input.amount,
     date_given: input.date_given || null,
-    installments: input.installments,
-    start_month: input.start_month,
-    start_year: input.start_year,
+    settlement_month: input.settlement_month,
+    settlement_year: input.settlement_year,
     reason: input.reason.trim() || null,
     notes: input.notes.trim() || null,
   }).eq('id', id);
   if (error) throw error;
-
-  const { error: delErr } = await supabase.from('advance_distributions').delete().eq('advance_id', id);
-  if (delErr) throw delErr;
-  await writeDistributions(id, input);
 }
 
 /** advance_distributions rows cascade-delete via the FK's ON DELETE CASCADE. */
@@ -158,34 +102,87 @@ export async function setAdvanceStatus(id: string, status: Advance['status']): P
   if (error) throw error;
 }
 
+// ── CRUD: distributions (holder → teammate) ─────────────────────────────────
+
+export async function fetchAdvanceDistributions(): Promise<AdvanceDistribution[]> {
+  const { data, error } = await supabase.from('advance_distributions').select('*').order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data as AdvanceDistribution[]) || [];
+}
+
+/** Called from the holder's My Advances page. Caller is responsible for
+ *  capping `amount` at the holder's current leftover (see
+ *  getHolderLeftover) — this function does not re-fetch to verify, so the
+ *  caller should pass an up-to-date `distributions` array (from the same
+ *  load) into getHolderLeftover right before calling this. */
+export async function distributeAdvance(
+  advanceId: string,
+  recipientMemberId: string,
+  recipientMemberName: string,
+  amount: number,
+  notes: string,
+): Promise<AdvanceDistribution> {
+  if (!(amount > 0)) throw new Error('Amount must be greater than zero.');
+  const { data, error } = await supabase.from('advance_distributions').insert({
+    advance_id: advanceId,
+    recipient_member_id: recipientMemberId,
+    recipient_member_name: recipientMemberName,
+    amount,
+    notes: notes.trim() || null,
+  }).select('*').single();
+  if (error) throw error;
+  return data as AdvanceDistribution;
+}
+
+/** Lets a holder undo a distribution they made by mistake — the amount
+ *  reverts to their leftover automatically since leftover is derived. */
+export async function deleteDistribution(id: string): Promise<void> {
+  const { error } = await supabase.from('advance_distributions').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ── Derived helpers ───────────────────────────────────────────────────────────
 
-/** Sums every advance_distributions row for one member in one month/year.
- *  This is the payroll hook: FinPayslips.tsx calls it once team/advances/
- *  advance_distributions are all loaded, mirroring how buildTeamWithSalary
- *  already looks up salary_adjustments per member for that same period. */
-export function getTotalAdvanceDeductionForMonth(
-  memberId: string,
-  month: number,
-  year: number,
-  _advances: Advance[],
-  advDists: AdvanceDistribution[],
-): number {
-  return advDists
-    .filter(d => d.member_id === memberId && d.month === month && d.year === year)
+export function getDistributedTotal(advanceId: string, distributions: AdvanceDistribution[]): number {
+  return distributions
+    .filter(d => d.advance_id === advanceId)
     .reduce((sum, d) => sum + (+d.amount || 0), 0);
 }
 
-/** How much of one advance has already been deducted, as of refMonth/refYear
- *  (inclusive) — used by the Advances page to show progress instead of a
- *  flat, unchanging total. */
-export function getAdvanceDeductedSoFar(
-  advanceId: string,
-  advDists: AdvanceDistribution[],
-  refMonth: number,
-  refYear: number,
+/** The portion of the lump sum the holder hasn't handed out to anyone —
+ *  this is what gets deducted from the HOLDER's own payslip. */
+export function getHolderLeftover(advance: Advance, distributions: AdvanceDistribution[]): number {
+  const leftover = advance.amount - getDistributedTotal(advance.id, distributions);
+  return leftover > 0 ? leftover : 0;
+}
+
+/** The payroll hook: FinPayslips.tsx calls this once advances + distributions
+ *  are loaded, mirroring how buildTeamWithSalary already looks up
+ *  salary_adjustments per member for that same period. Combines two sources
+ *  landing on the same payslip:
+ *    (a) if `memberId` is the HOLDER of an advance settling this month/year —
+ *        their undistributed leftover on that advance;
+ *    (b) any portions `memberId` RECEIVED from advances settling this
+ *        month/year (as a distribution recipient). */
+export function getTotalAdvanceDeductionForMember(
+  memberId: string,
+  month: number,
+  year: number,
+  advances: Advance[],
+  distributions: AdvanceDistribution[],
 ): number {
-  return advDists
-    .filter(d => d.advance_id === advanceId && (d.year < refYear || (d.year === refYear && d.month <= refMonth)))
-    .reduce((sum, d) => sum + (+d.amount || 0), 0);
+  let total = 0;
+  for (const adv of advances) {
+    if (adv.status === 'cancelled') continue;
+    if (adv.settlement_month !== month || adv.settlement_year !== year) continue;
+
+    if (adv.holder_member_id === memberId) {
+      total += getHolderLeftover(adv, distributions);
+    }
+
+    total += distributions
+      .filter(d => d.advance_id === adv.id && d.recipient_member_id === memberId)
+      .reduce((sum, d) => sum + (+d.amount || 0), 0);
+  }
+  return total;
 }

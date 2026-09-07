@@ -29,6 +29,7 @@ import FinExpClaims from './pages/FinExpClaims';
 import FinCars from './pages/FinCars';
 import FinPayslips from './pages/FinPayslips';
 import Advances from './pages/Advances';
+import MyAdvances from './pages/MyAdvances';
 import FinPerformance from './pages/FinPerformance';
 import ActivityLog from './pages/ActivityLog';
 import UserManagement from './pages/UserManagement';
@@ -92,6 +93,7 @@ export default function App() {
             <Route path="/finance/cars"               element={<FinCars />} />
             <Route path="/finance/payslips"           element={<FinPayslips />} />
             <Route path="/finance/advances"           element={<Advances />} />
+            <Route path="/my-advances"                element={<MyAdvances />} />
             <Route path="/finance/performance"        element={<FinPerformance />} />
             <Route path="/activity-log"              element={<ActivityLog />} />
             <Route path="/user-management"           element={<UserManagement />} />

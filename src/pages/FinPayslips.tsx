@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { FIN_MONTHS, iqd, getYears } from '../lib/finHelpers';
 import {
   type Advance, type AdvanceDistribution,
-  fetchAdvances, fetchAdvanceDistributionsForMonth, getTotalAdvanceDeductionForMonth,
+  fetchAdvances, fetchAdvanceDistributions, getTotalAdvanceDeductionForMember,
 } from '../lib/advances';
 import css from './FinPayslips.module.css';
 
@@ -639,7 +639,7 @@ export default function FinPayslips() {
         .gte('activity_date', first)
         .lte('activity_date', last),
       fetchAdvances().catch(err => { console.error('[Payslips] Failed to load advances:', err); return []; }),
-      fetchAdvanceDistributionsForMonth(m, y).catch(err => { console.error('[Payslips] Failed to load advance distributions:', err); return []; }),
+      fetchAdvanceDistributions().catch(err => { console.error('[Payslips] Failed to load advance distributions:', err); return []; }),
     ]);
     if (teamRes.error) { setError('Failed to load team members.'); setLoading(false); return; }
     setTeam(teamRes.data || []);
@@ -657,7 +657,7 @@ export default function FinPayslips() {
   const rows: PayslipRow[] = teamWithSalary.map(m => {
     const memberClaims = claims.filter(c => c.member_id === m.id);
     const expenseTotal = memberClaims.reduce((s, c) => s + (+(c.total_amount ?? 0)), 0);
-    const advanceDeduction = getTotalAdvanceDeductionForMonth(m.id, month, year, advances, advDists);
+    const advanceDeduction = getTotalAdvanceDeductionForMember(m.id, month, year, advances, advDists);
     return { ...m, expenseTotal, advanceDeduction, netPay: m.effectiveSalary + expenseTotal - advanceDeduction, claims: memberClaims };
   });
 

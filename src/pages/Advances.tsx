@@ -8,7 +8,7 @@ import { FIN_MONTHS, iqd, getYears } from '../lib/finHelpers';
 import {
   type Advance, type AdvanceDistribution, type AdvanceFormInput,
   fetchAdvances, fetchAdvanceDistributions, createAdvance, updateAdvance,
-  deleteAdvance, setAdvanceStatus, getAdvanceDeductedSoFar,
+  deleteAdvance, setAdvanceStatus, getDistributedTotal, getHolderLeftover,
 } from '../lib/advances';
 import styles from './FinPages.module.css';
 
@@ -20,21 +20,25 @@ interface TeamMember {
 }
 
 interface FormState {
-  memberId: string;
+  holderId: string;
   amount: string;
   dateGiven: string;
-  installments: string;
-  startMonth: number;
-  startYear: number;
+  settlementMonth: number;
+  settlementYear: number;
   reason: string;
   notes: string;
 }
 
 function emptyForm(): FormState {
   const now = new Date();
+  // Default settlement period is next month — matches "deducted on the
+  // holder's/recipients' next payslip" from the business rule.
+  let m = now.getMonth() + 2;
+  let y = now.getFullYear();
+  if (m > 12) { m = 1; y += 1; }
   return {
-    memberId: '', amount: '', dateGiven: now.toISOString().slice(0, 10),
-    installments: '1', startMonth: now.getMonth() + 1, startYear: now.getFullYear(),
+    holderId: '', amount: '', dateGiven: now.toISOString().slice(0, 10),
+    settlementMonth: m, settlementYear: y,
     reason: '', notes: '',
   };
 }
@@ -61,7 +65,7 @@ export default function Advances() {
   const [delMsg, setDelMsg] = useState('');
   const [delSaving, setDelSaving] = useState(false);
 
-  const [scheduleId, setScheduleId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,7 +103,7 @@ export default function Advances() {
   function filteredRows(): Advance[] {
     return rows.filter(r =>
       (!fStatus || r.status === fStatus) &&
-      (!fMember || r.member_id === fMember)
+      (!fMember || r.holder_member_id === fMember)
     );
   }
 
@@ -109,8 +113,8 @@ export default function Advances() {
       const r = rows.find(x => x.id === id);
       if (!r) return;
       setForm({
-        memberId: r.member_id, amount: String(r.amount ?? ''), dateGiven: r.date_given || '',
-        installments: String(r.installments ?? 1), startMonth: r.start_month, startYear: r.start_year,
+        holderId: r.holder_member_id, amount: String(r.amount ?? ''), dateGiven: r.date_given || '',
+        settlementMonth: r.settlement_month, settlementYear: r.settlement_year,
         reason: r.reason || '', notes: r.notes || '',
       });
     } else {
@@ -121,21 +125,18 @@ export default function Advances() {
 
   async function saveModal() {
     setModalErr(null);
-    const member = team.find(t => t.id === form.memberId);
+    const holder = team.find(t => t.id === form.holderId);
     const amt = +form.amount;
-    const inst = Math.floor(+form.installments);
-    if (!form.memberId) { setModalErr('Employee is required.'); return; }
+    if (!form.holderId) { setModalErr('Holder is required.'); return; }
     if (!amt || amt <= 0) { setModalErr('Valid amount required.'); return; }
-    if (!inst || inst <= 0) { setModalErr('Valid number of installments required.'); return; }
 
     const input: AdvanceFormInput = {
-      member_id: form.memberId,
-      member_name: member?.full_name || '',
+      holder_member_id: form.holderId,
+      holder_member_name: holder?.full_name || '',
       amount: amt,
       date_given: form.dateGiven,
-      installments: inst,
-      start_month: form.startMonth,
-      start_year: form.startYear,
+      settlement_month: form.settlementMonth,
+      settlement_year: form.settlementYear,
       reason: form.reason,
       notes: form.notes,
       added_by: currentUser?.full_name || currentUser?.username || '',
@@ -149,16 +150,16 @@ export default function Advances() {
         logActivity({
           userFullName: currentUser?.full_name ?? currentUser?.username,
           action: 'Edited Salary Advance',
-          details: `Edited advance for ${input.member_name}: ${iqd(amt)} over ${inst} installment${inst !== 1 ? 's' : ''}`,
+          details: `Edited advance for ${input.holder_member_name}: ${iqd(amt)}`,
         });
       } else {
         await createAdvance(input);
         showToast('Added');
-        void sendPushToRoles(['admin'], 'Salary Advance Added', `New advance for ${input.member_name}: ${iqd(amt)}`);
+        void sendPushToRoles(['admin'], 'Salary Advance Added', `New advance for ${input.holder_member_name}: ${iqd(amt)}`);
         logActivity({
           userFullName: currentUser?.full_name ?? currentUser?.username,
           action: 'Added Salary Advance',
-          details: `Added advance for ${input.member_name}: ${iqd(amt)} over ${inst} installment${inst !== 1 ? 's' : ''}`,
+          details: `Added advance for ${input.holder_member_name}: ${iqd(amt)}, settling ${FIN_MONTHS[input.settlement_month - 1]} ${input.settlement_year}`,
         });
       }
       setModalOpen(false);
@@ -169,7 +170,7 @@ export default function Advances() {
 
   function openDelModal(id: string) {
     const r = rows.find(x => x.id === id);
-    setDelMsg(r ? `Delete the ${iqd(r.amount)} advance for "${r.member_name}"? This also removes its remaining deduction schedule.` : 'Delete this advance?');
+    setDelMsg(r ? `Delete the ${iqd(r.amount)} advance for "${r.holder_member_name}"? This also removes any portions they've distributed to teammates.` : 'Delete this advance?');
     setDelId(id);
   }
 
@@ -184,7 +185,7 @@ export default function Advances() {
       logActivity({
         userFullName: currentUser?.full_name ?? currentUser?.username,
         action: 'Deleted Salary Advance',
-        details: `Deleted advance for ${r?.member_name || ''}: ${iqd(r?.amount)}`,
+        details: `Deleted advance for ${r?.holder_member_name || ''}: ${iqd(r?.amount)}`,
       });
       await loadData();
     } catch (e: unknown) { showToast('Error: ' + (e instanceof Error ? e.message : String(e))); }
@@ -195,7 +196,7 @@ export default function Advances() {
     try {
       await setAdvanceStatus(id, status);
       setRows(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-      showToast(status === 'cancelled' ? 'Advance cancelled' : 'Marked completed');
+      showToast(status === 'cancelled' ? 'Advance cancelled' : 'Marked settled');
     } catch (e: unknown) { showToast('Error: ' + (e instanceof Error ? e.message : String(e))); }
   }
 
@@ -206,14 +207,14 @@ export default function Advances() {
       const ExcelJS = (await import('exceljs')).default;
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('advances');
-      ws.addRow(['Employee', 'Amount (IQD)', 'Date Given', 'Installments', 'Start Period', 'Deducted So Far (IQD)', 'Remaining (IQD)', 'Status', 'Reason', 'Notes', 'Added By']);
-      const now = new Date();
+      ws.addRow(['Holder', 'Amount (IQD)', 'Date Given', 'Settlement Period', 'Distributed (IQD)', 'Leftover to Holder (IQD)', 'Status', 'Reason', 'Notes', 'Added By']);
       for (const r of data) {
-        const deducted = getAdvanceDeductedSoFar(r.id, dists, now.getMonth() + 1, now.getFullYear());
+        const distributed = getDistributedTotal(r.id, dists);
+        const leftover = getHolderLeftover(r, dists);
         ws.addRow([
-          r.member_name, r.amount, r.date_given, r.installments,
-          `${FIN_MONTHS[r.start_month - 1]} ${r.start_year}`,
-          deducted, Math.max(0, r.amount - deducted), r.status, r.reason, r.notes, r.added_by,
+          r.holder_member_name, r.amount, r.date_given,
+          `${FIN_MONTHS[r.settlement_month - 1]} ${r.settlement_year}`,
+          distributed, leftover, r.status, r.reason, r.notes, r.added_by,
         ]);
       }
       const buf = await wb.xlsx.writeBuffer();
@@ -223,30 +224,26 @@ export default function Advances() {
     } catch (e: unknown) { showToast('Export failed: ' + (e instanceof Error ? e.message : String(e))); }
   }
 
-  const now = new Date();
   const filtered = filteredRows();
-  const activeRows = rows.filter(r => r.status === 'active');
+  const pendingRows = rows.filter(r => r.status === 'pending');
   const totalGiven = rows.reduce((s, r) => s + (+r.amount || 0), 0);
-  const totalDeducted = activeRows.reduce((s, r) => s + getAdvanceDeductedSoFar(r.id, dists, now.getMonth() + 1, now.getFullYear()), 0);
-  const totalOutstanding = activeRows.reduce((s, r) => {
-    const deducted = getAdvanceDeductedSoFar(r.id, dists, now.getMonth() + 1, now.getFullYear());
-    return s + Math.max(0, r.amount - deducted);
-  }, 0);
+  const totalDistributed = pendingRows.reduce((s, r) => s + getDistributedTotal(r.id, dists), 0);
+  const totalLeftover = pendingRows.reduce((s, r) => s + getHolderLeftover(r, dists), 0);
   const years = getYears();
-  const scheduleAdvance = scheduleId ? rows.find(r => r.id === scheduleId) : null;
-  const scheduleRows = scheduleId ? dists.filter(d => d.advance_id === scheduleId).sort((a, b) => (a.year - b.year) || (a.month - b.month)) : [];
+  const detailAdvance = detailId ? rows.find(r => r.id === detailId) : null;
+  const detailDists = detailId ? dists.filter(d => d.advance_id === detailId) : [];
 
   return (
     <div className={styles.page}>
       <div className={styles.toolbar}>
         <select className={styles.sel} value={fStatus} onChange={e => setFStatus(e.target.value)}>
           <option value="">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="completed">Completed</option>
+          <option value="pending">Pending</option>
+          <option value="settled">Settled</option>
           <option value="cancelled">Cancelled</option>
         </select>
         <select className={styles.sel} value={fMember} onChange={e => setFMember(e.target.value)}>
-          <option value="">All Employees</option>
+          <option value="">All Holders</option>
           {team.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
         </select>
         <div className={styles.spacer} />
@@ -266,9 +263,9 @@ export default function Advances() {
         <>
           <div className={styles.kpiRow}>
             <div className={styles.kpiCard}>
-              <div className={styles.kpiLabel}>Active Advances</div>
-              <div className={styles.kpiValue}>{activeRows.length}</div>
-              <div className={styles.kpiSub}>currently being deducted</div>
+              <div className={styles.kpiLabel}>Pending Advances</div>
+              <div className={styles.kpiValue}>{pendingRows.length}</div>
+              <div className={styles.kpiSub}>awaiting settlement</div>
             </div>
             <div className={styles.kpiCard}>
               <div className={styles.kpiLabel}>Total Given</div>
@@ -276,14 +273,14 @@ export default function Advances() {
               <div className={styles.kpiSub}>all advances on record</div>
             </div>
             <div className={styles.kpiCard}>
-              <div className={styles.kpiLabel}>Deducted So Far</div>
-              <div className={`${styles.kpiValue} ${styles.kpiGreen}`}>{iqd(totalDeducted)}</div>
-              <div className={styles.kpiSub}>from active advances</div>
+              <div className={styles.kpiLabel}>Distributed So Far</div>
+              <div className={`${styles.kpiValue} ${styles.kpiGreen}`}>{iqd(totalDistributed)}</div>
+              <div className={styles.kpiSub}>handed to teammates (pending)</div>
             </div>
             <div className={styles.kpiCard}>
-              <div className={styles.kpiLabel}>Outstanding</div>
-              <div className={`${styles.kpiValue} ${styles.kpiRed}`}>{iqd(totalOutstanding)}</div>
-              <div className={styles.kpiSub}>still to be deducted</div>
+              <div className={styles.kpiLabel}>Leftover to Holders</div>
+              <div className={`${styles.kpiValue} ${styles.kpiRed}`}>{iqd(totalLeftover)}</div>
+              <div className={styles.kpiSub}>undistributed, charged to holder</div>
             </div>
           </div>
 
@@ -291,33 +288,32 @@ export default function Advances() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>Employee</th><th>Date Given</th>
-                  <th className={styles.num}>Amount</th><th className={styles.num}>Installments</th>
-                  <th>Start Period</th>
-                  <th className={styles.num}>Deducted</th><th className={styles.num}>Remaining</th>
+                  <th>Holder</th><th>Date Given</th>
+                  <th className={styles.num}>Amount</th>
+                  <th>Settlement Period</th>
+                  <th className={styles.num}>Distributed</th><th className={styles.num}>Leftover</th>
                   <th>Status</th><th>Reason</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0
-                  ? <tr><td colSpan={10} className={styles.empty}>No advances.</td></tr>
+                  ? <tr><td colSpan={9} className={styles.empty}>No advances.</td></tr>
                   : filtered.map(r => {
-                    const deducted = getAdvanceDeductedSoFar(r.id, dists, now.getMonth() + 1, now.getFullYear());
-                    const remaining = Math.max(0, r.amount - deducted);
-                    const badgeClass = r.status === 'active' ? styles.badgeAmber : r.status === 'completed' ? styles.badgeGreen : styles.badgeRed;
+                    const distributed = getDistributedTotal(r.id, dists);
+                    const leftover = getHolderLeftover(r, dists);
+                    const badgeClass = r.status === 'pending' ? styles.badgeAmber : r.status === 'settled' ? styles.badgeGreen : styles.badgeRed;
                     return (
                       <tr key={r.id}>
-                        <td><strong>{r.member_name}</strong></td>
+                        <td><strong>{r.holder_member_name}</strong></td>
                         <td style={{ whiteSpace: 'nowrap' }}>{r.date_given || ''}</td>
                         <td className={styles.num}>{iqd(r.amount)}</td>
-                        <td className={styles.num}>
-                          <button className={styles.btnGhost2} style={{ height: 26, padding: '0 8px', fontSize: 12 }} onClick={() => setScheduleId(r.id)}>
-                            {r.installments}×
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className={styles.btnGhost2} style={{ height: 26, padding: '0 8px', fontSize: 12 }} onClick={() => setDetailId(r.id)}>
+                            {FIN_MONTHS[r.settlement_month - 1]} {r.settlement_year}
                           </button>
                         </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>{FIN_MONTHS[r.start_month - 1]} {r.start_year}</td>
-                        <td className={styles.num} style={{ color: '#16a34a' }}>{iqd(deducted)}</td>
-                        <td className={styles.num} style={{ color: remaining > 0 ? '#dc2626' : undefined }}>{iqd(remaining)}</td>
+                        <td className={styles.num} style={{ color: '#16a34a' }}>{iqd(distributed)}</td>
+                        <td className={styles.num} style={{ color: leftover > 0 ? '#dc2626' : undefined }}>{iqd(leftover)}</td>
                         <td><span className={`${styles.badge} ${badgeClass}`}>{r.status}</span></td>
                         <td className={styles.noteCell}>{r.reason || ''}</td>
                         <td>
@@ -325,7 +321,10 @@ export default function Advances() {
                             {hasPerm('fin_advances_edit') && (
                               <button className={styles.actBtn} onClick={() => openModal(r.id)} title="Edit"><PenIcon /></button>
                             )}
-                            {hasPerm('fin_advances_edit') && r.status === 'active' && (
+                            {hasPerm('fin_advances_edit') && r.status === 'pending' && (
+                              <button className={styles.actBtn} onClick={() => handleSetStatus(r.id, 'settled')} title="Mark settled"><CheckIcon /></button>
+                            )}
+                            {hasPerm('fin_advances_edit') && r.status === 'pending' && (
                               <button className={styles.actBtn} onClick={() => handleSetStatus(r.id, 'cancelled')} title="Cancel advance"><BanIcon /></button>
                             )}
                             {hasPerm('fin_advances_delete') && (
@@ -342,7 +341,7 @@ export default function Advances() {
                 <tr>
                   <td colSpan={2}><strong>Total (filtered)</strong></td>
                   <td className={styles.num}><strong>{iqd(filtered.reduce((s, r) => s + (+r.amount || 0), 0))}</strong></td>
-                  <td colSpan={7} />
+                  <td colSpan={6} />
                 </tr>
               </tfoot>
             </table>
@@ -357,9 +356,9 @@ export default function Advances() {
             <div className={styles.modalTitle}>{editId ? 'Edit Advance' : 'Add Advance'}</div>
             {modalErr && <div className={styles.modalErr}>{modalErr}</div>}
             <div className={styles.formRow}>
-              <label className={styles.formLabel}>Employee</label>
-              <select className={styles.formSel} value={form.memberId} disabled={!!editId}
-                onChange={e => setForm(f => ({ ...f, memberId: e.target.value }))}>
+              <label className={styles.formLabel}>Holder</label>
+              <select className={styles.formSel} value={form.holderId} disabled={!!editId}
+                onChange={e => setForm(f => ({ ...f, holderId: e.target.value }))}>
                 <option value="">— Select employee —</option>
                 {team.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
               </select>
@@ -375,21 +374,19 @@ export default function Advances() {
                 onChange={e => setForm(f => ({ ...f, dateGiven: e.target.value }))} />
             </div>
             <div className={styles.formRow}>
-              <label className={styles.formLabel}>Installments (months)</label>
-              <input type="number" min={1} className={styles.formInput} value={form.installments}
-                onChange={e => setForm(f => ({ ...f, installments: e.target.value }))} />
-            </div>
-            <div className={styles.formRow}>
-              <label className={styles.formLabel}>First Deduction Period</label>
+              <label className={styles.formLabel}>Settlement Period</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <select className={styles.formSel} value={form.startMonth}
-                  onChange={e => setForm(f => ({ ...f, startMonth: +e.target.value }))}>
+                <select className={styles.formSel} value={form.settlementMonth}
+                  onChange={e => setForm(f => ({ ...f, settlementMonth: +e.target.value }))}>
                   {FIN_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
                 </select>
-                <select className={styles.formSel} value={form.startYear}
-                  onChange={e => setForm(f => ({ ...f, startYear: +e.target.value }))}>
+                <select className={styles.formSel} value={form.settlementYear}
+                  onChange={e => setForm(f => ({ ...f, settlementYear: +e.target.value }))}>
                   {years.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                The payslip period where any distributed portions and the holder's leftover both get deducted.
               </div>
             </div>
             <div className={styles.formRow}>
@@ -430,28 +427,31 @@ export default function Advances() {
         document.body
       )}
 
-      {/* Deduction schedule */}
-      {scheduleId && scheduleAdvance && createPortal(
-        <div className={styles.overlay} onClick={() => setScheduleId(null)}>
+      {/* Distribution detail */}
+      {detailId && detailAdvance && createPortal(
+        <div className={styles.overlay} onClick={() => setDetailId(null)}>
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
-            <div className={styles.modalTitle}>Deduction Schedule — {scheduleAdvance.member_name}</div>
+            <div className={styles.modalTitle}>Distributions — {detailAdvance.holder_member_name}</div>
             <table className={styles.table}>
-              <thead><tr><th>Period</th><th className={styles.num}>Amount</th><th>Status</th></tr></thead>
+              <thead><tr><th>Recipient</th><th className={styles.num}>Amount</th></tr></thead>
               <tbody>
-                {scheduleRows.map(d => {
-                  const isPast = d.year < now.getFullYear() || (d.year === now.getFullYear() && d.month <= now.getMonth() + 1);
-                  return (
-                    <tr key={d.id}>
-                      <td>{FIN_MONTHS[d.month - 1]} {d.year}</td>
-                      <td className={styles.num}>{iqd(d.amount)}</td>
-                      <td><span className={`${styles.badge} ${isPast ? styles.badgeGreen : styles.badgeAmber}`}>{isPast ? 'Deducted' : 'Upcoming'}</span></td>
-                    </tr>
-                  );
-                })}
+                {detailDists.length === 0 && (
+                  <tr><td colSpan={2} className={styles.empty}>Nothing distributed yet.</td></tr>
+                )}
+                {detailDists.map(d => (
+                  <tr key={d.id}>
+                    <td>{d.recipient_member_name}</td>
+                    <td className={styles.num}>{iqd(d.amount)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td><strong>Leftover — charged to {detailAdvance.holder_member_name}</strong></td>
+                  <td className={styles.num}><strong style={{ color: '#dc2626' }}>{iqd(getHolderLeftover(detailAdvance, dists))}</strong></td>
+                </tr>
               </tbody>
             </table>
             <div className={styles.modalActions}>
-              <button className={styles.btnGhost2} onClick={() => setScheduleId(null)}>Close</button>
+              <button className={styles.btnGhost2} onClick={() => setDetailId(null)}>Close</button>
             </div>
           </div>
         </div>,
@@ -471,4 +471,7 @@ function TrashIcon() {
 }
 function BanIcon() {
   return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>;
+}
+function CheckIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="20 6 9 17 4 12"/></svg>;
 }

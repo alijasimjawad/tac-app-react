@@ -21,6 +21,7 @@ const en = {
   nav_mySites:         'My Sites',
   nav_financeLabel:    'FINANCE',
   nav_myExpenses:      'My Expenses',
+  nav_myAdvances:      'My Advances',
   nav_accountLabel:    'ACCOUNT',
   nav_myProfile:       'My Profile',
 
@@ -777,6 +778,7 @@ const ar: typeof en = {
   nav_mySites:         'مواقعي',
   nav_financeLabel:    'المالية',
   nav_myExpenses:      'مصروفاتي',
+  nav_myAdvances:      'سلفياتي',
   nav_accountLabel:    'الحساب',
   nav_myProfile:       'ملفي الشخصي',
 
