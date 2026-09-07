@@ -216,6 +216,16 @@ export const ACTION_SCOPES: ActionScope[] = [
     ],
   },
   {
+    id: 'fin_advances',
+    label: 'Advances',
+    actions: [
+      { key: 'fin_advances_add',    label: 'Add Advance' },
+      { key: 'fin_advances_edit',   label: 'Edit Advance' },
+      { key: 'fin_advances_delete', label: 'Delete Advance' },
+      { key: 'fin_advances_export', label: 'Export' },
+    ],
+  },
+  {
     id: 'hr_profiles',
     label: 'Employee Profiles',
     actions: [
@@ -401,6 +411,11 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
   fin_genexp_edit: 'view_fin_genexp',
   fin_genexp_delete: 'view_fin_genexp',
   fin_genexp_export: 'view_fin_genexp',
+
+  fin_advances_add: 'view_fin_advances',
+  fin_advances_edit: 'view_fin_advances',
+  fin_advances_delete: 'view_fin_advances',
+  fin_advances_export: 'view_fin_advances',
 
   hr_profiles_edit: 'view_hr_profiles',
   hr_profiles_upload_photo: 'view_hr_profiles',
