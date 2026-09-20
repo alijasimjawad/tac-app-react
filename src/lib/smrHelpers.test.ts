@@ -9,8 +9,10 @@ import {
   hasFractionalQuantity,
   toIntegerReceiptQuantity,
   buildReceiptItemsFromSmrLines,
+  suggestFuzzyMatches,
   type MatchedItemRef,
   type SmrLineStatus,
+  type FuzzyMatchCandidateItem,
 } from './smrHelpers';
 
 // ── computeSmrLineStatus() ────────────────────────────────────────────────────
@@ -110,6 +112,53 @@ describe('matchPnToItem()', () => {
 
   it('returns UNMATCHED when the PN is in neither map', () => {
     expect(matchPnToItem('UNKNOWN-PN', exactByPn, learnedByPn).confidence).toBe('UNMATCHED');
+  });
+});
+
+// ── suggestFuzzyMatches() ──────────────────────────────────────────────────────
+
+describe('suggestFuzzyMatches()', () => {
+  const candidates: FuzzyMatchCandidateItem[] = [
+    { id: 'i-radio',  item_code: 'ABIO', item_name: 'ABIO Radio Unit 2x2 MIMO', part_number: '474800A.102' },
+    { id: 'i-cable',  item_code: 'CBL-5M', item_name: 'RF Jumper Cable 5m', part_number: 'CBL5M-RF' },
+    { id: 'i-mount',  item_code: 'MNT-01', item_name: 'Antenna Mounting Bracket', part_number: null },
+    { id: 'i-unrel',  item_code: 'PWR-9', item_name: 'Power Supply Module 48V', part_number: '9911-PWR' },
+  ];
+
+  it('returns nothing when both description and PN are blank', () => {
+    expect(suggestFuzzyMatches(null, null, candidates)).toEqual([]);
+    expect(suggestFuzzyMatches('   ', '', candidates)).toEqual([]);
+  });
+
+  it('ranks the item whose name shares the most words with the description highest', () => {
+    const results = suggestFuzzyMatches('Radio Unit 2x2 MIMO Antenna', null, candidates);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].itemId).toBe('i-radio');
+  });
+
+  it('excludes candidates with no meaningful overlap', () => {
+    const results = suggestFuzzyMatches('Radio Unit 2x2 MIMO Antenna', null, candidates);
+    expect(results.some(r => r.itemId === 'i-unrel')).toBe(false);
+  });
+
+  it('gives a perfect PN match a strong boost even with a weak description', () => {
+    const results = suggestFuzzyMatches('generic part', '474800A.102', candidates);
+    expect(results[0].itemId).toBe('i-radio');
+  });
+
+  it('respects the limit parameter', () => {
+    const manyCandidates: FuzzyMatchCandidateItem[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `item-${i}`, item_code: `C${i}`, item_name: 'Radio Unit Module', part_number: null,
+    }));
+    const results = suggestFuzzyMatches('Radio Unit Module', null, manyCandidates, 3);
+    expect(results).toHaveLength(3);
+  });
+
+  it('returns scores in descending order', () => {
+    const results = suggestFuzzyMatches('RF Jumper Cable', null, candidates);
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i - 1].score).toBeGreaterThanOrEqual(results[i].score);
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,7 @@ import {
 import {
   computeSmrLineStatus, summarizeSmrLineStatuses, isSmrReconciliationComplete,
   countUniqueScans, isDuplicateScanForLine, buildReceiptItemsFromSmrLines,
+  suggestFuzzyMatches,
   type SmrLineStatus, type SmrMatchConfidence,
 } from '../lib/smrHelpers';
 import { normalizePn, MAPPING_SOURCE_RECEIVING, MAPPING_CODE_TYPE_PN } from '../lib/pnMapping';
@@ -170,6 +171,13 @@ export default function WarehouseSmrReconcile() {
   useEffect(() => { load(); checkCameraPermission().then(setCamPerm); return () => stopCamera(); }, [smrId]);
 
   const activeLine = lines.find(l => l.id === activeLineId) ?? null;
+
+  // Only worth suggesting for lines that still need a manual match — an
+  // exact/learned match is already trustworthy, so don't second-guess it.
+  const fuzzySuggestions = useMemo(() => {
+    if (!activeLine || activeLine.matchedItemId) return [];
+    return suggestFuzzyMatches(activeLine.descriptionRaw, activeLine.productNumberRaw, items);
+  }, [activeLine, items]);
 
   // ── Persist a line's received_qty / status ──────────────────────────────────
   async function persistLine(lineId: string, patch: { receivedQty: number; status: SmrLineStatus }) {
@@ -475,6 +483,21 @@ export default function WarehouseSmrReconcile() {
 
               <div className={css.field}>
                 <label className={css.label}>Matched Inventory Item</label>
+                {fuzzySuggestions.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                      Suggested matches
+                    </div>
+                    {fuzzySuggestions.map(s => (
+                      <button key={s.itemId} type="button" className={css.btnGhost}
+                        style={{ display: 'flex', justifyContent: 'space-between', textAlign: 'left', width: '100%' }}
+                        onClick={() => rematchLine(activeLine.id, s.itemId)}>
+                        <span>{s.itemCode} — {s.itemName}</span>
+                        <span style={{ color: '#94a3b8', fontSize: 11, marginLeft: 8 }}>{Math.round(s.score * 100)}%</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <select className={`${css.input} ${css.fieldSelect}`} value={activeLine.matchedItemId ?? ''}
                   onChange={e => rematchLine(activeLine.id, e.target.value)}>
                   <option value="">— Unmatched —</option>
