@@ -220,3 +220,72 @@ describe('computeColumnBoundaries() — multi-glyph-run header labels', () => {
     expect(computeColumnBoundaries(smallHeader, 6)).toEqual([10, 60]);
   });
 });
+
+// ── Real-world regression: header/data column-alignment mismatch (BN2074) ────
+
+describe('parseLineItemRow() — ordinal mapping for center-aligned body columns', () => {
+  // Captured verbatim from the actual customer-uploaded BN2074 PDF via
+  // pdfjs-dist. The header row already has exactly one glyph run per
+  // logical column (no splitting), but the "Item Description" label sits at
+  // x=339.84 — well to the right of where the real (center-aligned)
+  // description text starts in the data rows (x=286.08, x=304.80). Binning
+  // data items against x >= header-label-x thresholds put the description
+  // text inside the "product number" bucket, merging PN + description into
+  // one field. Ordinal mapping (used whenever a row has exactly 6 items, in
+  // the correct left-to-right column order) sidesteps this mismatch.
+  const realHeaderItems: PositionedTextItem[] = [
+    { str: 'Index',           x: 116.04, y: 441.48, width: 18.95 },
+    { str: 'product number',  x: 168.84, y: 441.48, width: 54.95 },
+    { str: 'Item Description',x: 339.84, y: 441.48, width: 56.38 },
+    { str: 'Accepted Qty',    x: 483.96, y: 441.48, width: 43.82 },
+    { str: 'serial number',   x: 543.84, y: 441.48, width: 47.39 },
+    { str: 'Comments',        x: 625.68, y: 441.48, width: 35.62 },
+  ];
+  const realDataItems: PositionedTextItem[] = [
+    // row 1 — long description, starts well left of the header label's x
+    { str: '1',                                       x: 123.24, y: 429.72, width: 4.08 },
+    { str: '476108A.203',                              x: 174.12, y: 429.72, width: 43.77 },
+    { str: 'AQHC AirScale MAA 32T32R 192AE n41 320W',  x: 286.08, y: 429.72, width: 163.21 },
+    { str: '0',                                        x: 503.52, y: 429.72, width: 4.08 },
+    { str: '0',                                        x: 565.92, y: 429.72, width: 4.08 },
+    { str: 'PO#11375',                                 x: 626.18, y: 429.72, width: 34.06 },
+    // row 2 — shorter description, starts even further left (center-aligned)
+    { str: '2',                                       x: 123.24, y: 418.80, width: 4.08 },
+    { str: '470316A.210',                             x: 174.11, y: 418.80, width: 43.77 },
+    { str: 'EMHA EDGE MECHANICAL 3U UNIT',             x: 304.80, y: 418.80, width: 125.75 },
+    { str: '1',                                        x: 503.52, y: 418.80, width: 4.08 },
+    { str: '0',                                        x: 565.92, y: 418.80, width: 4.08 },
+    { str: 'PO#11375',                                 x: 626.18, y: 418.80, width: 34.06 },
+  ];
+
+  const rows = groupTextItemsIntoRows([...realHeaderItems, ...realDataItems]);
+  const headerRow = findLineItemTableHeaderRow(rows);
+
+  it('locates the real header row', () => {
+    expect(headerRow).not.toBeNull();
+  });
+
+  it('does not merge description into the part-number cell for row 1', () => {
+    const dataRows = findLineItemTableRows(rows, headerRow!);
+    expect(parseLineItemRow(dataRows[0], headerRow!)).toEqual({
+      lineIndex: 1,
+      productNumberRaw: '476108A.203',
+      descriptionRaw: 'AQHC AirScale MAA 32T32R 192AE n41 320W',
+      expectedQty: 0,
+      hasSerialFlag: false,
+      poReference: 'PO#11375',
+    });
+  });
+
+  it('does not merge description into the part-number cell for row 2 (even shorter/more-offset description)', () => {
+    const dataRows = findLineItemTableRows(rows, headerRow!);
+    expect(parseLineItemRow(dataRows[1], headerRow!)).toEqual({
+      lineIndex: 2,
+      productNumberRaw: '470316A.210',
+      descriptionRaw: 'EMHA EDGE MECHANICAL 3U UNIT',
+      expectedQty: 1,
+      hasSerialFlag: false,
+      poReference: 'PO#11375',
+    });
+  });
+});

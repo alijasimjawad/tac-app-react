@@ -201,23 +201,46 @@ export function computeColumnBoundaries(headerItems: PositionedTextItem[], numCo
 }
 
 /**
- * Bins a data row's items into columns using the header row's reconstructed
- * column boundaries, then parses each column's joined text.
+ * Bins a data row's items into columns, then parses each column's joined text.
  * Returns null for rows that don't look like a real line item (no leading
  * numeric index, or no PN/description content at all).
+ *
+ * Column detection has two strategies:
+ *
+ * 1. Ordinal (preferred): when the row already has exactly
+ *    LINE_ITEM_COLUMN_COUNT glyph runs, map them 1:1 to columns by position
+ *    (left-to-right). Real-world PDFs (e.g. the BN2074 sample) frequently
+ *    render each cell as its own single glyph run in correct column order —
+ *    but the header LABEL's x position doesn't necessarily line up with
+ *    where the body data starts. E.g. "Item Description" is centered/offset
+ *    within its column and sits at x≈340, while the actual description text
+ *    below it — center-aligned within the same column — starts as early as
+ *    x≈286 for a long string. Using the header label's x as a hard left
+ *    boundary would misbin that data into the previous ("product number")
+ *    column. Ordinal mapping sidesteps header/data alignment entirely.
+ *
+ * 2. x-boundary fallback: used only when a row's item count doesn't match
+ *    the expected column count (e.g. an empty cell collapsing the count, or
+ *    a wrapped cell splitting into extra items), via computeColumnBoundaries.
  */
 export function parseLineItemRow(row: TextRow, headerRow: TextRow): ParsedSmrLineCandidate | null {
   if (row.items.length === 0) return null;
 
-  const boundaries = computeColumnBoundaries(headerRow.items, LINE_ITEM_COLUMN_COUNT);
-  const columns: string[] = boundaries.map(() => '');
+  let columns: string[];
 
-  for (const item of row.items) {
-    let colIdx = 0;
-    for (let i = 0; i < boundaries.length; i++) {
-      if (item.x + 0.01 >= boundaries[i]) colIdx = i;
+  if (row.items.length === LINE_ITEM_COLUMN_COUNT) {
+    columns = row.items.map(item => item.str.trim());
+  } else {
+    const boundaries = computeColumnBoundaries(headerRow.items, LINE_ITEM_COLUMN_COUNT);
+    columns = boundaries.map(() => '');
+
+    for (const item of row.items) {
+      let colIdx = 0;
+      for (let i = 0; i < boundaries.length; i++) {
+        if (item.x + 0.01 >= boundaries[i]) colIdx = i;
+      }
+      columns[colIdx] = columns[colIdx] ? `${columns[colIdx]} ${item.str.trim()}` : item.str.trim();
     }
-    columns[colIdx] = columns[colIdx] ? `${columns[colIdx]} ${item.str.trim()}` : item.str.trim();
   }
 
   const [colIndex, colPn, colDesc, colQty, colSerialFlag, colComments] = columns.map(c => c.trim());
