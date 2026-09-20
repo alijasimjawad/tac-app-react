@@ -5,6 +5,7 @@ import {
   findLineItemTableHeaderRow,
   findLineItemTableRows,
   parseLineItemRow,
+  computeColumnBoundaries,
   type PositionedTextItem,
 } from './smrPdfParser';
 
@@ -162,5 +163,60 @@ describe('findLineItemTableHeaderRow() / findLineItemTableRows() / parseLineItem
 
   it('returns null for an empty row', () => {
     expect(parseLineItemRow({ y: 0, items: [], text: '' }, headerRow!)).toBeNull();
+  });
+});
+
+// ── computeColumnBoundaries() / real-world split-header regression ───────────
+
+describe('computeColumnBoundaries() — multi-glyph-run header labels', () => {
+  // Real PDFs frequently emit a multi-word column label (e.g. "Item
+  // Description") as several separate glyph runs rather than one string.
+  // Naively treating every header glyph run as its own column boundary
+  // shifts every subsequent column — this is the bug reported against a
+  // real uploaded SMR (description text merging into the part-number cell,
+  // and the Comments/PO column reading the wrong value).
+  const splitHeaderItems: PositionedTextItem[] = [
+    { str: 'Index',       x: 10,  y: 300, width: 20 },
+    { str: 'product',     x: 60,  y: 300, width: 20 },
+    { str: 'number',      x: 82,  y: 300, width: 20 },
+    { str: 'Item',        x: 140, y: 300, width: 15 },
+    { str: 'Description', x: 158, y: 300, width: 40 },
+    { str: 'Accepted',    x: 260, y: 300, width: 25 },
+    { str: 'Qty',         x: 288, y: 300, width: 15 },
+    { str: 'serial',      x: 340, y: 300, width: 20 },
+    { str: 'number',      x: 363, y: 300, width: 20 },
+    { str: 'Comments',    x: 420, y: 300, width: 30 },
+  ];
+  const dataItems: PositionedTextItem[] = [
+    { str: '1',           x: 10,  y: 280, width: 10 },
+    { str: '474800A.102', x: 60,  y: 280, width: 40 },
+    { str: 'RRU',         x: 140, y: 280, width: 20 },
+    { str: '2',           x: 260, y: 280, width: 10 },
+    { str: '0',           x: 340, y: 280, width: 10 },
+    { str: 'PO#11375',    x: 420, y: 280, width: 30 },
+  ];
+
+  it('collapses same-label word gaps and cuts only at true column gaps, yielding exactly 6 boundaries', () => {
+    const boundaries = computeColumnBoundaries(splitHeaderItems, 6);
+    expect(boundaries).toEqual([10, 60, 140, 260, 340, 420]);
+  });
+
+  it('parses a data row correctly against a split-glyph-run header (no description-into-PN merge)', () => {
+    const rows = groupTextItemsIntoRows([...splitHeaderItems, ...dataItems]);
+    const headerRow = findLineItemTableHeaderRow(rows);
+    expect(headerRow).not.toBeNull();
+    const dataRows = findLineItemTableRows(rows, headerRow!);
+    expect(parseLineItemRow(dataRows[0], headerRow!)).toEqual({
+      lineIndex: 1, productNumberRaw: '474800A.102', descriptionRaw: 'RRU',
+      expectedQty: 2, hasSerialFlag: false, poReference: 'PO#11375',
+    });
+  });
+
+  it('leaves boundaries untouched when header item count is already at or below the expected column count', () => {
+    const smallHeader: PositionedTextItem[] = [
+      { str: 'Index', x: 10, y: 0, width: 20 },
+      { str: 'PN',    x: 60, y: 0, width: 20 },
+    ];
+    expect(computeColumnBoundaries(smallHeader, 6)).toEqual([10, 60]);
   });
 });

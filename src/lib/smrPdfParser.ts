@@ -159,16 +159,57 @@ export function findLineItemTableRows(rows: TextRow[], headerRow: TextRow): Text
   return result;
 }
 
+// Fixed column count for the line-item table: Index | product number |
+// Item Description | Accepted Qty | serial number | Comments.
+const LINE_ITEM_COLUMN_COUNT = 6;
+
 /**
- * Bins a data row's items into columns using the header row's item x-positions
- * as column start boundaries, then parses each column's joined text.
+ * Derives the x-position of each logical column's left edge from the header
+ * row's glyph runs.
+ *
+ * Naively using every header item's x as its own boundary breaks on real
+ * PDFs: pdfjs-dist frequently splits a single multi-word label (e.g. "Item
+ * Description") into several separate text items at different x positions.
+ * Treating each of those as its own column boundary shifts every column
+ * after it — the classic symptom is description text merging into the
+ * part-number cell and every later column reading one slot early.
+ *
+ * Instead, sort all header items left-to-right and cut at the `numColumns-1`
+ * *largest* gaps between consecutive items. Gaps between words within the
+ * same column label (e.g. "Item" → "Description") are small; gaps between
+ * genuinely different columns are much larger — so this reliably reconstructs
+ * the true column boundaries regardless of how the header text got split.
+ */
+export function computeColumnBoundaries(headerItems: PositionedTextItem[], numColumns: number): number[] {
+  const sorted = [...headerItems].sort((a, b) => a.x - b.x);
+  if (sorted.length <= numColumns) return sorted.map(i => i.x);
+
+  const gaps: Array<{ afterIdx: number; size: number }> = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    gaps.push({ afterIdx: i - 1, size: sorted[i].x - (prev.x + prev.width) });
+  }
+  const cutAfter = new Set(
+    [...gaps].sort((a, b) => b.size - a.size).slice(0, numColumns - 1).map(g => g.afterIdx)
+  );
+
+  const boundaries: number[] = [sorted[0].x];
+  for (let i = 1; i < sorted.length; i++) {
+    if (cutAfter.has(i - 1)) boundaries.push(sorted[i].x);
+  }
+  return boundaries;
+}
+
+/**
+ * Bins a data row's items into columns using the header row's reconstructed
+ * column boundaries, then parses each column's joined text.
  * Returns null for rows that don't look like a real line item (no leading
  * numeric index, or no PN/description content at all).
  */
 export function parseLineItemRow(row: TextRow, headerRow: TextRow): ParsedSmrLineCandidate | null {
   if (row.items.length === 0) return null;
 
-  const boundaries = headerRow.items.map(h => h.x).sort((a, b) => a - b);
+  const boundaries = computeColumnBoundaries(headerRow.items, LINE_ITEM_COLUMN_COUNT);
   const columns: string[] = boundaries.map(() => '');
 
   for (const item of row.items) {
