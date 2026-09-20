@@ -327,6 +327,17 @@ export const ACTION_SCOPES: ActionScope[] = [
       { key: 'wrh_issue_cancel', label: 'Cancel Issue' },
     ],
   },
+  {
+    id: 'warehouse_smr',
+    label: 'Warehouse — Customer SMR Receiving',
+    actions: [
+      { key: 'wrh_smr_upload',   label: 'Upload SMR' },
+      { key: 'wrh_smr_edit',     label: 'Edit Line Items' },
+      { key: 'wrh_smr_scan',     label: 'Scan / Reconcile' },
+      { key: 'wrh_smr_finalize', label: 'Finalize to Receipt' },
+      { key: 'wrh_smr_cancel',   label: 'Cancel SMR' },
+    ],
+  },
 ];
 
 // Flattened list of every scoped action key — used where a page just needs
@@ -448,4 +459,10 @@ export const LEGACY_OPEN_ACTIONS: Record<string, string> = {
   wrh_issue_edit:   'view_warehouse_issue_history',
   wrh_issue_post:   'view_warehouse_issue',
   wrh_issue_cancel: 'view_warehouse_issue',
+
+  wrh_smr_upload:   'view_warehouse_smr',
+  wrh_smr_edit:     'view_warehouse_smr',
+  wrh_smr_scan:     'view_warehouse_smr',
+  wrh_smr_finalize: 'view_warehouse_smr',
+  wrh_smr_cancel:   'view_warehouse_smr',
 };

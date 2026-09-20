@@ -1,0 +1,570 @@
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import {
+  CameraScanner, parseScan, classifyScan,
+  checkCameraPermission, cameraErrorMessage, type CameraPermission,
+} from '../lib/warehouseScanner';
+import {
+  computeSmrLineStatus, summarizeSmrLineStatuses, isSmrReconciliationComplete,
+  countUniqueScans, isDuplicateScanForLine, buildReceiptItemsFromSmrLines,
+  type SmrLineStatus, type SmrMatchConfidence,
+} from '../lib/smrHelpers';
+import { normalizePn, MAPPING_SOURCE_RECEIVING, MAPPING_CODE_TYPE_PN } from '../lib/pnMapping';
+import { normalizeSN } from '../lib/warehouseTypes';
+import type { SmrDocument, InventoryItem } from '../lib/warehouseTypes';
+import css from './Warehouse.module.css';
+
+// ── Local types ────────────────────────────────────────────────────────────────
+
+interface LineScan {
+  id:                string;
+  serialNumber:      string;
+  serialNumberNorm:  string;
+  rawScanValue:      string;
+  barcodeSymbology:  string | null;
+  scannedManually:   boolean;
+}
+
+interface ReconcileLine {
+  id:                string;
+  lineIndex:         number;
+  productNumberRaw:  string | null;
+  descriptionRaw:    string | null;
+  expectedQty:       number;
+  hasSerialFlag:     boolean;
+  poReference:       string | null;
+  matchedItemId:     string | null;
+  matchedItemCode:   string | null;
+  matchedItemName:   string | null;
+  matchConfidence:   SmrMatchConfidence;
+  trackingMethod:    'SERIALIZED' | 'QUANTITY' | null;
+  receivedQty:       number;
+  status:            SmrLineStatus;
+  scans:             LineScan[];
+}
+
+function matchBadge(c: SmrMatchConfidence) {
+  if (c === 'EXACT')   return <span className={`${css.badge} ${css.badgeGreen}`}>Exact</span>;
+  if (c === 'LEARNED') return <span className={`${css.badge} ${css.badgeBlue}`}>Learned</span>;
+  if (c === 'MANUAL')  return <span className={`${css.badge} ${css.badgeSlate}`}>Manual</span>;
+  return <span className={`${css.badge} ${css.badgeRed}`}>Unmatched</span>;
+}
+
+function statusBadge(s: SmrLineStatus) {
+  if (s === 'RECEIVED')     return <span className={`${css.badge} ${css.badgeGreen}`}>Received</span>;
+  if (s === 'PARTIAL')      return <span className={`${css.badge} ${css.badgeAmber}`}>Partial</span>;
+  if (s === 'NOT_RECEIVED') return <span className={`${css.badge} ${css.badgeRed}`}>Not Received</span>;
+  return <span className={`${css.badge} ${css.badgeSlate}`}>Pending</span>;
+}
+
+export default function WarehouseSmrReconcile() {
+  const { smrId } = useParams<{ smrId: string }>();
+  const { hasPerm, currentUser } = useAuth();
+  const navigate = useNavigate();
+
+  const [doc,        setDoc]        = useState<SmrDocument | null>(null);
+  const [lines,       setLines]      = useState<ReconcileLine[]>([]);
+  const [items,       setItems]      = useState<InventoryItem[]>([]);
+  const [loading,     setLoading]    = useState(true);
+  const [error,       setError]      = useState('');
+  const [activeLineId, setActiveLineId] = useState<string | null>(null);
+
+  const [camPerm, setCamPerm] = useState<CameraPermission>('unknown');
+  const [camOn,   setCamOn]   = useState(false);
+  const [camErr,  setCamErr]  = useState<string | null>(null);
+  const videoRef    = useRef<HTMLVideoElement | null>(null);
+  const scannerRef  = useRef<CameraScanner | null>(null);
+
+  const [manualSn, setManualSn] = useState('');
+  const [savingQty, setSavingQty] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showToast(msg: string, ok: boolean) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ msg, ok });
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  }
+
+  if (!hasPerm('view_warehouse_smr')) return <div className={css.denied}>Access denied.</div>;
+  const canScan     = hasPerm('wrh_smr_scan');
+  const canFinalize = hasPerm('wrh_smr_finalize');
+
+  // ── Load ─────────────────────────────────────────────────────────────────────
+  async function load() {
+    if (!smrId) return;
+    setLoading(true);
+    setError('');
+
+    const [docRes, lineRes, itemRes] = await Promise.all([
+      supabase.from('smr_documents').select('*').eq('id', smrId).single(),
+      supabase.from('smr_lines').select('*').eq('smr_document_id', smrId).order('line_index'),
+      supabase.from('inventory_items').select('*').eq('is_active', true).order('item_name'),
+    ]);
+
+    if (docRes.error || !docRes.data) { setError(docRes.error?.message || 'SMR not found.'); setLoading(false); return; }
+    const document = docRes.data as SmrDocument;
+
+    const itemRows = (itemRes.data || []) as InventoryItem[];
+    setItems(itemRows);
+    const itemsById = new Map(itemRows.map(it => [it.id, it]));
+
+    const lineRows = (lineRes.data || []) as Array<{
+      id: string; line_index: number; product_number_raw: string | null; description_raw: string | null;
+      expected_qty: number; has_serial_flag: boolean; po_reference: string | null;
+      matched_item_id: string | null; match_confidence: SmrMatchConfidence;
+      received_qty: number; status: SmrLineStatus;
+    }>;
+
+    let scansByLine = new Map<string, LineScan[]>();
+    if (lineRows.length) {
+      const { data: scanRows } = await supabase
+        .from('smr_line_scans')
+        .select('*')
+        .in('smr_line_id', lineRows.map(l => l.id));
+      if (scanRows) {
+        const grouped = new Map<string, LineScan[]>();
+        for (const s of scanRows as Array<{
+          id: string; smr_line_id: string; serial_number: string; serial_number_normalized: string;
+          raw_scan_value: string; barcode_symbology: string | null; scanned_manually: boolean;
+        }>) {
+          const arr = grouped.get(s.smr_line_id) ?? [];
+          arr.push({
+            id: s.id, serialNumber: s.serial_number, serialNumberNorm: s.serial_number_normalized,
+            rawScanValue: s.raw_scan_value, barcodeSymbology: s.barcode_symbology, scannedManually: s.scanned_manually,
+          });
+          grouped.set(s.smr_line_id, arr);
+        }
+        scansByLine = grouped;
+      }
+    }
+
+    const built: ReconcileLine[] = lineRows.map(l => {
+      const item = l.matched_item_id ? itemsById.get(l.matched_item_id) : undefined;
+      return {
+        id: l.id, lineIndex: l.line_index, productNumberRaw: l.product_number_raw, descriptionRaw: l.description_raw,
+        expectedQty: l.expected_qty, hasSerialFlag: l.has_serial_flag, poReference: l.po_reference,
+        matchedItemId: l.matched_item_id, matchedItemCode: item?.item_code ?? null, matchedItemName: item?.item_name ?? null,
+        matchConfidence: l.match_confidence, trackingMethod: item?.tracking_method ?? null,
+        receivedQty: l.received_qty, status: l.status,
+        scans: scansByLine.get(l.id) ?? [],
+      };
+    });
+
+    setDoc(document);
+    setLines(built);
+    if (!activeLineId && built.length) setActiveLineId(built[0].id);
+    setLoading(false);
+
+    // Transition REVIEWED → RECONCILING on first open
+    if (document.status === 'REVIEWED') {
+      await supabase.from('smr_documents').update({ status: 'RECONCILING' }).eq('id', document.id);
+      setDoc({ ...document, status: 'RECONCILING' });
+    }
+  }
+
+  useEffect(() => { load(); checkCameraPermission().then(setCamPerm); return () => stopCamera(); }, [smrId]);
+
+  const activeLine = lines.find(l => l.id === activeLineId) ?? null;
+
+  // ── Persist a line's received_qty / status ──────────────────────────────────
+  async function persistLine(lineId: string, patch: { receivedQty: number; status: SmrLineStatus }) {
+    setLines(prev => prev.map(l => l.id === lineId ? { ...l, ...patch } : l));
+    const { error: e } = await supabase.from('smr_lines')
+      .update({ received_qty: patch.receivedQty, status: patch.status })
+      .eq('id', lineId);
+    if (e) showToast(`Failed to save line: ${e.message}`, false);
+  }
+
+  // ── Camera ───────────────────────────────────────────────────────────────────
+  async function startCamera() {
+    if (!videoRef.current) return;
+    setCamErr(null);
+    const scanner = new CameraScanner();
+    scannerRef.current = scanner;
+    try {
+      await scanner.start(videoRef.current, {
+        onScan:  (raw, symbology) => handleRawScan(raw, symbology, false),
+        onError: msg => showToast(msg, false),
+        onStart: () => setCamOn(true),
+      });
+    } catch (e) {
+      setCamErr(cameraErrorMessage(e));
+      setCamOn(false);
+    }
+  }
+
+  function stopCamera() {
+    scannerRef.current?.stop();
+    scannerRef.current = null;
+    setCamOn(false);
+  }
+
+  // ── Scan handling ────────────────────────────────────────────────────────────
+  async function handleRawScan(raw: string, symbology: string, manually: boolean) {
+    if (!activeLine) { showToast('Select a line item first.', false); return; }
+    if (activeLine.trackingMethod !== 'SERIALIZED') { showToast('This line is not serialized — enter a quantity instead.', false); return; }
+    if (!activeLine.matchedItemId) { showToast('Match this line to an inventory item before scanning.', false); return; }
+
+    const parsed = parseScan(raw, symbology);
+    const classification = classifyScan(parsed);
+    if (classification === 'AUXILIARY_CODE') return; // silently ignored, mirrors WarehouseReceive
+    if (!parsed.serialNumber) { showToast('Could not read a serial number from that code.', false); return; }
+
+    const snNorm = normalizeSN(parsed.serialNumber);
+
+    if (isDuplicateScanForLine(activeLine.scans.map(s => ({ serialNumberNormalized: s.serialNumberNorm })), snNorm)) {
+      showToast('Already scanned against this line.', false);
+      return;
+    }
+    const dupElsewhere = lines.some(l => l.id !== activeLine.id && l.scans.some(s => s.serialNumberNorm === snNorm));
+    if (dupElsewhere) {
+      showToast('This serial was already scanned against a different line.', false);
+      return;
+    }
+
+    const { data, error: e } = await supabase.from('smr_line_scans').insert({
+      smr_line_id:       activeLine.id,
+      serial_number:     parsed.serialNumber,
+      raw_scan_value:    raw,
+      barcode_symbology: symbology,
+      scanned_manually:  manually,
+      scanned_by:        currentUser?.id || null,
+    }).select('id, serial_number, serial_number_normalized').single();
+
+    if (e || !data) { showToast(`Failed to save scan: ${e?.message ?? 'unknown error'}`, false); return; }
+
+    const newScan: LineScan = {
+      id: data.id, serialNumber: data.serial_number, serialNumberNorm: data.serial_number_normalized,
+      rawScanValue: raw, barcodeSymbology: symbology, scannedManually: manually,
+    };
+    const updatedScans = [...activeLine.scans, newScan];
+    const receivedQty  = countUniqueScans(updatedScans.map(s => ({ serialNumberNormalized: s.serialNumberNorm })));
+    const status       = computeSmrLineStatus(activeLine.expectedQty, receivedQty, false);
+
+    setLines(prev => prev.map(l => l.id === activeLine.id ? { ...l, scans: updatedScans, receivedQty, status } : l));
+    await supabase.from('smr_lines').update({ received_qty: receivedQty, status }).eq('id', activeLine.id);
+    showToast(`Scanned ${data.serial_number}`, true);
+  }
+
+  async function handleManualAdd() {
+    const sn = manualSn.trim();
+    if (!sn) return;
+    setManualSn('');
+    await handleRawScan(sn, 'MANUAL', true);
+  }
+
+  async function removeScan(lineId: string, scan: LineScan) {
+    const line = lines.find(l => l.id === lineId);
+    if (!line) return;
+    const { error: e } = await supabase.from('smr_line_scans').delete().eq('id', scan.id);
+    if (e) { showToast(`Failed to remove scan: ${e.message}`, false); return; }
+    const updatedScans = line.scans.filter(s => s.id !== scan.id);
+    const receivedQty  = countUniqueScans(updatedScans.map(s => ({ serialNumberNormalized: s.serialNumberNorm })));
+    const status       = computeSmrLineStatus(line.expectedQty, receivedQty, false);
+    setLines(prev => prev.map(l => l.id === lineId ? { ...l, scans: updatedScans, receivedQty, status } : l));
+    await supabase.from('smr_lines').update({ received_qty: receivedQty, status }).eq('id', lineId);
+  }
+
+  // ── Quantity-line handling ───────────────────────────────────────────────────
+  async function saveQuantity(lineId: string, qty: number) {
+    const line = lines.find(l => l.id === lineId);
+    if (!line) return;
+    setSavingQty(true);
+    const status = computeSmrLineStatus(line.expectedQty, qty, false);
+    await persistLine(lineId, { receivedQty: qty, status });
+    setSavingQty(false);
+  }
+
+  async function markNotReceived(lineId: string) {
+    if (!confirm('Mark this line as not received?')) return;
+    await persistLine(lineId, { receivedQty: 0, status: 'NOT_RECEIVED' });
+  }
+
+  async function resetToPending(lineId: string) {
+    await persistLine(lineId, { receivedQty: 0, status: 'PENDING' });
+  }
+
+  // ── Re-match an item ─────────────────────────────────────────────────────────
+  async function rematchLine(lineId: string, itemId: string) {
+    const item = items.find(i => i.id === itemId);
+    const confidence: SmrMatchConfidence = itemId ? 'MANUAL' : 'UNMATCHED';
+    setLines(prev => prev.map(l => l.id === lineId ? {
+      ...l,
+      matchedItemId: itemId || null,
+      matchedItemCode: item?.item_code ?? null,
+      matchedItemName: item?.item_name ?? null,
+      trackingMethod: item?.tracking_method ?? null,
+      matchConfidence: confidence,
+    } : l));
+    await supabase.from('smr_lines').update({ matched_item_id: itemId || null, match_confidence: confidence }).eq('id', lineId);
+  }
+
+  // ── Finalize ─────────────────────────────────────────────────────────────────
+  async function finalize() {
+    if (!doc) return;
+    if (!isSmrReconciliationComplete(lines)) {
+      showToast('Resolve every line (received, partial, or not received) before finalizing.', false);
+      return;
+    }
+    if (!confirm('Finalize this SMR? This creates a goods receipt pending review — it will not post to stock automatically.')) return;
+
+    setFinalizing(true);
+    try {
+      const receiptItems = buildReceiptItemsFromSmrLines(
+        lines.map(l => ({ matchedItemId: l.matchedItemId, receivedQty: l.receivedQty, partNumberRaw: l.productNumberRaw }))
+      );
+      if (receiptItems.length === 0) {
+        showToast('Nothing to post — no matched lines with a received quantity.', false);
+        setFinalizing(false);
+        return;
+      }
+
+      const { data: receipt, error: rErr } = await supabase.from('goods_receipts').insert({
+        warehouse_id:          doc.destination_warehouse_id,
+        project_id:            doc.project_id,
+        supplier_name:         doc.customer_name,
+        delivery_note_number:  doc.smr_number,
+        purchase_order_number: null,
+        receipt_date:          new Date().toISOString().slice(0, 10),
+        status:                'PENDING_REVIEW',
+        notes:                 `Auto-created from Customer SMR ${doc.smr_number}`,
+        received_by:           currentUser?.id || '',
+      }).select('id, receipt_number').single();
+
+      if (rErr || !receipt) throw rErr || new Error('Failed to create goods receipt.');
+
+      const { error: liErr } = await supabase.from('goods_receipt_items').insert(
+        receiptItems.map(ri => ({
+          goods_receipt_id:  receipt.id,
+          inventory_item_id: ri.inventory_item_id,
+          quantity:          ri.quantity,
+          part_number:       ri.part_number,
+        }))
+      );
+      if (liErr) throw liErr;
+
+      const scanLogs = lines
+        .filter(l => l.trackingMethod === 'SERIALIZED' && l.matchedItemId)
+        .flatMap(l => l.scans.map(s => ({
+          goods_receipt_id:  receipt.id,
+          inventory_item_id: l.matchedItemId!,
+          serial_number:     s.serialNumber,
+          part_number:       l.productNumberRaw,
+          raw_scan_value:    s.rawScanValue,
+          barcode_symbology: s.barcodeSymbology,
+          scanned_manually:  s.scannedManually,
+        })));
+      if (scanLogs.length) {
+        const { error: slErr } = await supabase.from('receiving_scan_log').insert(scanLogs);
+        if (slErr) throw slErr;
+      }
+
+      await supabase.from('smr_documents').update({ status: 'COMPLETED', goods_receipt_id: receipt.id }).eq('id', doc.id);
+
+      // Learn PN mappings from manually-resolved lines (non-fatal if it fails)
+      const manualLines = lines.filter(l => l.matchConfidence === 'MANUAL' && l.matchedItemId && l.productNumberRaw);
+      if (manualLines.length) {
+        await supabase.from('item_code_mappings').upsert(
+          manualLines.map(l => ({
+            inventory_item_id: l.matchedItemId,
+            manufacturer:      null,
+            code_type:         MAPPING_CODE_TYPE_PN,
+            external_code:     normalizePn(l.productNumberRaw!),
+            parsing_profile:   null,
+            is_active:         true,
+            source:            MAPPING_SOURCE_RECEIVING,
+            created_by:        currentUser?.id ?? null,
+          })),
+          { ignoreDuplicates: true },
+        );
+      }
+
+      if (currentUser) {
+        await supabase.from('activity_log').insert({
+          user_full_name: currentUser.full_name,
+          action: `Finalized SMR ${doc.smr_number} → goods receipt ${receipt.receipt_number} (pending review)`,
+        });
+      }
+
+      showToast(`SMR finalized — receipt ${receipt.receipt_number} created, pending review.`, true);
+      setTimeout(() => navigate('/warehouse/smr'), 1500);
+    } catch (e: unknown) {
+      showToast('Finalize failed: ' + (e instanceof Error ? e.message : String(e)), false);
+    }
+    setFinalizing(false);
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  if (loading) return <div className={css.page}><p style={{ color: '#94a3b8' }}>Loading…</p></div>;
+  if (error || !doc) return <div className={css.page}><p className={css.errorMsg}>{error || 'SMR not found.'}</p></div>;
+
+  const summary = summarizeSmrLineStatuses(lines);
+  const complete = isSmrReconciliationComplete(lines);
+
+  return (
+    <div className={css.page}>
+      <div className={css.pageHdr}>
+        <div>
+          <h1 className={css.pageTitle}>Reconcile SMR {doc.smr_number}</h1>
+          <p className={css.pageSubtitle}>
+            {doc.customer_name || 'Customer'} · {doc.source_warehouse_name || 'source WH'} → destination warehouse
+          </p>
+        </div>
+        <div className={css.hdrActions}>
+          <button className={css.btnGhost} onClick={() => navigate('/warehouse/smr')}>Back to list</button>
+          {canFinalize && doc.status !== 'COMPLETED' && doc.status !== 'CANCELLED' && (
+            <button className={css.btnAccent} onClick={finalize} disabled={!complete || finalizing}>
+              {finalizing ? 'Finalizing…' : 'Finalize to Receipt'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+        <span className={`${css.badge} ${css.badgeSlate}`}>{summary.total} total</span>
+        <span className={`${css.badge} ${css.badgeGreen}`}>{summary.received} received</span>
+        <span className={`${css.badge} ${css.badgeAmber}`}>{summary.partial} partial</span>
+        <span className={`${css.badge} ${css.badgeRed}`}>{summary.notReceived} not received</span>
+        <span className={`${css.badge} ${css.badgeSlate}`}>{summary.pending} pending</span>
+      </div>
+
+      <div className={css.scanLayout}>
+        {/* ── Line list ──────────────────────────────────────────────────────── */}
+        <div className={css.scanListWrap}>
+          <div className={css.scanListHdr}>
+            <span className={css.scanCount}>Line Items ({lines.length})</span>
+          </div>
+          <div className={css.scanList}>
+            {lines.map(l => (
+              <div key={l.id}
+                className={`${css.scanEntry} ${l.id === activeLineId ? css.scanEntryHighlight : ''}`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setActiveLineId(l.id)}>
+                <div style={{ flex: 1 }}>
+                  <div className={css.scanSN}>#{l.lineIndex} {l.matchedItemCode || l.productNumberRaw || '—'}</div>
+                  <div className={css.scanPN}>{l.descriptionRaw || l.productNumberRaw || ''}</div>
+                  <div className={css.scanItem}>{l.receivedQty} / {l.expectedQty} {l.trackingMethod === 'SERIALIZED' ? 'scanned' : 'received'}</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                  {statusBadge(l.status)}
+                  {matchBadge(l.matchConfidence)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Active line detail ─────────────────────────────────────────────── */}
+        <div className={css.videoWrap} style={{ position: 'static', aspectRatio: 'auto', padding: 16 }}>
+          {!activeLine ? (
+            <p style={{ color: '#94a3b8' }}>Select a line item to begin.</p>
+          ) : (
+            <div className={css.fieldset}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>#{activeLine.lineIndex} — {activeLine.descriptionRaw || activeLine.productNumberRaw || 'Line item'}</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                  PN: {activeLine.productNumberRaw || '—'} · Expected: {activeLine.expectedQty} · {statusBadge(activeLine.status)}
+                </div>
+              </div>
+
+              <div className={css.field}>
+                <label className={css.label}>Matched Inventory Item</label>
+                <select className={`${css.input} ${css.fieldSelect}`} value={activeLine.matchedItemId ?? ''}
+                  onChange={e => rematchLine(activeLine.id, e.target.value)}>
+                  <option value="">— Unmatched —</option>
+                  {items.map(it => <option key={it.id} value={it.id}>{it.item_code} — {it.item_name}</option>)}
+                </select>
+              </div>
+
+              {!activeLine.matchedItemId ? (
+                <p style={{ fontSize: 12, color: '#ca8a04' }}>Match this line to an inventory item to scan or receive it.</p>
+              ) : activeLine.trackingMethod === 'SERIALIZED' ? (
+                <>
+                  {!canScan ? (
+                    <p style={{ fontSize: 12, color: '#94a3b8' }}>You don't have permission to scan.</p>
+                  ) : (
+                    <>
+                      {camOn ? (
+                        <div>
+                          <video ref={videoRef} className={css.videoEl} style={{ maxHeight: 260, borderRadius: 8 }} />
+                          <button className={css.btnGhost} style={{ marginTop: 8 }} onClick={stopCamera}>Stop Camera</button>
+                        </div>
+                      ) : (
+                        <div>
+                          <video ref={videoRef} style={{ display: 'none' }} />
+                          <button className={css.btnAccent} onClick={startCamera}>Start Camera</button>
+                          {camErr && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>{camErr}</p>}
+                          {camPerm === 'denied' && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>Camera permission denied — allow it in browser settings.</p>}
+                        </div>
+                      )}
+                      <div className={css.manualRow} style={{ marginTop: 12 }}>
+                        <input className={`${css.input} ${css.manualInput}`} placeholder="Manual serial entry…"
+                          value={manualSn} onChange={e => setManualSn(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleManualAdd(); }} />
+                        <button className={css.btnSm} onClick={handleManualAdd}>Add</button>
+                      </div>
+                    </>
+                  )}
+
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px', marginTop: 10 }}>
+                    Scanned Serials ({activeLine.scans.length})
+                  </div>
+                  {activeLine.scans.length === 0 ? (
+                    <p style={{ fontSize: 12, color: '#94a3b8' }}>No serials scanned yet.</p>
+                  ) : (
+                    <div className={css.scanList}>
+                      {activeLine.scans.map(s => (
+                        <div key={s.id} className={css.scanEntry}>
+                          <div style={{ flex: 1 }}>
+                            <div className={css.scanSN}>{s.serialNumber}</div>
+                            {s.scannedManually && <div className={css.scanPN}>Manual entry</div>}
+                          </div>
+                          {canScan && (
+                            <button className={css.btnIcon} onClick={() => removeScan(activeLine.id, s)}>×</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className={css.fieldRow}>
+                  <div className={css.field}>
+                    <label className={css.label}>Received Qty</label>
+                    <input type="number" step="0.01" className={css.input} value={activeLine.receivedQty}
+                      onChange={e => setLines(prev => prev.map(l => l.id === activeLine.id ? { ...l, receivedQty: parseFloat(e.target.value) || 0 } : l))} />
+                  </div>
+                  <div className={css.field} style={{ justifyContent: 'flex-end', flexDirection: 'row', display: 'flex', gap: 8 }}>
+                    <button className={css.btnAccent} disabled={savingQty} onClick={() => saveQuantity(activeLine.id, activeLine.receivedQty)}>
+                      {savingQty ? 'Saving…' : 'Save Qty'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                {activeLine.status !== 'NOT_RECEIVED' ? (
+                  <button className={css.btnGhost} onClick={() => markNotReceived(activeLine.id)}>Mark Not Received</button>
+                ) : (
+                  <button className={css.btnGhost} onClick={() => resetToPending(activeLine.id)}>Reset to Pending</button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {toast && (
+        <div className={`${css.toast} ${toast.ok ? css.toastOk : css.toastErr}`}>
+          {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}

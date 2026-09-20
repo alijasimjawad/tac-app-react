@@ -1,6 +1,7 @@
 // ── Shared Warehouse & Inventory types ────────────────────────────────────────
 
 import type { OcrCandidateDetail } from './labelOcr';
+import type { SmrLineStatus, SmrMatchConfidence } from './smrHelpers';
 
 export interface Warehouse {
   id: string;
@@ -209,6 +210,65 @@ export interface GoodsIssueAsset {
   goods_issue_item_id: string;
   inventory_asset_id:  string;
   created_at:          string;
+}
+
+// ── Customer SMR Receiving types ──────────────────────────────────────────────
+
+export type SmrDocumentStatus = 'DRAFT' | 'EXTRACTED' | 'REVIEWED' | 'RECONCILING' | 'COMPLETED' | 'CANCELLED';
+
+export interface SmrDocument {
+  id:                       string;
+  smr_number:               string | null;
+  customer_name:            string | null;
+  source_warehouse_name:    string | null;
+  source_location:          string | null;
+  form_type:                string | null;
+  sr_date:                  string | null;
+  requester_name:           string | null;
+  requester_department:     string | null;
+  requester_phone:          string | null;
+  site_code:                string | null;
+  project_id:               string | null;
+  project_name_raw:         string | null;
+  sub_reference:            string | null;
+  destination_warehouse_id: string;
+  pdf_file_path:            string;
+  pdf_file_name:            string;
+  status:                   SmrDocumentStatus;
+  goods_receipt_id:         string | null;
+  created_by:               string;
+  created_at:               string;
+  updated_at:               string;
+}
+
+export interface SmrLine {
+  id:                string;
+  smr_document_id:   string;
+  line_index:        number;
+  product_number_raw: string | null;
+  description_raw:   string | null;
+  expected_qty:      number;
+  has_serial_flag:   boolean;
+  po_reference:      string | null;
+  matched_item_id:   string | null;
+  match_confidence:  SmrMatchConfidence;
+  received_qty:      number;
+  status:            SmrLineStatus;
+  notes:             string | null;
+  created_at:        string;
+  updated_at:        string;
+}
+
+export interface SmrLineScan {
+  id:                        string;
+  smr_line_id:               string;
+  serial_number:             string;
+  serial_number_normalized:  string;
+  raw_scan_value:            string | null;
+  barcode_symbology:         string | null;
+  scanned_manually:          boolean;
+  scanned_by:                string | null;
+  created_at:                string;
 }
 
 // ── Normalizer ────────────────────────────────────────────────────────────────

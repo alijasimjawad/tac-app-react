@@ -45,6 +45,8 @@ import WarehouseMovements from './pages/WarehouseMovements';
 import WarehouseStock from './pages/WarehouseStock';
 import WarehouseIssue from './pages/WarehouseIssue';
 import WarehouseIssueHistory from './pages/WarehouseIssueHistory';
+import WarehouseSmr from './pages/WarehouseSmr';
+import WarehouseSmrReconcile from './pages/WarehouseSmrReconcile';
 
 function RoleRedirect() {
   const { currentUser, loading } = useAuth();
@@ -110,6 +112,8 @@ export default function App() {
             <Route path="/warehouse/movements"      element={<WarehouseMovements />} />
             <Route path="/warehouse/issue"          element={<WarehouseIssue />} />
             <Route path="/warehouse/issue-history"  element={<WarehouseIssueHistory />} />
+            <Route path="/warehouse/smr"                        element={<WarehouseSmr />} />
+            <Route path="/warehouse/smr/:smrId/reconcile"       element={<WarehouseSmrReconcile />} />
             <Route path="/"           element={<RoleRedirect />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
