@@ -93,6 +93,47 @@ describe('extractHeaderFields()', () => {
   });
 });
 
+// ── Real-world regression: multi-column header layout (BN2074) ──────────────
+
+describe('extractHeaderFields() — multi-column form layout with positional fallback', () => {
+  // Captured verbatim (x/y/width) from the real BN2074 PDF. Several label/
+  // value pairs are crammed onto one visual row (a 2-column form), which
+  // breaks the regex-over-joined-row-text approach two different ways:
+  //  - "Requester :" is immediately followed by the name, but then by the
+  //    NEXT field's label ("WH Location") rather than any of the terminators
+  //    HEADER_PATTERNS' regex lookahead expects — so it never matches at all.
+  //  - "Project Name" is a label with no value on its own row; the actual
+  //    project text is drawn on the row below it, roughly x-aligned.
+  const realRows = groupTextItemsIntoRows([
+    { str: 'Requester :',            x: 113.51, y: 522.24, width: 37.92 },
+    { str: 'Mohamed Hassan Alwan',   x: 170.63, y: 522.24, width: 82.09 },
+    { str: 'WH Location',            x: 288.35, y: 522.24, width: 43.15 },
+    { str: 'Basrah',                 x: 438.24, y: 522.24, width: 22.11 },
+    { str: 'SUB',                    x: 569.64, y: 522.24, width: 16.03 },
+    { str: 'MRC',                    x: 635.06, y: 522.24, width: 16.90 },
+    { str: 'Employee Phone :',       x: 113.52, y: 500.04, width: 60.93 },
+    { str: '7901901627',             x: 190.20, y: 500.04, width: 43.21 },
+    { str: 'Configuration',          x: 288.36, y: 500.04, width: 46.50 },
+    { str: 'Basrah',                 x: 438.25, y: 500.04, width: 22.11 },
+    { str: 'Project Name',           x: 601.82, y: 500.04, width: 44.90 },
+    { str: 'Requester',              x: 122.74, y: 487.80, width: 34.33 },
+    { str: 'Nokia CAPEX 2025 - MM',  x: 578.66, y: 487.80, width: 88.78 },
+  ]);
+  const header = extractHeaderFields(realRows);
+
+  it('extracts the requester name even though it is followed by the next column\'s label on the same row', () => {
+    expect(header.requesterName).toBe('Mohamed Hassan Alwan');
+  });
+
+  it('extracts the project name from the x-aligned row below its label', () => {
+    expect(header.projectNameRaw).toBe('Nokia CAPEX 2025 - MM');
+  });
+
+  it('still extracts requester phone via the normal regex path (unaffected by the positional fallback)', () => {
+    expect(header.requesterPhone).toBe('7901901627');
+  });
+});
+
 // ── Line-item table location + parsing ────────────────────────────────────────
 
 describe('findLineItemTableHeaderRow() / findLineItemTableRows() / parseLineItemRow()', () => {
@@ -287,5 +328,20 @@ describe('parseLineItemRow() — ordinal mapping for center-aligned body columns
       hasSerialFlag: false,
       poReference: 'PO#11375',
     });
+  });
+
+  it('filters out an unused trailing template row printed as literal "0" in every cell (BN2074 row 31)', () => {
+    // Real coordinates for the PDF's final table row: an unfilled template
+    // row where the customer's form printed "0" placeholders instead of
+    // leaving the cells blank. Comments cell has no glyph run at all (5
+    // items, not 6), so this exercises the x-boundary fallback path too.
+    const placeholderRow = groupTextItemsIntoRows([
+      { str: '31', x: 121.44, y: 99.24, width: 8.15 },
+      { str: '0',  x: 194.04, y: 99.24, width: 4.08 },
+      { str: '0',  x: 365.52, y: 99.24, width: 4.44 },
+      { str: '0',  x: 503.52, y: 99.24, width: 4.08 },
+      { str: '0',  x: 565.92, y: 99.24, width: 4.08 },
+    ])[0];
+    expect(parseLineItemRow(placeholderRow, headerRow!)).toBeNull();
   });
 });

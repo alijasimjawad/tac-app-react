@@ -115,8 +115,62 @@ const HEADER_PATTERNS: Array<{ field: keyof ExtractedSmrHeader; regex: RegExp }>
   { field: 'requesterDepartment', regex: /(?:Department|Dept\.?)\s*[:\-]?\s*\(?([A-Za-z][A-Za-z \-\/]{2,40}?)\)?(?=\s*(?:Phone|$))/i },
   { field: 'requesterPhone',      regex: /(?:Phone|Mobile|Tel)\.?\s*[:\-]?\s*(\+?\d[\d \-]{6,15}\d)/i },
   { field: 'siteCode',            regex: /Site\s*Code\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9 ]{1,30})/i },
-  { field: 'projectNameRaw',      regex: /Project\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9 .\-\/]{2,60})/i },
+  // Negative lookahead excludes "Project Name" (a bare column-label fragment
+  // that can appear on its own, value-less row in multi-column forms — e.g.
+  // the real BN2074 sample) from being mistaken for "Project: <value>".
+  { field: 'projectNameRaw',      regex: /Project\s*[:\-]?\s*(?!Name\b)([A-Za-z0-9][A-Za-z0-9 .\-\/]{2,60})/i },
   { field: 'subReference',        regex: /\bSUB\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9 \-]{1,30})/i },
+];
+
+/**
+ * Finds an item whose trimmed text exactly matches `labelRegex` and returns
+ * its associated value, for multi-column forms where the regular
+ * regex-over-joined-row-text approach in HEADER_PATTERNS can't work.
+ *
+ * That approach assumes a field's label and value sit next to each other in
+ * the same joined row string — true for simple single-column forms, but real
+ * SMR PDFs are often laid out as several label/value pairs crammed onto one
+ * visual row (multi-column form), so a label's value may be interrupted by
+ * the *next* field's label before the expected regex lookahead ever matches
+ * (e.g. "Requester : Mohamed Hassan Alwan WH Location Basrah ..." — the name
+ * is followed by "WH Location", not by any of the terminators the regex
+ * expects, so it never matches at all). Some fields go further: the value is
+ * drawn on the visual row *below* the label (e.g. a taller label cell with
+ * the value vertically centered), so label and value never even share a row.
+ *
+ * This positional fallback sidesteps both problems: locate the label by its
+ * own exact text, then take the very next item on the same row (same-row
+ * label:value layout), or fall back to the nearest-x item on the next row
+ * down (stacked label/value layout).
+ */
+function extractLabeledValue(rows: TextRow[], labelRegex: RegExp): string | null {
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    const idx = row.items.findIndex(it => labelRegex.test(it.str.trim()));
+    if (idx === -1) continue;
+
+    if (idx + 1 < row.items.length) {
+      return row.items[idx + 1].str.trim();
+    }
+
+    const nextRow = rows[r + 1];
+    if (nextRow && nextRow.items.length > 0) {
+      const labelX = row.items[idx].x;
+      const nearest = nextRow.items.reduce((best, it) =>
+        Math.abs(it.x - labelX) < Math.abs(best.x - labelX) ? it : best
+      );
+      if (Math.abs(nearest.x - labelX) <= 150) return nearest.str.trim();
+    }
+    return null;
+  }
+  return null;
+}
+
+// Positional fallbacks tried only when the corresponding HEADER_PATTERNS regex
+// above found nothing — narrow, exact-text label matches to avoid false hits.
+const LABELED_VALUE_FALLBACKS: Array<{ field: keyof ExtractedSmrHeader; labelRegex: RegExp }> = [
+  { field: 'requesterName',  labelRegex: /^Requester\s*:$/i },
+  { field: 'projectNameRaw', labelRegex: /^Project\s*Name$/i },
 ];
 
 /** Scans reconstructed rows for known label/value patterns. First match per field wins. */
@@ -130,6 +184,13 @@ export function extractHeaderFields(rows: TextRow[]): ExtractedSmrHeader {
       if (match?.[1]) header[field] = match[1].trim();
     }
   }
+
+  for (const { field, labelRegex } of LABELED_VALUE_FALLBACKS) {
+    if (header[field] !== null) continue;
+    const value = extractLabeledValue(rows, labelRegex);
+    if (value) header[field] = value;
+  }
+
   return header;
 }
 
@@ -248,6 +309,11 @@ export function parseLineItemRow(row: TextRow, headerRow: TextRow): ParsedSmrLin
   const lineIndex = parseInt(colIndex, 10);
   if (!Number.isFinite(lineIndex)) return null;
   if (!colPn && !colDesc) return null;
+  // Some SMR templates print unused trailing table rows as literal "0"
+  // placeholders in every cell rather than leaving them blank (seen in the
+  // BN2074 sample's final row). A real part number or description is never
+  // just "0" — treat that combination as an empty template row, not a line.
+  if (colPn === '0' && colDesc === '0') return null;
 
   const expectedQty = parseFloat(colQty);
 
