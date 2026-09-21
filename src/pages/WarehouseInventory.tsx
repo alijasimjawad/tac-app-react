@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { InventoryItem } from '../lib/warehouseTypes';
 import { buildPnCountMap, buildPnSearchIndex } from '../lib/warehouseStock';
+import { detectColumns, buildImportPreview, type ImportPreview } from '../lib/itemImportHelpers';
 import css from './Warehouse.module.css';
 
 type TrackingMethod = 'SERIALIZED' | 'QUANTITY';
@@ -57,6 +59,14 @@ export default function WarehouseInventory() {
 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importFileName, setImportFileName] = useState('');
+  const [importPreview,  setImportPreview]  = useState<ImportPreview | null>(null);
+  const [importColsInfo, setImportColsInfo] = useState<{ codeKey: string; nameKey: string | null; serialKey: string | null } | null>(null);
+  const [importErr,      setImportErr]      = useState('');
+  const [importing,      setImporting]      = useState(false);
+  const [importProgress, setImportProgress] = useState('');
 
   if (!hasPerm('view_warehouse_inventory')) return <div className={css.denied}>Access denied.</div>;
 
@@ -200,6 +210,110 @@ export default function WarehouseInventory() {
     load();
   }
 
+  // ── Import from Excel ────────────────────────────────────────────────────────
+
+  function openImportPicker() {
+    setImportErr('');
+    importFileRef.current?.click();
+  }
+
+  function handleImportFile(file: File) {
+    setImportErr('');
+    setImportPreview(null);
+    setImportFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const wb = XLSX.read(ev.target!.result as ArrayBuffer, { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' }) as Record<string, unknown>[];
+        if (!rows.length) { setImportErr('No rows found in this file.'); return; }
+
+        const headers = Object.keys(rows[0]);
+        const cols = detectColumns(headers);
+        if (!cols.codeKey) {
+          setImportErr(`Could not find an Item Code column. Columns found: ${headers.join(', ')}`);
+          return;
+        }
+        setImportColsInfo({ codeKey: cols.codeKey, nameKey: cols.nameKey, serialKey: cols.serialKey });
+
+        const existingCodes = new Set(items.map(it => it.item_code.trim().toUpperCase()));
+        const preview = buildImportPreview(rows, cols, existingCodes);
+        setImportPreview(preview);
+      } catch (err) {
+        setImportErr(`Could not read file: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    reader.onerror = () => setImportErr('Could not read file.');
+    reader.readAsArrayBuffer(file);
+  }
+
+  function closeImportModal() {
+    setImportPreview(null);
+    setImportColsInfo(null);
+    setImportFileName('');
+    setImportErr('');
+    setImportProgress('');
+  }
+
+  async function confirmImportItems() {
+    if (!importPreview || !importPreview.newItems.length) return;
+    setImporting(true);
+    setImportErr('');
+    const CHUNK = 200;
+    const rows = importPreview.newItems;
+    let created = 0;
+    const createdItems: { id: string; item_code: string }[] = [];
+
+    try {
+      for (let i = 0; i < rows.length; i += CHUNK) {
+        const chunk = rows.slice(i, i + CHUNK).map(r => ({
+          item_code:       r.item_code,
+          item_name:       r.item_name,
+          part_number:     r.part_number,
+          tracking_method: r.tracking_method,
+          unit:            r.unit,
+          is_active:       true,
+        }));
+        const { data, error } = await supabase.from('inventory_items').insert(chunk).select('id, item_code');
+        if (error) throw error;
+        const inserted = (data ?? []) as { id: string; item_code: string }[];
+        createdItems.push(...inserted);
+        created += inserted.length;
+        setImportProgress(`Created ${created} of ${rows.length} items…`);
+      }
+
+      // Seed a PART_NUMBER mapping per created item (item code == PN, per your note).
+      const mappingRows = createdItems.map(it => ({
+        inventory_item_id: it.id,
+        code_type:         'PART_NUMBER',
+        external_code:     it.item_code,
+        is_active:         true,
+        source:            'IMPORT',
+        created_by:        currentUser?.id ?? null,
+      }));
+      for (let i = 0; i < mappingRows.length; i += CHUNK) {
+        const chunk = mappingRows.slice(i, i + CHUNK);
+        await supabase.from('item_code_mappings').upsert(chunk, { ignoreDuplicates: true });
+      }
+
+      if (currentUser) {
+        await supabase.from('activity_log').insert({
+          user_full_name: currentUser.full_name,
+          action: `Imported ${created} inventory item${created !== 1 ? 's' : ''} from Excel (${importFileName})`,
+        });
+      }
+
+      showToast(`Imported ${created} new item${created !== 1 ? 's' : ''}.`, true);
+      closeImportModal();
+      load();
+    } catch (err) {
+      setImportErr(err instanceof Error ? err.message : 'Import failed.');
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className={css.page}>
       <div className={css.pageHdr}>
@@ -209,12 +323,27 @@ export default function WarehouseInventory() {
         </div>
         <div className={css.hdrActions}>
           {canAdd && (
+            <button className={css.btnGhost} onClick={openImportPicker}>
+              <UploadIcon /> Import Excel
+            </button>
+          )}
+          {canAdd && (
             <button className={css.btnAccent} onClick={openAdd}>
               <PlusIcon /> Add Item
             </button>
           )}
         </div>
       </div>
+
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = ''; }}
+      />
+
+      {importErr && !importPreview && <p className={css.errorMsg}>{importErr}</p>}
 
       {error && <p className={css.errorMsg}>{error}</p>}
 
@@ -482,6 +611,86 @@ export default function WarehouseInventory() {
         document.body
       )}
 
+      {importPreview && createPortal(
+        <div className={css.overlay} onClick={e => { if (e.target === e.currentTarget && !importing) closeImportModal(); }}>
+          <div className={css.modal} style={{ maxWidth: 680 }}>
+            <div className={css.modalHdr}>
+              <span className={css.modalTitle}>Import Items — {importFileName}</span>
+              <button className={css.modalClose} onClick={closeImportModal} disabled={importing}>×</button>
+            </div>
+            <div className={css.modalBody}>
+              <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+                Detected columns — Code: <b>{importColsInfo?.codeKey}</b>
+                {importColsInfo?.nameKey && <> · Description: <b>{importColsInfo.nameKey}</b></>}
+                {importColsInfo?.serialKey && <> · Serial: <b>{importColsInfo.serialKey}</b></>}
+              </p>
+
+              <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                <span className={`${css.badge} ${css.badgeSlate}`}>{importPreview.totalRows} rows</span>
+                <span className={`${css.badge} ${css.badgeSlate}`}>{importPreview.uniqueCodes} unique codes</span>
+                <span className={`${css.badge} ${css.badgePurple}`}>{importPreview.newItems.length} new items</span>
+                {importPreview.existingSkipped > 0 && (
+                  <span className={`${css.badge} ${css.badgeBlue}`}>{importPreview.existingSkipped} already exist (skipped)</span>
+                )}
+                {importPreview.invalidRows > 0 && (
+                  <span className={`${css.badge} ${css.badgeSlate}`}>{importPreview.invalidRows} rows had no code (skipped)</span>
+                )}
+              </div>
+
+              <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+                {importPreview.hasSerialColumn
+                  ? 'A Serial Number column was found — new items will be created as Serialized, with the item code also set as their seed part number.'
+                  : 'No Serial Number column found — new items will default to Quantity tracking. You can edit tracking method per item afterward.'}
+              </p>
+
+              {importPreview.newItems.length > 0 && (
+                <div className={css.tableWrap} style={{ maxHeight: 320, overflowY: 'auto' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Tracking</th>
+                        <th>Rows</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importPreview.newItems.slice(0, 500).map(it => (
+                        <tr key={it.item_code}>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12 }}>{it.item_code}</td>
+                          <td style={{ fontSize: 13 }}>{it.item_name}</td>
+                          <td>
+                            <span className={`${css.badge} ${it.tracking_method === 'SERIALIZED' ? css.badgePurple : css.badgeBlue}`}>
+                              {it.tracking_method === 'SERIALIZED' ? 'Serialized' : 'Quantity'}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 12, color: '#64748b' }}>{it.sourceRowCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {importPreview.newItems.length > 500 && (
+                    <p style={{ fontSize: 12, color: '#94a3b8', padding: 8 }}>
+                      Showing first 500 of {importPreview.newItems.length} new items.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {importProgress && <p style={{ fontSize: 12, color: '#64748b', marginTop: 10 }}>{importProgress}</p>}
+              {importErr && <p className={css.formError}>{importErr}</p>}
+            </div>
+            <div className={css.modalFtr}>
+              <button className={css.btnGhost} onClick={closeImportModal} disabled={importing}>Cancel</button>
+              <button className={css.btnAccent} onClick={confirmImportItems} disabled={importing || !importPreview.newItems.length}>
+                {importing ? 'Importing…' : `Import ${importPreview.newItems.length} Item${importPreview.newItems.length !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {toast && (
         <div className={`${css.toast} ${toast.ok ? css.toastOk : css.toastErr}`}>
           {toast.msg}
@@ -492,6 +701,7 @@ export default function WarehouseInventory() {
 }
 
 function PlusIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
+function UploadIcon() { return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>; }
 function SearchIcon({ className }: { className?: string }) { return <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>; }
 function EditIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
 function EyeOffIcon() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>; }
