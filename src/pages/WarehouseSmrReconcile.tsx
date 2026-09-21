@@ -82,6 +82,14 @@ export default function WarehouseSmrReconcile() {
   const [savingQty, setSavingQty] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
 
+  // ── New-item creation (unmatched line whose PN genuinely isn't in the item master) ──
+  const [showCreateItem, setShowCreateItem] = useState(false);
+  const [newItemForm, setNewItemForm] = useState({
+    item_code: '', item_name: '', tracking_method: 'SERIALIZED' as 'SERIALIZED' | 'QUANTITY', unit: 'pcs',
+  });
+  const [creatingItem, setCreatingItem] = useState(false);
+  const [createItemErr, setCreateItemErr] = useState('');
+
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -94,6 +102,7 @@ export default function WarehouseSmrReconcile() {
   if (!hasPerm('view_warehouse_smr')) return <div className={css.denied}>Access denied.</div>;
   const canScan     = hasPerm('wrh_smr_scan');
   const canFinalize = hasPerm('wrh_smr_finalize');
+  const canAddItem  = hasPerm('wrh_items_add');
 
   // ── Load ─────────────────────────────────────────────────────────────────────
   async function load() {
@@ -215,8 +224,10 @@ export default function WarehouseSmrReconcile() {
   // ── Scan handling ────────────────────────────────────────────────────────────
   async function handleRawScan(raw: string, symbology: string, manually: boolean) {
     if (!activeLine) { showToast('Select a line item first.', false); return; }
-    if (activeLine.trackingMethod !== 'SERIALIZED') { showToast('This line is not serialized — enter a quantity instead.', false); return; }
-    if (!activeLine.matchedItemId) { showToast('Match this line to an inventory item before scanning.', false); return; }
+    if (!activeLine.hasSerialFlag) { showToast('This line is not serialized — enter a quantity instead.', false); return; }
+    // Scanning no longer requires a prior match — matching an item just to unlock
+    // scanning made it impossible to receive equipment the item master doesn't
+    // know about yet. Match (or create a new item) before finalizing instead.
 
     const parsed = parseScan(raw, symbology);
     const classification = classifyScan(parsed);
@@ -312,11 +323,88 @@ export default function WarehouseSmrReconcile() {
     await supabase.from('smr_lines').update({ matched_item_id: itemId || null, match_confidence: confidence }).eq('id', lineId);
   }
 
+  // ── Create a brand-new item master row for a PN that genuinely doesn't exist ──
+  // (a first-time customer SMR can reference equipment the internal item master has
+  // never seen before — no amount of fuzzy suggestion or manual dropdown search will
+  // find something that isn't there). Prefills from the active line, then matches the
+  // line to it. The PN→item mapping is picked up for free at finalize() time, which
+  // already learns a mapping for every MANUAL-confidence matched line.
+  function openCreateItem() {
+    if (!activeLine) return;
+    setNewItemForm({
+      item_code:       (activeLine.productNumberRaw || '').trim().toUpperCase(),
+      item_name:       activeLine.descriptionRaw || activeLine.productNumberRaw || '',
+      tracking_method: activeLine.hasSerialFlag ? 'SERIALIZED' : 'QUANTITY',
+      unit:            'pcs',
+    });
+    setCreateItemErr('');
+    setShowCreateItem(true);
+  }
+
+  async function createAndMatchItem() {
+    if (!activeLine) return;
+    const code = newItemForm.item_code.trim().toUpperCase();
+    const name = newItemForm.item_name.trim();
+    if (!code) { setCreateItemErr('Item code is required.'); return; }
+    if (!name) { setCreateItemErr('Item name is required.'); return; }
+    if (!newItemForm.unit.trim()) { setCreateItemErr('Unit is required.'); return; }
+
+    setCreatingItem(true);
+    setCreateItemErr('');
+
+    const { data: created, error: cErr } = await supabase.from('inventory_items').insert({
+      item_code:       code,
+      item_name:       name,
+      item_type:       null,
+      manufacturer:    null,
+      part_number:     activeLine.productNumberRaw || null,
+      category:        null,
+      tracking_method: newItemForm.tracking_method,
+      unit:            newItemForm.unit.trim(),
+      is_active:       true,
+      notes:           `Auto-created from Customer SMR ${doc?.smr_number ?? ''} line #${activeLine.lineIndex}`,
+    }).select('*').single();
+
+    if (cErr || !created) {
+      setCreatingItem(false);
+      setCreateItemErr(cErr?.code === '23505' ? 'Item code already exists — use a unique code.' : (cErr?.message || 'Failed to create item.'));
+      return;
+    }
+
+    const newItem = created as InventoryItem;
+    setItems(prev => [...prev, newItem].sort((a, b) => a.item_name.localeCompare(b.item_name)));
+
+    await rematchLine(activeLine.id, newItem.id);
+
+    if (currentUser) {
+      await supabase.from('activity_log').insert({
+        user_full_name: currentUser.full_name,
+        action: `Created inventory item ${newItem.item_code} from Customer SMR ${doc?.smr_number ?? ''}`,
+      });
+    }
+
+    setCreatingItem(false);
+    setShowCreateItem(false);
+    showToast(`Created "${newItem.item_name}" and matched this line.`, true);
+  }
+
   // ── Finalize ─────────────────────────────────────────────────────────────────
   async function finalize() {
     if (!doc) return;
     if (!isSmrReconciliationComplete(lines)) {
       showToast('Resolve every line (received, partial, or not received) before finalizing.', false);
+      return;
+    }
+    // Scanning/qty entry no longer requires a prior match, so a line can reach
+    // RECEIVED/PARTIAL while still unmatched — buildReceiptItemsFromSmrLines
+    // silently skips unmatched lines, which would otherwise drop real received
+    // quantities from the receipt without any warning.
+    const receivedButUnmatched = lines.filter(l => !l.matchedItemId && (l.status === 'RECEIVED' || l.status === 'PARTIAL'));
+    if (receivedButUnmatched.length > 0) {
+      showToast(
+        `${receivedButUnmatched.length} line(s) have received quantities but aren't matched to an inventory item yet — match them or create a new item first.`,
+        false,
+      );
       return;
     }
     if (!confirm('Finalize this SMR? This creates a goods receipt pending review — it will not post to stock automatically.')) return;
@@ -453,11 +541,11 @@ export default function WarehouseSmrReconcile() {
               <div key={l.id}
                 className={`${css.scanEntry} ${l.id === activeLineId ? css.scanEntryHighlight : ''}`}
                 style={{ cursor: 'pointer' }}
-                onClick={() => setActiveLineId(l.id)}>
+                onClick={() => { setActiveLineId(l.id); setShowCreateItem(false); }}>
                 <div style={{ flex: 1 }}>
                   <div className={css.scanSN}>#{l.lineIndex} {l.matchedItemCode || l.productNumberRaw || '—'}</div>
                   <div className={css.scanPN}>{l.descriptionRaw || l.productNumberRaw || ''}</div>
-                  <div className={css.scanItem}>{l.receivedQty} / {l.expectedQty} {l.trackingMethod === 'SERIALIZED' ? 'scanned' : 'received'}</div>
+                  <div className={css.scanItem}>{l.receivedQty} / {l.expectedQty} {l.hasSerialFlag ? 'scanned' : 'received'}</div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                   {statusBadge(l.status)}
@@ -503,11 +591,49 @@ export default function WarehouseSmrReconcile() {
                   <option value="">— Unmatched —</option>
                   {items.map(it => <option key={it.id} value={it.id}>{it.item_code} — {it.item_name}</option>)}
                 </select>
+
+                {!activeLine.matchedItemId && canAddItem && (
+                  showCreateItem ? (
+                    <div style={{ border: '1px dashed #475569', borderRadius: 8, padding: 10, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                        New Inventory Item
+                      </div>
+                      <input className={css.input} placeholder="Item code" value={newItemForm.item_code}
+                        onChange={e => setNewItemForm(f => ({ ...f, item_code: e.target.value.toUpperCase() }))} />
+                      <input className={css.input} placeholder="Item name" value={newItemForm.item_name}
+                        onChange={e => setNewItemForm(f => ({ ...f, item_name: e.target.value }))} />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <select className={`${css.input} ${css.fieldSelect}`} value={newItemForm.tracking_method}
+                          onChange={e => setNewItemForm(f => ({ ...f, tracking_method: e.target.value as 'SERIALIZED' | 'QUANTITY' }))}>
+                          <option value="SERIALIZED">Serialized</option>
+                          <option value="QUANTITY">Quantity</option>
+                        </select>
+                        <input className={css.input} placeholder="Unit" value={newItemForm.unit} style={{ maxWidth: 90 }}
+                          onChange={e => setNewItemForm(f => ({ ...f, unit: e.target.value }))} />
+                      </div>
+                      {createItemErr && <p style={{ fontSize: 12, color: '#dc2626' }}>{createItemErr}</p>}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className={css.btnAccent} disabled={creatingItem} onClick={createAndMatchItem}>
+                          {creatingItem ? 'Creating…' : 'Create & Match'}
+                        </button>
+                        <button className={css.btnGhost} onClick={() => setShowCreateItem(false)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" className={css.btnGhost} style={{ marginTop: 8 }} onClick={openCreateItem}>
+                      + Create New Item (PN not in item master)
+                    </button>
+                  )
+                )}
               </div>
 
-              {!activeLine.matchedItemId ? (
-                <p style={{ fontSize: 12, color: '#ca8a04' }}>Match this line to an inventory item to scan or receive it.</p>
-              ) : activeLine.trackingMethod === 'SERIALIZED' ? (
+              {!activeLine.matchedItemId && (
+                <p style={{ fontSize: 12, color: '#ca8a04' }}>
+                  Not matched yet — you can still scan or record a quantity now, but match this line (or create a new item) before finalizing.
+                </p>
+              )}
+
+              {activeLine.hasSerialFlag ? (
                 <>
                   {!canScan ? (
                     <p style={{ fontSize: 12, color: '#94a3b8' }}>You don't have permission to scan.</p>
