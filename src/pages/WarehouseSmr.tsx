@@ -9,7 +9,7 @@ import {
   type MatchedItemRef, type SmrMatchConfidence,
 } from '../lib/smrHelpers';
 import { normalizePn, MAPPING_CODE_TYPE_PN } from '../lib/pnMapping';
-import type { SmrDocument, SmrDocumentStatus, SmrLine, Warehouse, InventoryItem } from '../lib/warehouseTypes';
+import type { SmrDocument, SmrDocumentStatus, SmrLine, SmrLineScan, Warehouse, InventoryItem } from '../lib/warehouseTypes';
 import css from './Warehouse.module.css';
 
 // ── Local types ────────────────────────────────────────────────────────────────
@@ -80,6 +80,203 @@ function matchBadge(c: SmrMatchConfidence) {
   return <span className={`${css.badge} ${css.badgeRed}`}>Unmatched</span>;
 }
 
+const LINE_STATUS_LABEL: Record<SmrLine['status'], string> = {
+  RECEIVED:     'Received',
+  PARTIAL:      'Partial',
+  NOT_RECEIVED: 'Not Received',
+  PENDING:      'Pending',
+};
+const LINE_STATUS_COLOR: Record<SmrLine['status'], string> = {
+  RECEIVED:     '#16a34a',
+  PARTIAL:      '#d97706',
+  NOT_RECEIVED: '#dc2626',
+  PENDING:      '#64748b',
+};
+
+/** Shared row-shape both export functions build once from the loaded detail. */
+interface ExportLineRow {
+  lineIndex:     number;
+  partNumber:    string;
+  description:   string;
+  matchedLabel:  string;
+  expectedQty:   number;
+  receivedQty:   number;
+  status:        SmrLine['status'];
+  serials:       string[];
+}
+
+function buildExportRows(lines: SmrLine[], scansByLine: Map<string, SmrLineScan[]>, items: InventoryItem[]): ExportLineRow[] {
+  const itemsById = new Map(items.map(it => [it.id, it]));
+  return lines.map(l => {
+    const item = l.matched_item_id ? itemsById.get(l.matched_item_id) : undefined;
+    return {
+      lineIndex:    l.line_index,
+      partNumber:   l.product_number_raw || '—',
+      description:  l.description_raw || '—',
+      matchedLabel: item ? `${item.item_code} — ${item.item_name}` : 'Unmatched',
+      expectedQty:  l.expected_qty,
+      receivedQty:  l.received_qty,
+      status:       l.status,
+      serials:      (scansByLine.get(l.id) || []).map(s => s.serial_number),
+    };
+  });
+}
+
+/** Styled ExcelJS export — mirrors the report-export pattern used elsewhere
+ *  in the app (see NetworkScopes.exportSection): dark header row, banded
+ *  rows, frozen header, one Serial Numbers line per scanned unit so every
+ *  SN is individually visible/verifiable rather than crammed into one cell. */
+async function exportSmrExcel(doc: SmrDocRow, lines: SmrLine[], scansByLine: Map<string, SmrLineScan[]>, items: InventoryItem[]) {
+  const rows = buildExportRows(lines, scansByLine, items);
+  const summary = summarizeSmrLineStatuses(lines);
+
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'TAC Network Tracker';
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet('SMR ' + (doc.smr_number || 'Export').slice(0, 25));
+  const columns = ['#', 'Part Number', 'Description', 'Matched Item', 'Expected', 'Received', 'Status', 'Serial Numbers'];
+  const colCount = columns.length;
+
+  ws.columns = [
+    { width: 6 }, { width: 20 }, { width: 32 }, { width: 30 },
+    { width: 11 }, { width: 11 }, { width: 14 }, { width: 40 },
+  ];
+
+  const titleText = `SMR ${doc.smr_number || '—'}  ·  ${doc.customer_name || 'Customer'}  ·  ${doc.source_warehouse_name || 'Source WH'} → Destination`;
+  ws.addRow([titleText]);
+  ws.mergeCells(1, 1, 1, colCount);
+  ws.getRow(1).height = 26;
+  const titleCell = ws.getCell('A1');
+  titleCell.font      = { bold: true, size: 12, color: { argb: 'FF0F2038' } };
+  titleCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EDF5' } };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
+
+  const metaText = `Requester: ${doc.requester_name || '—'}   ·   Date: ${doc.sr_date || '—'}   ·   Status: ${doc.status}   ·   Exported: ${new Date().toISOString().slice(0, 10)}`;
+  ws.addRow([metaText]);
+  ws.mergeCells(2, 1, 2, colCount);
+  ws.getCell('A2').font = { size: 10, color: { argb: 'FF64748B' } };
+
+  const summaryText = `${summary.total} total   ·   ${summary.received} received   ·   ${summary.partial} partial   ·   ${summary.notReceived} not received   ·   ${summary.pending} pending`;
+  ws.addRow([summaryText]);
+  ws.mergeCells(3, 1, 3, colCount);
+  ws.getCell('A3').font = { size: 10, bold: true, color: { argb: 'FF1E293B' } };
+
+  ws.addRow([]);
+
+  ws.addRow(columns);
+  const headerRowNum = 5;
+  const headerRow = ws.getRow(headerRowNum);
+  headerRow.height = 26;
+  for (let c = 1; c <= colCount; c++) {
+    const cell     = headerRow.getCell(c);
+    cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F2038' } };
+    cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.alignment = { vertical: 'middle', horizontal: (c === 5 || c === 6) ? 'right' : 'left' };
+    cell.border    = { bottom: { style: 'medium', color: { argb: 'FF1A4060' } } };
+  }
+  ws.views = [{ state: 'frozen', ySplit: headerRowNum, showGridLines: true }];
+
+  rows.forEach((r, idx) => {
+    const bgArgb  = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF4F6F8';
+    const snText  = r.serials.length ? r.serials.join('\n') : '—';
+    const exRow   = ws.addRow([r.lineIndex, r.partNumber, r.description, r.matchedLabel, r.expectedQty, r.receivedQty, LINE_STATUS_LABEL[r.status], snText]);
+    exRow.height  = Math.max(20, 14 * Math.max(1, r.serials.length));
+    exRow.eachCell({ includeEmpty: true }, (cell, c) => {
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgArgb } };
+      cell.font      = { color: { argb: 'FF111827' }, size: 10.5 };
+      cell.border    = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
+      cell.alignment = { vertical: 'top', horizontal: (c === 5 || c === 6) ? 'right' : 'left', wrapText: c === 8 };
+    });
+    exRow.getCell(7).font = { color: { argb: LINE_STATUS_COLOR[r.status].replace('#', 'FF') }, bold: true, size: 10.5 };
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob   = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url    = URL.createObjectURL(blob);
+  const fname  = `SMR_${(doc.smr_number || 'export').replace(/[^a-zA-Z0-9-]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  Object.assign(document.createElement('a'), { href: url, download: fname }).click();
+  URL.revokeObjectURL(url);
+}
+
+/** Print-to-PDF export — mirrors printInvoice (FinInvoices.tsx): renders a
+ *  standalone HTML report in a new tab and triggers the browser print
+ *  dialog, letting the browser handle pagination for the line-item table
+ *  natively (more reliable than rasterizing a canvas for a variable-length
+ *  report like this one). */
+function exportSmrPdf(doc: SmrDocRow, lines: SmrLine[], scansByLine: Map<string, SmrLineScan[]>, items: InventoryItem[]) {
+  const rows = buildExportRows(lines, scansByLine, items);
+  const summary = summarizeSmrLineStatuses(lines);
+  const e = (s: string | null | undefined) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const lineRows = rows.length === 0
+    ? '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:16px">No line items.</td></tr>'
+    : rows.map((r, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'}">
+        <td>${r.lineIndex}</td>
+        <td style="font-family:monospace;font-size:11px">${e(r.partNumber)}</td>
+        <td style="color:#64748b">${e(r.description)}</td>
+        <td style="text-align:right">${r.expectedQty}</td>
+        <td style="text-align:right;font-weight:700">${r.receivedQty}</td>
+        <td><span class="status-pill" style="background:${LINE_STATUS_COLOR[r.status]}1a;color:${LINE_STATUS_COLOR[r.status]}">${LINE_STATUS_LABEL[r.status]}</span></td>
+        <td style="font-family:monospace;font-size:10.5px;color:#334155">${r.serials.length ? r.serials.map(e).join('<br>') : '<span style="color:#cbd5e1">—</span>'}</td>
+      </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>SMR ${e(doc.smr_number)}</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:13px; color:#1e293b; background:#fff; padding:32px; }
+    @media print { body { padding:16px; } @page { margin:12mm; } tr { break-inside: avoid; } }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; padding-bottom:16px; border-bottom:2px solid #e2e8f0; }
+    .brand { font-size:22px; font-weight:900; color:#2563eb; letter-spacing:-0.5px; }
+    .brand-sub { font-size:11px; color:#94a3b8; margin-top:2px; }
+    .doc-meta { text-align:right; }
+    .doc-number { font-size:20px; font-weight:800; color:#1e293b; }
+    .status-badge { display:inline-block; padding:2px 12px; border-radius:20px; font-size:11px; font-weight:700; margin-top:4px; background:#e0e7ff; color:#4338ca; }
+    .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:20px; }
+    .info-box h4 { font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.8px; margin-bottom:4px; }
+    .info-box p { font-size:13px; color:#334155; line-height:1.5; }
+    .summary-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
+    .summary-pill { padding:5px 12px; border-radius:20px; font-size:11.5px; font-weight:700; background:#f1f5f9; color:#334155; }
+    table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+    th { background:#0f2038; font-size:10.5px; font-weight:700; color:#fff; text-transform:uppercase; letter-spacing:.4px; padding:8px 10px; text-align:left; }
+    td { padding:8px 10px; border-bottom:1px solid #f1f5f9; color:#334155; vertical-align:top; }
+    .status-pill { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700; }
+    .section-title { font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px; }
+    .footer { margin-top:24px; padding-top:12px; border-top:1px solid #e2e8f0; font-size:11px; color:#94a3b8; text-align:center; }
+  </style></head><body>
+  <div class="header">
+    <div><div class="brand">TAC Network</div><div class="brand-sub">Customer SMR Receiving Report</div></div>
+    <div class="doc-meta">
+      <div class="doc-number">SMR ${e(doc.smr_number)}</div>
+      <div class="status-badge">${e(doc.status)}</div>
+    </div>
+  </div>
+  <div class="grid-3">
+    <div class="info-box"><h4>Customer</h4><p>${e(doc.customer_name) || '—'}</p></div>
+    <div class="info-box"><h4>Source Warehouse</h4><p>${e(doc.source_warehouse_name) || '—'}</p></div>
+    <div class="info-box"><h4>Destination</h4><p>${e(doc.warehouseName) || '—'}</p></div>
+    <div class="info-box"><h4>S.R Date</h4><p>${e(doc.sr_date) || '—'}</p></div>
+    <div class="info-box"><h4>Requester</h4><p>${e(doc.requester_name) || '—'}</p></div>
+    <div class="info-box"><h4>Project</h4><p>${e(doc.projectName) || '—'}</p></div>
+  </div>
+  <div class="summary-row">
+    <span class="summary-pill">${summary.total} total</span>
+    <span class="summary-pill" style="background:#dcfce7;color:#16a34a">${summary.received} received</span>
+    <span class="summary-pill" style="background:#fef3c7;color:#d97706">${summary.partial} partial</span>
+    <span class="summary-pill" style="background:#fee2e2;color:#dc2626">${summary.notReceived} not received</span>
+    <span class="summary-pill">${summary.pending} pending</span>
+  </div>
+  <div class="section-title">Line Items (${rows.length})</div>
+  <table><thead><tr><th>#</th><th>Part Number</th><th>Description</th><th style="text-align:right">Expected</th><th style="text-align:right">Received</th><th>Status</th><th>Serial Numbers</th></tr></thead><tbody>${lineRows}</tbody></table>
+  <div class="footer">Generated by TAC Network Tracker &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+  <script>window.onload = function(){ window.print(); }<\/script>
+  </body></html>`;
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); }
+}
+
 function emptyHeader(): ExtractedSmrHeader {
   return {
     smrNumber: null, customerName: null, sourceWarehouseName: null, formType: null,
@@ -108,7 +305,8 @@ export default function WarehouseSmr() {
   const [statusFilter, setStatusFilter] = useState('');
   const [search,       setSearch]       = useState('');
 
-  const [detail,    setDetail]    = useState<{ doc: SmrDocRow; lines: SmrLine[] } | null>(null);
+  const [detail,    setDetail]    = useState<{ doc: SmrDocRow; lines: SmrLine[]; scansByLine: Map<string, SmrLineScan[]> } | null>(null);
+  const [exporting, setExporting] = useState<'' | 'excel' | 'pdf'>('');
   const [canceling, setCanceling] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -234,7 +432,38 @@ export default function WarehouseSmr() {
   // ── Detail ───────────────────────────────────────────────────────────────────
   async function openDetail(doc: SmrDocRow) {
     const { data } = await supabase.from('smr_lines').select('*').eq('smr_document_id', doc.id).order('line_index');
-    setDetail({ doc, lines: (data || []) as SmrLine[] });
+    const lines = (data || []) as SmrLine[];
+
+    const scansByLine = new Map<string, SmrLineScan[]>();
+    if (lines.length) {
+      const { data: scanRows } = await supabase
+        .from('smr_line_scans')
+        .select('*')
+        .in('smr_line_id', lines.map(l => l.id))
+        .order('created_at');
+      for (const s of (scanRows || []) as SmrLineScan[]) {
+        const arr = scansByLine.get(s.smr_line_id) ?? [];
+        arr.push(s);
+        scansByLine.set(s.smr_line_id, arr);
+      }
+    }
+
+    setDetail({ doc, lines, scansByLine });
+  }
+
+  async function handleExport(kind: 'excel' | 'pdf') {
+    if (!detail) return;
+    setExporting(kind);
+    try {
+      if (kind === 'excel') {
+        await exportSmrExcel(detail.doc, detail.lines, detail.scansByLine, items);
+      } else {
+        exportSmrPdf(detail.doc, detail.lines, detail.scansByLine, items);
+      }
+    } catch (e: unknown) {
+      showToast('Export failed: ' + (e instanceof Error ? e.message : String(e)), false);
+    }
+    setExporting('');
   }
 
   async function cancelDocument(id: string) {
@@ -813,6 +1042,16 @@ export default function WarehouseSmr() {
             </div>
             <div className={css.modalFtr}>
               <button className={css.btnGhost} onClick={() => setDetail(null)}>Close</button>
+              {detail.lines.length > 0 && (
+                <>
+                  <button className={css.btnGhost} onClick={() => handleExport('excel')} disabled={exporting !== ''}>
+                    {exporting === 'excel' ? 'Exporting…' : '⇩ Excel'}
+                  </button>
+                  <button className={css.btnGhost} onClick={() => handleExport('pdf')} disabled={exporting !== ''}>
+                    {exporting === 'pdf' ? 'Exporting…' : '⇩ PDF'}
+                  </button>
+                </>
+              )}
               {canCancel && !['COMPLETED', 'CANCELLED'].includes(detail.doc.status) && (
                 <button className={css.btnDanger} onClick={() => cancelDocument(detail.doc.id)} disabled={canceling}>
                   {canceling ? 'Cancelling…' : 'Cancel SMR'}
