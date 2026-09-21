@@ -342,6 +342,39 @@ export default function WarehouseSmrReconcile() {
     return learnedByPN.current.get(key) ?? itemsByPN.current.get(key) ?? null;
   }
 
+  // Cross-SMR duplicate check: the same serial could be scanned into two
+  // different SMR documents before the first one is posted to stock — at
+  // that point it has no inventory_assets row yet, so the existingAssets
+  // check above can't see it. This queries smr_line_scans directly (indexed
+  // on serial_number_normalized) for a hit under any OTHER smr_document,
+  // regardless of that document's status, so the duplicate is caught right
+  // away instead of only after the first SMR is posted.
+  async function checkCrossDocumentDuplicate(
+    norm: string,
+  ): Promise<{ smrNumber: string | null; lineIndex: number } | null> {
+    const { data: scans } = await supabase
+      .from('smr_line_scans')
+      .select('smr_line_id')
+      .eq('serial_number_normalized', norm);
+    if (!scans || scans.length === 0) return null;
+
+    const lineIds = [...new Set(scans.map(s => s.smr_line_id))];
+    const { data: crossLines } = await supabase
+      .from('smr_lines')
+      .select('id, smr_document_id, line_index')
+      .in('id', lineIds)
+      .neq('smr_document_id', smrId);
+    if (!crossLines || crossLines.length === 0) return null;
+
+    const other = crossLines[0];
+    const { data: otherDoc } = await supabase
+      .from('smr_documents')
+      .select('smr_number')
+      .eq('id', other.smr_document_id)
+      .single();
+    return { smrNumber: otherDoc?.smr_number ?? null, lineIndex: other.line_index };
+  }
+
   // ── Scan handling ────────────────────────────────────────────────────────────
   async function handleRawScan(raw: string, symbology: string, manually: boolean) {
     if (!activeLine) { showToast('Select a line item first.', false); return; }
@@ -447,14 +480,20 @@ export default function WarehouseSmrReconcile() {
     showToast(`Scanned ${parsed.serialNumber}`, true);
     if (optimisticScans.length >= cap) advanceToNextPendingLine(lineId);
 
-    const { data, error: e } = await supabase.from('smr_line_scans').insert({
-      smr_line_id:       lineId,
-      serial_number:     parsed.serialNumber,
-      raw_scan_value:    raw,
-      barcode_symbology: symbology,
-      scanned_manually:  manually,
-      scanned_by:        currentUser?.id || null,
-    }).select('id, serial_number, serial_number_normalized').single();
+    // Run the insert and the cross-document duplicate lookup in parallel —
+    // neither depends on the other, and firing them together keeps this at
+    // one network round-trip's worth of latency instead of two in sequence.
+    const [{ data, error: e }, crossDup] = await Promise.all([
+      supabase.from('smr_line_scans').insert({
+        smr_line_id:       lineId,
+        serial_number:     parsed.serialNumber,
+        raw_scan_value:    raw,
+        barcode_symbology: symbology,
+        scanned_manually:  manually,
+        scanned_by:        currentUser?.id || null,
+      }).select('id, serial_number, serial_number_normalized').single(),
+      checkCrossDocumentDuplicate(snNorm),
+    ]);
 
     if (e || !data) {
       // Roll back — remove the optimistic scan and recompute qty/status from
@@ -467,6 +506,23 @@ export default function WarehouseSmrReconcile() {
         return { ...l, scans: revertedScans, receivedQty: revertedQty, status: revertedStatus };
       }));
       showToast(`Failed to save scan: ${e?.message ?? 'unknown error'}`, false);
+      return;
+    }
+
+    if (crossDup) {
+      // Already scanned into a different SMR document — undo the insert and
+      // the optimistic UI update, and tell the user exactly where the
+      // conflicting scan lives so they can go check it.
+      await supabase.from('smr_line_scans').delete().eq('id', data.id);
+      setLines(prev => prev.map(l => {
+        if (l.id !== lineId) return l;
+        const revertedScans  = l.scans.filter(s => s.id !== tempId);
+        const revertedQty    = countUniqueScans(revertedScans.map(s => ({ serialNumberNormalized: s.serialNumberNorm })));
+        const revertedStatus = computeSmrLineStatus(expectedQty, revertedQty, false);
+        return { ...l, scans: revertedScans, receivedQty: revertedQty, status: revertedStatus };
+      }));
+      const docLabel = crossDup.smrNumber ? `SMR ${crossDup.smrNumber}` : 'another SMR';
+      showToast(`Already scanned on ${docLabel}, line #${crossDup.lineIndex} — check you're not receiving it twice.`, false);
       return;
     }
 
