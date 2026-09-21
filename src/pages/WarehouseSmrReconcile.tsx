@@ -77,6 +77,15 @@ export default function WarehouseSmrReconcile() {
   const [camErr,  setCamErr]  = useState<string | null>(null);
   const videoRef    = useRef<HTMLVideoElement | null>(null);
   const scannerRef  = useRef<CameraScanner | null>(null);
+  // The running camera's onScan callback is bound once, when Start Camera is
+  // clicked — it does NOT get re-bound just because the user selects a
+  // different line afterwards. Without this indirection, scans made after
+  // switching lines (without stopping/restarting the camera) would still be
+  // recorded against whichever line was active at Start Camera time, silently
+  // misattributing serials to the wrong item. handleRawScanRef is refreshed
+  // every render (see effect near handleRawScan) so the camera always calls
+  // the CURRENT closure, bound to whatever line is active right now.
+  const handleRawScanRef = useRef<(raw: string, symbology: string, manually: boolean) => void>(() => {});
 
   const [manualSn, setManualSn] = useState('');
   const [savingQty, setSavingQty] = useState(false);
@@ -254,7 +263,7 @@ export default function WarehouseSmrReconcile() {
     scannerRef.current = scanner;
     try {
       await scanner.start(videoRef.current, {
-        onScan:  (raw, symbology) => handleRawScan(raw, symbology, false),
+        onScan:  (raw, symbology) => handleRawScanRef.current(raw, symbology, false),
         onError: msg => showToast(msg, false),
         onStart: () => setCamOn(true),
       });
@@ -324,6 +333,11 @@ export default function WarehouseSmrReconcile() {
 
     if (updatedScans.length >= cap) advanceToNextPendingLine(activeLine.id);
   }
+
+  // Keep the ref the running camera calls pointed at THIS render's handleRawScan,
+  // so it's always bound to whichever line is active right now — see the note
+  // on handleRawScanRef's declaration above.
+  useEffect(() => { handleRawScanRef.current = (raw, symbology, manually) => { void handleRawScan(raw, symbology, manually); }; });
 
   async function handleManualAdd() {
     const sn = manualSn.trim();
