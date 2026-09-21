@@ -15,6 +15,7 @@ import {
 import { normalizePn, MAPPING_SOURCE_RECEIVING, MAPPING_CODE_TYPE_PN } from '../lib/pnMapping';
 import { normalizeSN } from '../lib/warehouseTypes';
 import type { SmrDocument, InventoryItem } from '../lib/warehouseTypes';
+import { buildExistingAssetsMap, type KnownAsset } from '../lib/existingAssetCheck';
 import css from './Warehouse.module.css';
 
 // ── Local types ────────────────────────────────────────────────────────────────
@@ -86,6 +87,12 @@ export default function WarehouseSmrReconcile() {
   // every render (see effect near handleRawScan) so the camera always calls
   // the CURRENT closure, bound to whatever line is active right now.
   const handleRawScanRef = useRef<(raw: string, symbology: string, manually: boolean) => void>(() => {});
+  // Preloaded SN → known-asset lookup (inventory_assets), same source used by the
+  // main Goods Receive page. Used to catch "scanned the right SN but for the
+  // wrong item" — e.g. scanning an ARGA-tagged unit while the active line is
+  // matched to ABIO. Loaded once in load(); a ref because it's read inside the
+  // synchronous, pre-insert part of handleRawScan and doesn't need to trigger renders.
+  const existingAssets = useRef<Map<string, KnownAsset>>(new Map());
 
   const [manualSn, setManualSn] = useState('');
   const [savingQty, setSavingQty] = useState(false);
@@ -130,11 +137,33 @@ export default function WarehouseSmrReconcile() {
     setLoading(true);
     setError('');
 
-    const [docRes, lineRes, itemRes] = await Promise.all([
+    const [docRes, lineRes, itemRes, assetRes] = await Promise.all([
       supabase.from('smr_documents').select('*').eq('id', smrId).single(),
       supabase.from('smr_lines').select('*').eq('smr_document_id', smrId).order('line_index'),
       supabase.from('inventory_items').select('*').eq('is_active', true).order('item_name'),
+      supabase.from('inventory_assets')
+        .select('serial_number_normalized, inventory_item_id, part_number, warehouse_id, status, source_receipt_id'),
     ]);
+
+    if (assetRes.data) {
+      existingAssets.current = buildExistingAssetsMap(
+        (assetRes.data as Array<{
+          serial_number_normalized: string;
+          inventory_item_id:        string;
+          part_number:              string | null;
+          warehouse_id:             string | null;
+          status:                   KnownAsset['status'];
+          source_receipt_id:        string | null;
+        }>).map(r => ({
+          serialNumberNorm: r.serial_number_normalized,
+          inventoryItemId:  r.inventory_item_id,
+          partNumber:       r.part_number,
+          warehouseId:      r.warehouse_id,
+          status:           r.status,
+          sourceReceiptId:  r.source_receipt_id,
+        }))
+      );
+    }
 
     if (docRes.error || !docRes.data) { setError(docRes.error?.message || 'SMR not found.'); setLoading(false); return; }
     const document = docRes.data as SmrDocument;
@@ -302,10 +331,26 @@ export default function WarehouseSmrReconcile() {
       showToast('Already scanned against this line.', false);
       return;
     }
-    const dupElsewhere = lines.some(l => l.id !== activeLine.id && l.scans.some(s => s.serialNumberNorm === snNorm));
-    if (dupElsewhere) {
-      showToast('This serial was already scanned against a different line.', false);
+    const dupElsewhereLine = lines.find(l => l.id !== activeLine.id && l.scans.some(s => s.serialNumberNorm === snNorm));
+    if (dupElsewhereLine) {
+      const label = dupElsewhereLine.matchedItemCode || dupElsewhereLine.productNumberRaw || `line #${dupElsewhereLine.lineIndex}`;
+      showToast(`Already scanned against #${dupElsewhereLine.lineIndex} ${label}.`, false);
       return;
+    }
+
+    // If this SN is already a known asset (inventory_assets) tied to a
+    // different item than the one this line is matched to, block it — this
+    // catches "scanned the right code but it's actually a different unit"
+    // before it silently gets attributed to the wrong line/item.
+    if (activeLine.matchedItemId) {
+      const known = existingAssets.current.get(snNorm);
+      if (known && known.inventoryItemId !== activeLine.matchedItemId) {
+        const knownItem = items.find(it => it.id === known.inventoryItemId);
+        const knownLabel = knownItem ? `${knownItem.item_code} — ${knownItem.item_name}` : 'a different item';
+        const thisLabel  = activeLine.matchedItemCode || activeLine.matchedItemName || 'this line';
+        showToast(`This serial belongs to ${knownLabel}, not ${thisLabel} — check you're scanning the right unit.`, false);
+        return;
+      }
     }
 
     // ── Optimistic update ───────────────────────────────────────────────────
@@ -836,7 +881,12 @@ export default function WarehouseSmrReconcile() {
                           <>
                             {camOn ? (
                               <div>
-                                <video ref={videoRef} className={css.videoEl} style={{ maxHeight: 260, borderRadius: 8 }} />
+                                <div className={css.videoWrap} style={{ maxHeight: 260 }}>
+                                  <video ref={videoRef} className={css.videoEl} />
+                                  <div className={css.videoOverlay}>
+                                    <div className={css.scanFrame} />
+                                  </div>
+                                </div>
                                 <button className={css.btnGhost} style={{ marginTop: 8 }} onClick={stopCamera}>Stop Camera</button>
                               </div>
                             ) : (
