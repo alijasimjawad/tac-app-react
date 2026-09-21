@@ -308,8 +308,34 @@ export default function WarehouseSmrReconcile() {
       return;
     }
 
+    // ── Optimistic update ───────────────────────────────────────────────────
+    // Reflect the scan in the UI the instant it's parsed/validated, instead of
+    // waiting for the smr_line_scans INSERT round-trip — that round-trip was the
+    // visible "lag" when switching between items. A temp id stands in for the
+    // real row id until the insert resolves; the unique-elsewhere/duplicate
+    // checks above already ran against pre-optimistic state, and the DB's
+    // UNIQUE(smr_line_id, serial_number_normalized) constraint is the safety
+    // net for the rare race where two scans for the same SN land almost
+    // simultaneously. If the insert fails, the optimistic scan is rolled back
+    // and the user is told via toast.
+    const lineId       = activeLine.id;
+    const expectedQty  = activeLine.expectedQty;
+    const tempId       = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const optimisticScan: LineScan = {
+      id: tempId, serialNumber: parsed.serialNumber, serialNumberNorm: snNorm,
+      rawScanValue: raw, barcodeSymbology: symbology, scannedManually: manually,
+    };
+
+    const optimisticScans      = [...activeLine.scans, optimisticScan];
+    const optimisticReceivedQty = countUniqueScans(optimisticScans.map(s => ({ serialNumberNormalized: s.serialNumberNorm })));
+    const optimisticStatus      = computeSmrLineStatus(expectedQty, optimisticReceivedQty, false);
+
+    setLines(prev => prev.map(l => l.id === lineId ? { ...l, scans: optimisticScans, receivedQty: optimisticReceivedQty, status: optimisticStatus } : l));
+    showToast(`Scanned ${parsed.serialNumber}`, true);
+    if (optimisticScans.length >= cap) advanceToNextPendingLine(lineId);
+
     const { data, error: e } = await supabase.from('smr_line_scans').insert({
-      smr_line_id:       activeLine.id,
+      smr_line_id:       lineId,
       serial_number:     parsed.serialNumber,
       raw_scan_value:    raw,
       barcode_symbology: symbology,
@@ -317,21 +343,33 @@ export default function WarehouseSmrReconcile() {
       scanned_by:        currentUser?.id || null,
     }).select('id, serial_number, serial_number_normalized').single();
 
-    if (e || !data) { showToast(`Failed to save scan: ${e?.message ?? 'unknown error'}`, false); return; }
+    if (e || !data) {
+      // Roll back — remove the optimistic scan and recompute qty/status from
+      // whatever's left (functional update, since state may have moved on).
+      setLines(prev => prev.map(l => {
+        if (l.id !== lineId) return l;
+        const revertedScans  = l.scans.filter(s => s.id !== tempId);
+        const revertedQty    = countUniqueScans(revertedScans.map(s => ({ serialNumberNormalized: s.serialNumberNorm })));
+        const revertedStatus = computeSmrLineStatus(expectedQty, revertedQty, false);
+        return { ...l, scans: revertedScans, receivedQty: revertedQty, status: revertedStatus };
+      }));
+      showToast(`Failed to save scan: ${e?.message ?? 'unknown error'}`, false);
+      return;
+    }
 
-    const newScan: LineScan = {
-      id: data.id, serialNumber: data.serial_number, serialNumberNorm: data.serial_number_normalized,
-      rawScanValue: raw, barcodeSymbology: symbology, scannedManually: manually,
-    };
-    const updatedScans = [...activeLine.scans, newScan];
-    const receivedQty  = countUniqueScans(updatedScans.map(s => ({ serialNumberNormalized: s.serialNumberNorm })));
-    const status       = computeSmrLineStatus(activeLine.expectedQty, receivedQty, false);
+    // Reconcile the temp id with the real DB row id so later actions (e.g.
+    // removing this scan) target the correct row.
+    setLines(prev => prev.map(l => {
+      if (l.id !== lineId) return l;
+      return {
+        ...l,
+        scans: l.scans.map(s => s.id === tempId
+          ? { ...s, id: data.id, serialNumber: data.serial_number, serialNumberNorm: data.serial_number_normalized }
+          : s),
+      };
+    }));
 
-    setLines(prev => prev.map(l => l.id === activeLine.id ? { ...l, scans: updatedScans, receivedQty, status } : l));
-    await supabase.from('smr_lines').update({ received_qty: receivedQty, status }).eq('id', activeLine.id);
-    showToast(`Scanned ${data.serial_number}`, true);
-
-    if (updatedScans.length >= cap) advanceToNextPendingLine(activeLine.id);
+    await supabase.from('smr_lines').update({ received_qty: optimisticReceivedQty, status: optimisticStatus }).eq('id', lineId);
   }
 
   // Keep the ref the running camera calls pointed at THIS render's handleRawScan,
@@ -347,6 +385,9 @@ export default function WarehouseSmrReconcile() {
   }
 
   async function removeScan(lineId: string, scan: LineScan) {
+    // A temp- id means the optimistic insert hasn't been reconciled with its
+    // real DB row yet — deleting by that id would silently no-op server-side.
+    if (scan.id.startsWith('temp-')) { showToast('Still saving this scan — try again in a moment.', false); return; }
     const line = lines.find(l => l.id === lineId);
     if (!line) return;
     const { error: e } = await supabase.from('smr_line_scans').delete().eq('id', scan.id);

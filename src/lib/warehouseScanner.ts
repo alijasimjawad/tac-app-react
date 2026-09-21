@@ -622,15 +622,24 @@ export class CameraScanner {
       throw new Error('getUserMedia is not available in this browser.');
     }
 
+    // `focusMode` isn't in lib.dom's MediaTrackConstraints yet, but Chrome/Android
+    // supports it — hinting 'continuous' asks the camera to keep hunting for focus
+    // instead of settling once and holding, which is what makes close-up barcode/
+    // label scans feel slow to lock in. Same type-cast pattern as the `torch`
+    // capability below. It's a non-exact "ideal" constraint, so unsupported
+    // browsers silently ignore it rather than throwing OverconstrainedError.
+    const idealVideo: MediaTrackConstraints & { focusMode?: ConstrainDOMString } = {
+      facingMode: { ideal: facingMode },
+      width:  { ideal: 1280 },
+      height: { ideal: 720 },
+      focusMode: { ideal: 'continuous' } as unknown as ConstrainDOMString,
+    };
+
     // Attempt ideal constraints first; if overconstrained, retry minimal
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: facingMode },
-          width:  { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+        video: idealVideo,
         audio: false,
       });
     } catch (e) {
