@@ -255,9 +255,14 @@ export interface SmrLine {
   received_qty:      number;
   status:            SmrLineStatus;
   notes:             string | null;
+  arrival_confirmed:     boolean;
+  arrival_confirmed_at:  string | null;
+  arrival_confirmed_by:  string | null;
   created_at:        string;
   updated_at:        string;
 }
+
+export type SmrScanStage = 'PICKUP' | 'ARRIVAL';
 
 export interface SmrLineScan {
   id:                        string;
@@ -268,6 +273,7 @@ export interface SmrLineScan {
   barcode_symbology:         string | null;
   scanned_manually:          boolean;
   scanned_by:                string | null;
+  stage:                     SmrScanStage;
   created_at:                string;
 }
 

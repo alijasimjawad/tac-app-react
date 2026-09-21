@@ -47,6 +47,7 @@ import WarehouseIssue from './pages/WarehouseIssue';
 import WarehouseIssueHistory from './pages/WarehouseIssueHistory';
 import WarehouseSmr from './pages/WarehouseSmr';
 import WarehouseSmrReconcile from './pages/WarehouseSmrReconcile';
+import WarehouseSmrArrivalReview from './pages/WarehouseSmrArrivalReview';
 
 function RoleRedirect() {
   const { currentUser, loading } = useAuth();
@@ -108,6 +109,7 @@ export default function App() {
             <Route path="/warehouse/item-master"    element={<WarehouseInventory />} />
             <Route path="/warehouse/receive"                    element={<WarehouseReceive />} />
             <Route path="/warehouse/receive/edit/:receiptId"   element={<WarehouseReceiveEdit />} />
+            <Route path="/warehouse/receive/review/:receiptId" element={<WarehouseSmrArrivalReview />} />
             <Route path="/warehouse/history"                    element={<WarehouseHistory />} />
             <Route path="/warehouse/movements"      element={<WarehouseMovements />} />
             <Route path="/warehouse/issue"          element={<WarehouseIssue />} />

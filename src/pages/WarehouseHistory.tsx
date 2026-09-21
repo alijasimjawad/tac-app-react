@@ -36,6 +36,7 @@ interface ReceiptDetail {
   assetsCreated:  number | null;
   receivedByName: string | null;
   postedByName:   string | null;
+  smrLinked:      boolean; // true when this receipt was auto-created from a Customer SMR
 }
 
 function statusBadge(s: string) {
@@ -139,7 +140,7 @@ export default function WarehouseHistory() {
   useEffect(() => { load(page); }, [page, warehouses, allProjects]);
 
   async function openDetail(receipt: ReceiptRow) {
-    const [liRes, scanRes, assetCountRes, receiverRes, movRes] = await Promise.all([
+    const [liRes, scanRes, assetCountRes, receiverRes, movRes, smrRes] = await Promise.all([
       supabase.from('goods_receipt_items').select('*').eq('goods_receipt_id', receipt.id),
       supabase.from('receiving_scan_log').select('*').eq('goods_receipt_id', receipt.id).order('created_at'),
       receipt.status === 'POSTED'
@@ -151,6 +152,7 @@ export default function WarehouseHistory() {
       receipt.status === 'POSTED'
         ? supabase.from('stock_movements').select('performed_by').eq('reference_type', 'GOODS_RECEIPT').eq('reference_id', receipt.id).limit(5)
         : Promise.resolve({ data: null }),
+      supabase.from('smr_documents').select('id').eq('goods_receipt_id', receipt.id).maybeSingle(),
     ]);
 
     const lineItems = (liRes.data || []) as Array<GoodsReceiptItem & { itemName?: string; itemCode?: string }>;
@@ -185,7 +187,9 @@ export default function WarehouseHistory() {
       }
     }
 
-    setDetail({ receipt, lineItems, scanLogs, assetsCreated, receivedByName, postedByName });
+    const smrLinked = !!(smrRes as { data: { id: string } | null }).data;
+
+    setDetail({ receipt, lineItems, scanLogs, assetsCreated, receivedByName, postedByName, smrLinked });
   }
 
   async function postReceipt(receiptId: string) {
@@ -452,11 +456,14 @@ export default function WarehouseHistory() {
                 </button>
               )}
               {canEdit && detail.receipt.status === 'PENDING_REVIEW' && (
-                <button className={css.btnGhost} onClick={() => navigate(`/warehouse/receive/edit/${detail.receipt.id}`)}>
-                  Edit Receipt
+                <button className={css.btnGhost}
+                  onClick={() => navigate(detail.smrLinked
+                    ? `/warehouse/receive/review/${detail.receipt.id}`
+                    : `/warehouse/receive/edit/${detail.receipt.id}`)}>
+                  {detail.smrLinked ? 'Review & Confirm' : 'Edit Receipt'}
                 </button>
               )}
-              {canPost && detail.receipt.status === 'PENDING_REVIEW' && (
+              {canPost && detail.receipt.status === 'PENDING_REVIEW' && !detail.smrLinked && (
                 <button className={css.btnAccent} onClick={() => postReceipt(detail.receipt.id)} disabled={posting}>
                   {posting ? 'Posting…' : 'Post to Stock'}
                 </button>

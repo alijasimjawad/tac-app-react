@@ -266,3 +266,101 @@ export function buildReceiptItemsFromSmrLines(lines: SmrLineForReceipt[]): Recei
 
   return Array.from(byItem.values());
 }
+
+// ── Arrival review (post-completion confirmation pass) ───────────────────────
+//
+// A finalized SMR (COMPLETED, goods_receipt PENDING_REVIEW) still has to
+// travel from the pickup point to the real receiving warehouse. Arrival
+// review is a second, independent confirmation done by the warehouse
+// keeper there — tick a line and/or scan its serials again — before the
+// receipt can be posted to stock. Unlike the pickup reconcile pass, arrival
+// review does not require every line to be resolved before posting: lines
+// left unconfirmed are simply excluded from what gets posted and stay
+// visible as "missing" (material lost/short in transit shouldn't be booked
+// as received stock).
+
+export interface ArrivalConfirmSummary {
+  total:     number;
+  confirmed: number;
+  missing:   number;
+}
+
+export function summarizeArrivalConfirmation(lines: Array<{ arrivalConfirmed: boolean }>): ArrivalConfirmSummary {
+  const total = lines.length;
+  const confirmed = lines.filter(l => l.arrivalConfirmed).length;
+  return { total, confirmed, missing: total - confirmed };
+}
+
+/** True once every line has been ticked/scan-confirmed. Informational only — posting is allowed before this is true. */
+export function isArrivalReviewComplete(lines: Array<{ arrivalConfirmed: boolean }>): boolean {
+  return lines.length > 0 && lines.every(l => l.arrivalConfirmed);
+}
+
+export interface ArrivalPickupScan {
+  serialNumber:      string;
+  rawScanValue:      string | null;
+  barcodeSymbology:  string | null;
+  scannedManually:   boolean;
+}
+
+export interface ArrivalConfirmedLine {
+  matchedItemId:  string | null;
+  trackingMethod: 'SERIALIZED' | 'QUANTITY' | null;
+  receivedQty:    number; // from the original pickup reconciliation
+  partNumberRaw:  string | null;
+  pickupScans:    ArrivalPickupScan[];
+}
+
+export interface ArrivalScanEntryPayload {
+  inventory_item_id: string;
+  serial_number:     string;
+  part_number:       string | null;
+  raw_scan_value:    string | null;
+  barcode_symbology: string | null;
+  scanned_manually:  boolean;
+}
+
+export interface ArrivalQuantityEntryPayload {
+  inventory_item_id: string;
+  quantity:           number;
+}
+
+/**
+ * Builds the update_pending_goods_receipt() payload restricted to
+ * arrival-confirmed lines only, so posting only books what was actually
+ * confirmed to have arrived. Unconfirmed lines are omitted entirely — they
+ * remain visible as "missing" via summarizeArrivalConfirmation and on the
+ * SMR record itself, for follow-up outside this receipt.
+ */
+export function buildArrivalConfirmedPayload(lines: ArrivalConfirmedLine[]): {
+  scanEntries:     ArrivalScanEntryPayload[];
+  quantityEntries: ArrivalQuantityEntryPayload[];
+} {
+  const scanEntries: ArrivalScanEntryPayload[] = [];
+  const qtyByItem = new Map<string, number>();
+
+  for (const l of lines) {
+    if (!l.matchedItemId) continue;
+
+    if (l.trackingMethod === 'SERIALIZED') {
+      for (const s of l.pickupScans) {
+        scanEntries.push({
+          inventory_item_id: l.matchedItemId,
+          serial_number:     s.serialNumber,
+          part_number:       l.partNumberRaw,
+          raw_scan_value:    s.rawScanValue,
+          barcode_symbology: s.barcodeSymbology,
+          scanned_manually:  s.scannedManually,
+        });
+      }
+    } else {
+      const qty = toIntegerReceiptQuantity(l.receivedQty);
+      if (qty > 0) qtyByItem.set(l.matchedItemId, (qtyByItem.get(l.matchedItemId) ?? 0) + qty);
+    }
+  }
+
+  const quantityEntries: ArrivalQuantityEntryPayload[] = Array.from(qtyByItem.entries())
+    .map(([inventory_item_id, quantity]) => ({ inventory_item_id, quantity }));
+
+  return { scanEntries, quantityEntries };
+}
