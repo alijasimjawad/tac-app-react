@@ -252,21 +252,24 @@ export default function WarehouseSmr() {
   // Unlike cancelDocument (soft, reversible-by-reopening status), this permanently
   // removes the smr_documents row — smr_lines and smr_line_scans cascade via FK
   // (ON DELETE CASCADE, migration 011). If the SMR was already finalized into a
-  // goods receipt, that goods_receipts row is deleted first (its own items and
-  // scan log cascade too, migration 001) so no orphaned receipt is left behind.
+  // goods receipt, that goods_receipts row is deleted too (its own items and
+  // scan log cascade, migration 001) — but the SMR document must be deleted
+  // FIRST: smr_documents.goods_receipt_id references goods_receipts(id) with no
+  // ON DELETE CASCADE, so deleting the receipt while the SMR still points at it
+  // fails with a foreign-key violation.
   async function deleteDocument(doc: SmrDocRow) {
     const warn = doc.goods_receipt_id
       ? 'Permanently delete this SMR AND the goods receipt it created? This cannot be undone.'
       : 'Permanently delete this SMR? This cannot be undone.';
     if (!confirm(warn)) return;
     setDeleting(true);
+    const { error: e } = await supabase.from('smr_documents').delete().eq('id', doc.id);
+    if (e) { setDeleting(false); showToast(e.message, false); return; }
     if (doc.goods_receipt_id) {
       const { error: rErr } = await supabase.from('goods_receipts').delete().eq('id', doc.goods_receipt_id);
-      if (rErr) { setDeleting(false); showToast(`Failed to delete linked receipt: ${rErr.message}`, false); return; }
+      if (rErr) { setDeleting(false); showToast(`SMR deleted, but failed to delete linked receipt: ${rErr.message}`, false); setDetail(null); load(page); return; }
     }
-    const { error: e } = await supabase.from('smr_documents').delete().eq('id', doc.id);
     setDeleting(false);
-    if (e) { showToast(e.message, false); return; }
     showToast('SMR deleted.', true);
     setDetail(null);
     load(page);
