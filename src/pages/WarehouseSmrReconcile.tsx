@@ -879,24 +879,29 @@ export default function WarehouseSmrReconcile() {
                           <p style={{ fontSize: 12, color: '#16a34a', marginTop: 8 }}>All {cap} confirmed serials scanned.</p>
                         ) : (
                           <>
-                            {camOn ? (
-                              <div>
-                                <div className={css.videoWrap} style={{ maxHeight: 260 }}>
-                                  <video ref={videoRef} className={css.videoEl} />
-                                  <div className={css.videoOverlay}>
-                                    <div className={css.scanFrame} />
-                                  </div>
+                            <div>
+                              {/* Single persistent <video> node — its wrapper is just shown/hidden
+                                  via style so the DOM element (and the MediaStream startCamera()
+                                  attaches to it) survives the camOn toggle. Rendering two different
+                                  <video> elements across the two branches (previous bug) made React
+                                  swap in a fresh, stream-less node the instant camOn flipped true,
+                                  which showed as a black frame. */}
+                              <div className={css.videoWrap} style={{ maxHeight: 260, display: camOn ? 'block' : 'none' }}>
+                                <video ref={videoRef} className={css.videoEl} />
+                                <div className={css.videoOverlay}>
+                                  <div className={css.scanFrame} />
                                 </div>
+                              </div>
+                              {camOn ? (
                                 <button className={css.btnGhost} style={{ marginTop: 8 }} onClick={stopCamera}>Stop Camera</button>
-                              </div>
-                            ) : (
-                              <div>
-                                <video ref={videoRef} style={{ display: 'none' }} />
-                                <button className={css.btnAccent} onClick={startCamera}>Start Camera</button>
-                                {camErr && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>{camErr}</p>}
-                                {camPerm === 'denied' && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>Camera permission denied — allow it in browser settings.</p>}
-                              </div>
-                            )}
+                              ) : (
+                                <>
+                                  <button className={css.btnAccent} onClick={startCamera}>Start Camera</button>
+                                  {camErr && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>{camErr}</p>}
+                                  {camPerm === 'denied' && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>Camera permission denied — allow it in browser settings.</p>}
+                                </>
+                              )}
+                            </div>
                             <div className={css.manualRow} style={{ marginTop: 12 }}>
                               <input className={`${css.input} ${css.manualInput}`} placeholder="Manual serial entry…"
                                 value={manualSn} onChange={e => setManualSn(e.target.value)}
