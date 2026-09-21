@@ -263,13 +263,25 @@ export default function WarehouseSmr() {
   function buildReviewLines(lines: ParsedSmrLineCandidate[]): ReviewLine[] {
     return lines.map(l => {
       const match = matchPnToItem(l.productNumberRaw, exactByPn.current, learnedByPn.current);
+
+      // The customer's PDF "serial number" flag column is a best-effort read of
+      // their paperwork, and has proven unreliable in practice (e.g. real
+      // serialized radio units printed with a 0 in that column). When the line
+      // already confidently matches a known item master row (EXACT/LEARNED),
+      // trust that item's own tracking_method instead — it's the authoritative
+      // answer to "does this SKU need per-unit serial tracking," not a guess.
+      const matchedItem = match.itemId ? items.find(it => it.id === match.itemId) : undefined;
+      const hasSerialFlag = (match.confidence === 'EXACT' || match.confidence === 'LEARNED') && matchedItem
+        ? matchedItem.tracking_method === 'SERIALIZED'
+        : l.hasSerialFlag;
+
       return {
         localId:          crypto.randomUUID(),
         lineIndex:        l.lineIndex,
         productNumberRaw: l.productNumberRaw ?? '',
         descriptionRaw:   l.descriptionRaw ?? '',
         expectedQty:      l.expectedQty,
-        hasSerialFlag:    l.hasSerialFlag,
+        hasSerialFlag,
         poReference:      l.poReference ?? '',
         matchedItemId:    match.itemId,
         matchedItemCode:  match.itemCode,
@@ -309,6 +321,10 @@ export default function WarehouseSmr() {
       matchedItemCode: item?.item_code ?? null,
       matchedItemName: item?.item_name ?? null,
       matchConfidence: itemId ? 'MANUAL' : 'UNMATCHED',
+      // Picking a match by hand is at least as trustworthy as an EXACT/LEARNED
+      // auto-match — sync the scan-vs-quantity flag to the chosen item's own
+      // tracking_method rather than leaving whatever the PDF happened to print.
+      ...(item ? { hasSerialFlag: item.tracking_method === 'SERIALIZED' } : {}),
     });
   }
 
@@ -623,6 +639,7 @@ export default function WarehouseSmr() {
                             <th>Part Number</th>
                             <th>Description</th>
                             <th style={{ width: 80 }}>Qty</th>
+                            <th style={{ width: 70 }}>Serial?</th>
                             <th>Matched Item</th>
                             <th>PO Ref</th>
                             <th style={{ width: 40 }}></th>
@@ -644,6 +661,11 @@ export default function WarehouseSmr() {
                               <td>
                                 <input type="number" step="0.01" className={css.input} value={l.expectedQty}
                                   onChange={e => updateReviewLine(l.localId, { expectedQty: parseFloat(e.target.value) || 0 })} />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <input type="checkbox" checked={l.hasSerialFlag}
+                                  title="Needs a per-unit serial number scanned at reconcile time"
+                                  onChange={e => updateReviewLine(l.localId, { hasSerialFlag: e.target.checked })} />
                               </td>
                               <td>
                                 <select className={`${css.input} ${css.fieldSelect}`} value={l.matchedItemId ?? ''}
