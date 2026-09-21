@@ -323,6 +323,28 @@ export default function WarehouseSmrReconcile() {
     await supabase.from('smr_lines').update({ matched_item_id: itemId || null, match_confidence: confidence }).eq('id', lineId);
   }
 
+  // ── Manually override a line's scan-vs-quantity mode ──────────────────────────
+  // hasSerialFlag comes straight from the customer's SMR PDF (the "serial number"
+  // 0/1 column) — it's a best-effort read of their document, not our own
+  // classification, so it can simply be wrong on the source paperwork (e.g. a
+  // serialized radio unit printed with a 0 in that column). Rather than trying to
+  // out-guess a customer's PDF in the parser, let the warehouse user flip it here
+  // when they know better, same "extract, then let a human correct it" pattern
+  // used throughout this feature.
+  async function toggleLineTrackingMode(lineId: string) {
+    const line = lines.find(l => l.id === lineId);
+    if (!line) return;
+    const next = !line.hasSerialFlag;
+    setLines(prev => prev.map(l => l.id === lineId ? { ...l, hasSerialFlag: next } : l));
+    const { error: e } = await supabase.from('smr_lines').update({ has_serial_flag: next }).eq('id', lineId);
+    if (e) {
+      showToast(`Failed to switch mode: ${e.message}`, false);
+      setLines(prev => prev.map(l => l.id === lineId ? { ...l, hasSerialFlag: !next } : l));
+    } else {
+      showToast(`Switched to ${next ? 'Scan' : 'Quantity'} mode for this line.`, true);
+    }
+  }
+
   // ── Create a brand-new item master row for a PN that genuinely doesn't exist ──
   // (a first-time customer SMR can reference equipment the internal item master has
   // never seen before — no amount of fuzzy suggestion or manual dropdown search will
@@ -567,6 +589,13 @@ export default function WarehouseSmrReconcile() {
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                   PN: {activeLine.productNumberRaw || '—'} · Expected: {activeLine.expectedQty} · {statusBadge(activeLine.status)}
                 </div>
+                {canScan && (
+                  <button type="button" className={css.btnGhost} style={{ marginTop: 8, fontSize: 12 }}
+                    onClick={() => toggleLineTrackingMode(activeLine.id)}
+                    title="Use this if the SMR PDF's serial-number column looks wrong for this item">
+                    Wrong mode? Switch to {activeLine.hasSerialFlag ? 'Quantity' : 'Scan'} mode
+                  </button>
+                )}
               </div>
 
               <div className={css.field}>
