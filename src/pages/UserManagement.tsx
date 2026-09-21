@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { PROJ_NAMES } from './NetworkScopes';
 import { logActivity } from '../lib/activityLog';
 import { sendPushToRoles } from '../lib/pushNotify';
-import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_OTHER, ACTION_DEFS, ACTION_SCOPES, LEGACY_ACTION_KEY, FIELD_ROLE_DEFAULT_KEYS, type PermDef } from '../lib/permissionsCatalog';
+import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_WAREHOUSE, VIEW_OTHER, ACTION_DEFS, ACTION_SCOPES, LEGACY_ACTION_KEY, FIELD_ROLE_DEFAULT_KEYS, type PermDef } from '../lib/permissionsCatalog';
 import css from './UserManagement.module.css';
 
 async function extractFnError(error: unknown, data: unknown): Promise<string> {
@@ -167,6 +167,7 @@ export default function UserManagement() {
       ...VIEW_CORE,
       ...VIEW_DAILY_WORK,
       ...projectDefs,
+      ...VIEW_WAREHOUSE,
       ...VIEW_FINANCE_ADMIN,
     ];
   }, [dbProjects]);
@@ -241,7 +242,7 @@ export default function UserManagement() {
     const editRoleLower = (u.role || '').toLowerCase();
     const isEditFieldRole = editRoleLower === 'engineer' || editRoleLower === 'technician';
     const initPerms: PermMap = {};
-    [...VIEW_CORE, ...VIEW_DAILY_WORK, ...VIEW_FINANCE_ADMIN, ...ACTION_DEFS].forEach(({ key }) => {
+    [...VIEW_CORE, ...VIEW_DAILY_WORK, ...VIEW_WAREHOUSE, ...VIEW_FINANCE_ADMIN, ...ACTION_DEFS].forEach(({ key }) => {
       const stored = saved[key];
       if (typeof stored === 'boolean') {
         initPerms[key] = stored;
@@ -608,6 +609,13 @@ export default function UserManagement() {
                       ))}
                     </>
                   )}
+                  <div className={css.permGroupLbl}>Warehouse</div>
+                  {VIEW_WAREHOUSE.map(({ key, label }) => (
+                    <div key={key} className={css.togWrap}>
+                      <span className={css.togLabel}>{label}</span>
+                      <Toggle id={`ump-${key}`} checked={perms[key] === true} onChange={v => togglePerm(key, v)} />
+                    </div>
+                  ))}
                   <div className={css.permGroupLbl}>Finance &amp; Admin</div>
                   {VIEW_FINANCE_ADMIN.map(({ key, label }) => (
                     <div key={key} className={css.togWrap}>
