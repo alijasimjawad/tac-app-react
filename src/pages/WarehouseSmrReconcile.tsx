@@ -423,10 +423,12 @@ export default function WarehouseSmrReconcile() {
     // quantities from the receipt without any warning.
     const receivedButUnmatched = lines.filter(l => !l.matchedItemId && (l.status === 'RECEIVED' || l.status === 'PARTIAL'));
     if (receivedButUnmatched.length > 0) {
+      const lineNumbers = receivedButUnmatched.map(l => `#${l.lineIndex}`).join(', ');
       showToast(
-        `${receivedButUnmatched.length} line(s) have received quantities but aren't matched to an inventory item yet — match them or create a new item first.`,
+        `Line(s) ${lineNumbers} have received quantities but aren't matched to an inventory item yet — match them or create a new item first.`,
         false,
       );
+      setActiveLineId(receivedButUnmatched[0].id); // jump straight to the first offender
       return;
     }
     if (!confirm('Finalize this SMR? This creates a goods receipt pending review — it will not post to stock automatically.')) return;
