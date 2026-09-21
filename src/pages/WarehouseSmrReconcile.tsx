@@ -82,6 +82,17 @@ export default function WarehouseSmrReconcile() {
   const [savingQty, setSavingQty] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
 
+  // ── Reconcile UX: draft qty prefill + serial-confirm-then-scan cap ───────────
+  // These are UI-only, local-only state — never read by buildReceiptItemsFromSmrLines
+  // (which only ever sees lines[].receivedQty, committed via saveQuantity/handleRawScan).
+  // qtyDrafts holds an in-progress edit of a Quantity-mode line's received qty before
+  // "Save Qty" is clicked. confirmedSerialQty holds the warehouse user's confirmed
+  // "how many did we receive" count for a Serial-mode line, which hard-caps scanning.
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, number>>({});
+  const [confirmedSerialQty, setConfirmedSerialQty] = useState<Record<string, number>>({});
+  const [capInputOpen, setCapInputOpen] = useState(false);
+  const [serialQtyDraft, setSerialQtyDraft] = useState('');
+
   // ── New-item creation (unmatched line whose PN genuinely isn't in the item master) ──
   const [showCreateItem, setShowCreateItem] = useState(false);
   const [newItemForm, setNewItemForm] = useState({
@@ -188,6 +199,44 @@ export default function WarehouseSmrReconcile() {
     return suggestFuzzyMatches(activeLine.descriptionRaw, activeLine.productNumberRaw, items);
   }, [activeLine, items]);
 
+  // The confirmed "how many did we receive" cap for a serial line. Explicit
+  // confirmations always win; otherwise a line that already has scans or has
+  // moved past PENDING (e.g. loaded from a previous session) is treated as
+  // already-confirmed at max(expectedQty, scans so far) so returning users
+  // aren't re-prompted. A never-touched PENDING line has no cap yet — undefined
+  // means "ask the user to confirm before showing the scan UI".
+  function getSerialCap(line: ReconcileLine): number | undefined {
+    if (line.id in confirmedSerialQty) return confirmedSerialQty[line.id];
+    if (line.scans.length > 0 || line.status !== 'PENDING') return Math.max(line.expectedQty, line.scans.length);
+    return undefined;
+  }
+
+  function confirmSerialQty(lineId: string, qty: number) {
+    setConfirmedSerialQty(prev => ({ ...prev, [lineId]: qty }));
+  }
+
+  // Reset the confirm-cap editor whenever the selected line changes, and seed
+  // the draft input with a sensible default (existing cap, else expected qty).
+  useEffect(() => {
+    setCapInputOpen(false);
+    if (activeLine) {
+      const cap = getSerialCap(activeLine);
+      setSerialQtyDraft(String(cap ?? activeLine.expectedQty));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLineId]);
+
+  // Jump to the next unresolved line after the current one is resolved, wrapping
+  // around the list. No-op if every other line is already resolved.
+  function advanceToNextPendingLine(fromId: string) {
+    const idx = lines.findIndex(l => l.id === fromId);
+    if (idx === -1) return;
+    for (let i = 1; i <= lines.length; i++) {
+      const cand = lines[(idx + i) % lines.length];
+      if (cand.status === 'PENDING') { setActiveLineId(cand.id); return; }
+    }
+  }
+
   // ── Persist a line's received_qty / status ──────────────────────────────────
   async function persistLine(lineId: string, patch: { receivedQty: number; status: SmrLineStatus }) {
     setLines(prev => prev.map(l => l.id === lineId ? { ...l, ...patch } : l));
@@ -229,6 +278,10 @@ export default function WarehouseSmrReconcile() {
     // scanning made it impossible to receive equipment the item master doesn't
     // know about yet. Match (or create a new item) before finalizing instead.
 
+    const cap = getSerialCap(activeLine);
+    if (cap === undefined) { showToast('Confirm the received quantity for this line before scanning.', false); return; }
+    if (activeLine.scans.length >= cap) { showToast(`Already scanned ${cap} of ${cap} confirmed — use "Change count" to scan more.`, false); return; }
+
     const parsed = parseScan(raw, symbology);
     const classification = classifyScan(parsed);
     if (classification === 'AUXILIARY_CODE') return; // silently ignored, mirrors WarehouseReceive
@@ -268,6 +321,8 @@ export default function WarehouseSmrReconcile() {
     setLines(prev => prev.map(l => l.id === activeLine.id ? { ...l, scans: updatedScans, receivedQty, status } : l));
     await supabase.from('smr_lines').update({ received_qty: receivedQty, status }).eq('id', activeLine.id);
     showToast(`Scanned ${data.serial_number}`, true);
+
+    if (updatedScans.length >= cap) advanceToNextPendingLine(activeLine.id);
   }
 
   async function handleManualAdd() {
@@ -297,11 +352,14 @@ export default function WarehouseSmrReconcile() {
     const status = computeSmrLineStatus(line.expectedQty, qty, false);
     await persistLine(lineId, { receivedQty: qty, status });
     setSavingQty(false);
+    setQtyDrafts(prev => { const next = { ...prev }; delete next[lineId]; return next; });
+    advanceToNextPendingLine(lineId);
   }
 
   async function markNotReceived(lineId: string) {
     if (!confirm('Mark this line as not received?')) return;
     await persistLine(lineId, { receivedQty: 0, status: 'NOT_RECEIVED' });
+    advanceToNextPendingLine(lineId);
   }
 
   async function resetToPending(lineId: string) {
@@ -666,31 +724,85 @@ export default function WarehouseSmrReconcile() {
 
               {activeLine.hasSerialFlag ? (
                 <>
-                  {!canScan ? (
-                    <p style={{ fontSize: 12, color: '#94a3b8' }}>You don't have permission to scan.</p>
-                  ) : (
-                    <>
-                      {camOn ? (
-                        <div>
-                          <video ref={videoRef} className={css.videoEl} style={{ maxHeight: 260, borderRadius: 8 }} />
-                          <button className={css.btnGhost} style={{ marginTop: 8 }} onClick={stopCamera}>Stop Camera</button>
+                  {(() => {
+                    const cap = getSerialCap(activeLine);
+                    const showConfirmInput = cap === undefined || capInputOpen;
+
+                    if (showConfirmInput) {
+                      return (
+                        <div className={css.field}>
+                          <label className={css.label}>How many did you receive?</label>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input type="number" step="1" min="0" className={css.input} style={{ maxWidth: 120 }}
+                              value={serialQtyDraft} onChange={e => setSerialQtyDraft(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key !== 'Enter') return;
+                                const q = parseInt(serialQtyDraft, 10);
+                                if (!Number.isFinite(q) || q < 0) { showToast('Enter a valid quantity.', false); return; }
+                                confirmSerialQty(activeLine.id, q);
+                                setCapInputOpen(false);
+                              }} />
+                            <button className={css.btnAccent} onClick={() => {
+                              const q = parseInt(serialQtyDraft, 10);
+                              if (!Number.isFinite(q) || q < 0) { showToast('Enter a valid quantity.', false); return; }
+                              confirmSerialQty(activeLine.id, q);
+                              setCapInputOpen(false);
+                            }}>Confirm</button>
+                            {cap !== undefined && (
+                              <button className={css.btnGhost} onClick={() => setCapInputOpen(false)}>Cancel</button>
+                            )}
+                          </div>
+                          <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                            Expected {activeLine.expectedQty}. Confirm the actual received count, then scan a serial for each unit.
+                          </p>
                         </div>
-                      ) : (
-                        <div>
-                          <video ref={videoRef} style={{ display: 'none' }} />
-                          <button className={css.btnAccent} onClick={startCamera}>Start Camera</button>
-                          {camErr && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>{camErr}</p>}
-                          {camPerm === 'denied' && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>Camera permission denied — allow it in browser settings.</p>}
+                      );
+                    }
+
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#64748b' }}>
+                            {activeLine.scans.length} of {cap} scanned
+                          </span>
+                          {canScan && (
+                            <button type="button" className={css.btnGhost} style={{ fontSize: 12 }}
+                              onClick={() => { setSerialQtyDraft(String(cap)); setCapInputOpen(true); }}>
+                              Change count
+                            </button>
+                          )}
                         </div>
-                      )}
-                      <div className={css.manualRow} style={{ marginTop: 12 }}>
-                        <input className={`${css.input} ${css.manualInput}`} placeholder="Manual serial entry…"
-                          value={manualSn} onChange={e => setManualSn(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') handleManualAdd(); }} />
-                        <button className={css.btnSm} onClick={handleManualAdd}>Add</button>
-                      </div>
-                    </>
-                  )}
+
+                        {!canScan ? (
+                          <p style={{ fontSize: 12, color: '#94a3b8' }}>You don't have permission to scan.</p>
+                        ) : activeLine.scans.length >= cap ? (
+                          <p style={{ fontSize: 12, color: '#16a34a', marginTop: 8 }}>All {cap} confirmed serials scanned.</p>
+                        ) : (
+                          <>
+                            {camOn ? (
+                              <div>
+                                <video ref={videoRef} className={css.videoEl} style={{ maxHeight: 260, borderRadius: 8 }} />
+                                <button className={css.btnGhost} style={{ marginTop: 8 }} onClick={stopCamera}>Stop Camera</button>
+                              </div>
+                            ) : (
+                              <div>
+                                <video ref={videoRef} style={{ display: 'none' }} />
+                                <button className={css.btnAccent} onClick={startCamera}>Start Camera</button>
+                                {camErr && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>{camErr}</p>}
+                                {camPerm === 'denied' && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6 }}>Camera permission denied — allow it in browser settings.</p>}
+                              </div>
+                            )}
+                            <div className={css.manualRow} style={{ marginTop: 12 }}>
+                              <input className={`${css.input} ${css.manualInput}`} placeholder="Manual serial entry…"
+                                value={manualSn} onChange={e => setManualSn(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') handleManualAdd(); }} />
+                              <button className={css.btnSm} onClick={handleManualAdd}>Add</button>
+                            </div>
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px', marginTop: 10 }}>
                     Scanned Serials ({activeLine.scans.length})
@@ -717,11 +829,18 @@ export default function WarehouseSmrReconcile() {
                 <div className={css.fieldRow}>
                   <div className={css.field}>
                     <label className={css.label}>Received Qty</label>
-                    <input type="number" step="0.01" className={css.input} value={activeLine.receivedQty}
-                      onChange={e => setLines(prev => prev.map(l => l.id === activeLine.id ? { ...l, receivedQty: parseFloat(e.target.value) || 0 } : l))} />
+                    <input type="number" step="0.01" className={css.input}
+                      value={qtyDrafts[activeLine.id] ?? (activeLine.status === 'PENDING' ? activeLine.expectedQty : activeLine.receivedQty)}
+                      onChange={e => {
+                        const v = parseFloat(e.target.value) || 0;
+                        setQtyDrafts(prev => ({ ...prev, [activeLine.id]: v }));
+                      }} />
                   </div>
                   <div className={css.field} style={{ justifyContent: 'flex-end', flexDirection: 'row', display: 'flex', gap: 8 }}>
-                    <button className={css.btnAccent} disabled={savingQty} onClick={() => saveQuantity(activeLine.id, activeLine.receivedQty)}>
+                    <button className={css.btnAccent} disabled={savingQty} onClick={() => {
+                      const qty = qtyDrafts[activeLine.id] ?? (activeLine.status === 'PENDING' ? activeLine.expectedQty : activeLine.receivedQty);
+                      saveQuantity(activeLine.id, qty);
+                    }}>
                       {savingQty ? 'Saving…' : 'Save Qty'}
                     </button>
                   </div>
