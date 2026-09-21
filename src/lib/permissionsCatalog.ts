@@ -336,6 +336,7 @@ export const ACTION_SCOPES: ActionScope[] = [
       { key: 'wrh_smr_scan',     label: 'Scan / Reconcile' },
       { key: 'wrh_smr_finalize', label: 'Finalize to Receipt' },
       { key: 'wrh_smr_cancel',   label: 'Cancel SMR' },
+      { key: 'wrh_smr_delete',   label: 'Delete SMR (permanent)' },
     ],
   },
 ];

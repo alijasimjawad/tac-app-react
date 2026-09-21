@@ -110,6 +110,7 @@ export default function WarehouseSmr() {
 
   const [detail,    setDetail]    = useState<{ doc: SmrDocRow; lines: SmrLine[] } | null>(null);
   const [canceling, setCanceling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,6 +136,7 @@ export default function WarehouseSmr() {
   const canUpload = hasPerm('wrh_smr_upload');
   const canScan   = hasPerm('wrh_smr_scan');
   const canCancel = hasPerm('wrh_smr_cancel');
+  const canDelete = hasPerm('wrh_smr_delete');
 
   function showToast(msg: string, ok: boolean) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -242,6 +244,30 @@ export default function WarehouseSmr() {
     setCanceling(false);
     if (e) { showToast(e.message, false); return; }
     showToast('SMR cancelled.', true);
+    setDetail(null);
+    load(page);
+  }
+
+  // ── Hard delete (test-data cleanup) ─────────────────────────────────────────
+  // Unlike cancelDocument (soft, reversible-by-reopening status), this permanently
+  // removes the smr_documents row — smr_lines and smr_line_scans cascade via FK
+  // (ON DELETE CASCADE, migration 011). If the SMR was already finalized into a
+  // goods receipt, that goods_receipts row is deleted first (its own items and
+  // scan log cascade too, migration 001) so no orphaned receipt is left behind.
+  async function deleteDocument(doc: SmrDocRow) {
+    const warn = doc.goods_receipt_id
+      ? 'Permanently delete this SMR AND the goods receipt it created? This cannot be undone.'
+      : 'Permanently delete this SMR? This cannot be undone.';
+    if (!confirm(warn)) return;
+    setDeleting(true);
+    if (doc.goods_receipt_id) {
+      const { error: rErr } = await supabase.from('goods_receipts').delete().eq('id', doc.goods_receipt_id);
+      if (rErr) { setDeleting(false); showToast(`Failed to delete linked receipt: ${rErr.message}`, false); return; }
+    }
+    const { error: e } = await supabase.from('smr_documents').delete().eq('id', doc.id);
+    setDeleting(false);
+    if (e) { showToast(e.message, false); return; }
+    showToast('SMR deleted.', true);
     setDetail(null);
     load(page);
   }
@@ -787,6 +813,12 @@ export default function WarehouseSmr() {
               {canCancel && !['COMPLETED', 'CANCELLED'].includes(detail.doc.status) && (
                 <button className={css.btnDanger} onClick={() => cancelDocument(detail.doc.id)} disabled={canceling}>
                   {canceling ? 'Cancelling…' : 'Cancel SMR'}
+                </button>
+              )}
+              {canDelete && (
+                <button className={css.btnDanger} onClick={() => deleteDocument(detail.doc)} disabled={deleting}
+                  title="Permanently deletes this SMR (and its lines/scans). If finalized, also deletes the goods receipt it created.">
+                  {deleting ? 'Deleting…' : 'Delete SMR'}
                 </button>
               )}
               {canScan && ['REVIEWED', 'RECONCILING'].includes(detail.doc.status) && (
