@@ -93,6 +93,15 @@ export default function WarehouseSmrReconcile() {
   // matched to ABIO. Loaded once in load(); a ref because it's read inside the
   // synchronous, pre-insert part of handleRawScan and doesn't need to trigger renders.
   const existingAssets = useRef<Map<string, KnownAsset>>(new Map());
+  // PN → item resolution (mirrors WarehouseReceive's resolveByPN): many labels
+  // (e.g. Nokia DI codes) encode a part number alongside the serial in the same
+  // scan. This lets a mismatch be caught even for a serial that's brand new to
+  // the system (never posted to inventory_assets) — the existingAssets check
+  // above only catches SNs the system has already seen before. Priority:
+  // learnedByPN (explicit/learned mapping) then itemsByPN (item master's own
+  // part_number field).
+  const itemsByPN   = useRef<Map<string, InventoryItem>>(new Map());
+  const learnedByPN = useRef<Map<string, InventoryItem>>(new Map());
 
   const [manualSn, setManualSn] = useState('');
   const [savingQty, setSavingQty] = useState(false);
@@ -171,6 +180,24 @@ export default function WarehouseSmrReconcile() {
     const itemRows = (itemRes.data || []) as InventoryItem[];
     setItems(itemRows);
     const itemsById = new Map(itemRows.map(it => [it.id, it]));
+
+    const byPN = new Map<string, InventoryItem>();
+    for (const it of itemRows) if (it.part_number) byPN.set(normalizePn(it.part_number), it);
+    itemsByPN.current = byPN;
+
+    const { data: mappingRows } = await supabase
+      .from('item_code_mappings')
+      .select('external_code, inventory_item_id')
+      .eq('code_type', MAPPING_CODE_TYPE_PN)
+      .eq('is_active', true);
+    if (mappingRows) {
+      const learned = new Map<string, InventoryItem>();
+      for (const row of mappingRows as { external_code: string; inventory_item_id: string }[]) {
+        const item = itemsById.get(row.inventory_item_id);
+        if (item) learned.set(normalizePn(row.external_code), item);
+      }
+      learnedByPN.current = learned;
+    }
 
     const lineRows = (lineRes.data || []) as Array<{
       id: string; line_index: number; product_number_raw: string | null; description_raw: string | null;
@@ -308,6 +335,13 @@ export default function WarehouseSmrReconcile() {
     setCamOn(false);
   }
 
+  // Resolve a scanned/parsed part number to an item. Priority: learnedByPN
+  // (explicit/learned mapping) then itemsByPN (item master's own part_number).
+  function resolveByPN(pn: string): InventoryItem | null {
+    const key = normalizePn(pn);
+    return learnedByPN.current.get(key) ?? itemsByPN.current.get(key) ?? null;
+  }
+
   // ── Scan handling ────────────────────────────────────────────────────────────
   async function handleRawScan(raw: string, symbology: string, manually: boolean) {
     if (!activeLine) { showToast('Select a line item first.', false); return; }
@@ -336,6 +370,40 @@ export default function WarehouseSmrReconcile() {
       const label = dupElsewhereLine.matchedItemCode || dupElsewhereLine.productNumberRaw || `line #${dupElsewhereLine.lineIndex}`;
       showToast(`Already scanned against #${dupElsewhereLine.lineIndex} ${label}.`, false);
       return;
+    }
+
+    // If the scanned label declares its own item-type code (e.g. Nokia-style
+    // labels formatted as TYPE;PN;SN — "AHGA;123456-001.001;N..." — parse into
+    // itemType: 'AHGA'), cross-check that type against the line's own item
+    // code/product number. This is the most direct check: it doesn't depend on
+    // any PN mapping already existing, and catches the exact reported case
+    // (scanning an AHGA-type label against an ABIA line) even for a type this
+    // parser has never special-cased before, since genericParser's TYPE;PN;SN
+    // fallback extracts itemType for ANY leading type string, not just the
+    // Nokia DI whitelist.
+    if (activeLine.matchedItemId && parsed.itemType) {
+      const scannedType = parsed.itemType.trim().toUpperCase();
+      const lineType = (activeLine.matchedItemCode || activeLine.productNumberRaw || '').trim().toUpperCase();
+      if (lineType && scannedType !== lineType && !lineType.includes(scannedType) && !scannedType.includes(lineType)) {
+        const thisLabel = activeLine.matchedItemCode || activeLine.matchedItemName || 'this line';
+        showToast(`This code is type ${scannedType}, not ${thisLabel} — check you're scanning the right unit.`, false);
+        return;
+      }
+    }
+
+    // If the scanned label also encodes a part number (e.g. Nokia DI codes carry
+    // both PN and SN in one code), cross-check it against the item this line is
+    // matched to. This catches a wrong-item scan even for a serial that's brand
+    // new to the system — the existingAssets check below can only catch SNs the
+    // system has already seen before, but a PN-carrying label declares its item
+    // up front regardless of scan history.
+    if (activeLine.matchedItemId && parsed.partNumber) {
+      const pnItem = resolveByPN(parsed.partNumber);
+      if (pnItem && pnItem.id !== activeLine.matchedItemId) {
+        const thisLabel = activeLine.matchedItemCode || activeLine.matchedItemName || 'this line';
+        showToast(`This code is for ${pnItem.item_code} — ${pnItem.item_name}, not ${thisLabel} — check you're scanning the right unit.`, false);
+        return;
+      }
     }
 
     // If this SN is already a known asset (inventory_assets) tied to a
