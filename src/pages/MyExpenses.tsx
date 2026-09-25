@@ -12,7 +12,7 @@ const QUICK_CATEGORIES = [
 
 const PAGE_SIZES = [10, 25, 50];
 
-const ACTIVITY_TYPES = ['Installation', 'Integration', 'Clearance', 'Photo Reports', 'Other'];
+const ACTIVITY_TYPES = ['Installation', 'Integration', 'Clearance', 'Photo Reports', 'QC', 'ATP', 'Survey', 'Other'];
 
 // Iraq's 18 governorates, for the Governorate field dropdown (matches the list
 // used on NetworkScopes.tsx for consistency across the app).
