@@ -14,6 +14,14 @@ const PAGE_SIZES = [10, 25, 50];
 
 const ACTIVITY_TYPES = ['Installation', 'Integration', 'Clearance', 'Photo Reports', 'Other'];
 
+// Iraq's 18 governorates, for the Governorate field dropdown (matches the list
+// used on NetworkScopes.tsx for consistency across the app).
+const IRAQ_GOVERNORATES = [
+  '', 'Baghdad', 'Basra', 'Nineveh', 'Erbil', 'Najaf', 'Karbala', 'Kirkuk',
+  'Sulaymaniyah', 'Anbar', 'Babil', 'Diyala', 'Dhi Qar', 'Al-Qadisiyyah',
+  'Maysan', 'Muthanna', 'Salah ad-Din', 'Wasit', 'Duhok',
+];
+
 interface SectionRow {
   id: string;
   section_label: string | null;
@@ -27,6 +35,7 @@ interface ExpenseClaim {
   submitted_at: string;
   project_name: string | null;
   site_id: string | null;
+  governorate: string | null;
   section_id: string | null;
   section_label: string | null;
   description: string | null;
@@ -119,6 +128,9 @@ export default function MyExpenses() {
   // form fields
   const [fProject, setFProject] = useState('');
   const [fSiteId, setFSiteId] = useState('');
+  const [fGovernorate, setFGovernorate] = useState('');
+  const [siteDataMap, setSiteDataMap] = useState<Record<string, Record<string, unknown>>>({});
+  const [siteOptions, setSiteOptions] = useState<string[]>([]);
   const [fActivityType, setFActivityType] = useState('');
   const [fOtherDesc, setFOtherDesc] = useState('');
   const [fDate, setFDate] = useState(today());
@@ -230,6 +242,46 @@ export default function MyExpenses() {
       .then(({ data }) => setSections((data as SectionRow[]) || []));
   }, [fProject, nameToKey]);
 
+  // ── Site rows for the selected section — powers governorate auto-fill ──────
+  useEffect(() => {
+    setSiteDataMap({});
+    setSiteOptions([]);
+    if (!fSectionId) return;
+    (async () => {
+      const { data: secData } = await supabase.from('sections').select('columns').eq('id', fSectionId).single();
+      const columns: string[] = secData?.columns || [];
+      const siteIdCol = columns[0] || 'Site ID';
+      const { data: rowsData } = await supabase.from('rows')
+        .select('data').eq('section_id', fSectionId).order('row_order', { ascending: true });
+      const seen = new Set<string>();
+      const opts: string[] = [];
+      const map: Record<string, Record<string, unknown>> = {};
+      (rowsData || []).forEach((r: { data: Record<string, unknown> }) => {
+        if (!r.data) return;
+        const val = String(r.data[siteIdCol] ?? '').trim();
+        if (val && val !== 'undefined' && val !== 'null' && !seen.has(val)) {
+          seen.add(val);
+          opts.push(val);
+          map[val] = r.data;
+        }
+      });
+      setSiteOptions(opts);
+      setSiteDataMap(map);
+    })();
+  }, [fSectionId]);
+
+  // ── Auto-fill governorate from the matched site's row data ─────────────────
+  function autoFillGovernorate(siteId: string) {
+    const rowData = siteDataMap[siteId.trim()];
+    if (!rowData) return;
+    const keys = Object.keys(rowData);
+    const govKey = keys.find(k => /^gov(ernate|ernorate)?$/i.test(k));
+    if (govKey) {
+      const val = String(rowData[govKey]).trim();
+      if (val) setFGovernorate(val);
+    }
+  }
+
   const summary = useMemo(() => {
     const approved = claims.filter(c => c.status === 'approved');
     const pending  = claims.filter(c => c.status === 'pending');
@@ -274,7 +326,7 @@ export default function MyExpenses() {
 
   function openNew() {
     pendingSectionRef.current = null;
-    setEditId(null); setFProject(''); setFSiteId(''); setFDate(today());
+    setEditId(null); setFProject(''); setFSiteId(''); setFGovernorate(''); setFDate(today());
     setFTransport(''); setFFood(''); setFExtra([]); setFNotes(''); setFEmployeeIds([]);
     setSections([]); setFSectionId('');
     setFActivityType(''); setFOtherDesc('');
@@ -285,6 +337,7 @@ export default function MyExpenses() {
   function openEdit(c: ExpenseClaim) {
     pendingSectionRef.current = c.section_id ?? null;
     setEditId(c.id); setFProject(c.project_name ?? ''); setFSiteId(c.site_id ?? '');
+    setFGovernorate(c.governorate ?? '');
     setFDate(c.activity_date ?? today());
     setFTransport(c.transport_amount != null ? String(c.transport_amount) : '');
     setFFood(c.food_amount != null ? String(c.food_amount) : '');
@@ -332,6 +385,7 @@ export default function MyExpenses() {
     setSaving(true);
     const payload = {
       member_id: memberId, project_name: fProject, site_id: fSiteId.trim(),
+      governorate: fGovernorate || null,
       section_id: fSectionId || null, section_label: finalSectionLabel,
       description: finalDesc, activity_date: fDate,
       transport_amount: parseFloat(fTransport) || 0,
@@ -570,6 +624,7 @@ export default function MyExpenses() {
                         <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_project')}</span><span className={styles.detailVal}>{detailClaim.project_name ?? '—'}</span></div>
                         <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_section')}</span><span className={styles.detailVal}>{detailClaim.section_label ?? '—'}</span></div>
                         <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_siteId')}</span><span className={`${styles.detailVal} ${styles.siteCode}`}>{detailClaim.site_id ?? '—'}</span></div>
+                        <div className={styles.detailItem}><span className={styles.detailKey}>{t('exp_governorate')}</span><span className={styles.detailVal}>{detailClaim.governorate ?? '—'}</span></div>
                       </div>
                       <div className={styles.detailItemFull}><span className={styles.detailKey}>{t('exp_colDesc')}</span><span className={styles.detailVal}>{detailClaim.description ?? '—'}</span></div>
                     </div>
@@ -700,8 +755,14 @@ export default function MyExpenses() {
                           className={`${styles.input} ${fieldErrs.siteId ? styles.inputErr : ''}`}
                           placeholder={t('exp_siteIdPlaceholder')}
                           value={fSiteId}
-                          onChange={e => { setFSiteId(e.target.value); setFieldErrs(p => ({ ...p, siteId: '' })); }}
+                          list="myexp-site-list"
+                          autoComplete="off"
+                          onChange={e => { setFSiteId(e.target.value); setFieldErrs(p => ({ ...p, siteId: '' })); autoFillGovernorate(e.target.value); }}
+                          onBlur={e => autoFillGovernorate(e.target.value)}
                         />
+                        <datalist id="myexp-site-list">
+                          {siteOptions.map(o => <option key={o} value={o} />)}
+                        </datalist>
                         {fieldErrs.siteId && <span className={styles.fieldErrMsg}>{fieldErrs.siteId}</span>}
                       </div>
                       <div className={styles.fieldGroup}>
@@ -716,6 +777,17 @@ export default function MyExpenses() {
                         </select>
                         {fieldErrs.activityType && <span className={styles.fieldErrMsg}>{fieldErrs.activityType}</span>}
                       </div>
+                    </div>
+                    <div className={styles.fieldGroup} style={{ marginBottom: 10 }}>
+                      <label className={styles.fieldLabel}>{t('exp_governorate')}</label>
+                      <select
+                        className={styles.select}
+                        value={fGovernorate}
+                        onChange={e => setFGovernorate(e.target.value)}
+                      >
+                        <option value="">{t('exp_selectGovernorate')}</option>
+                        {IRAQ_GOVERNORATES.filter(Boolean).map(g => <option key={g} value={g}>{g}</option>)}
+                      </select>
                     </div>
                     {fActivityType === 'Other' && (
                       <div className={styles.fieldGroup} style={{ marginBottom: 10 }}>
