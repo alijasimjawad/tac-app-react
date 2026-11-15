@@ -24,6 +24,25 @@
 }
 .driveBtn:hover { opacity: .88; }
 
+/* Banner states driven by the real backup_runs status */
+.autoCardWarn {
+  background: #fffbeb; border-color: #fcd34d;
+}
+.autoCardWarn .autoTitle { color: #b45309; }
+.autoCardErr {
+  background: #fef2f2; border-color: #fca5a5;
+}
+.autoCardErr .autoTitle { color: #b91c1c; }
+.autoStats {
+  display: flex; flex-wrap: wrap; gap: 6px 18px;
+  font-size: 12px; color: #475569; margin: -6px 0 12px;
+}
+.autoStats b { color: #1e293b; }
+.autoIssues {
+  font-size: 12px; color: #991b1b; margin: -6px 0 12px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+
 /* ── Card ─────────────────────────────────────────────────────── */
 .card {
   background: #fff; border: 1.5px solid #e2e8f0; border-radius: 14px;
