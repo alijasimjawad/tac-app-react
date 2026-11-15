@@ -40,6 +40,10 @@ const TM_ROLE_COLORS: Record<string, { bg: string; text: string; avatar: string 
   'PM':           { bg: '#ede9fe', text: '#5b21b6', avatar: '#7c3aed' },
   'CEO':          { bg: '#fee2e2', text: '#991b1b', avatar: '#dc2626' },
   'Engineer EHS': { bg: '#ccfbf1', text: '#134e4a', avatar: '#0d9488' },
+  'Driver':       { bg: '#fef9c3', text: '#854d0e', avatar: '#ca8a04' },
+  'WH Keeper':    { bg: '#e0f2fe', text: '#075985', avatar: '#0284c7' },
+  'Secretary':    { bg: '#fce7f3', text: '#9d174d', avatar: '#db2777' },
+  'Office Boy':   { bg: '#f3e8ff', text: '#6b21a8', avatar: '#9333ea' },
 };
 
 const TBULK_FIELDS = [
