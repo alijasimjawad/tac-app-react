@@ -44,6 +44,10 @@ const TM_ROLE_COLORS: Record<string, { bg: string; text: string; avatar: string 
   'WH Keeper':    { bg: '#e0f2fe', text: '#075985', avatar: '#0284c7' },
   'Secretary':    { bg: '#fce7f3', text: '#9d174d', avatar: '#db2777' },
   'Office Boy':   { bg: '#f3e8ff', text: '#6b21a8', avatar: '#9333ea' },
+  'Rigger':       { bg: '#fef3c7', text: '#92400e', avatar: '#d97706' },
+  'GM':           { bg: '#fecdd3', text: '#9f1239', avatar: '#e11d48' },
+  'Accounting Manager': { bg: '#d1fae5', text: '#065f46', avatar: '#059669' },
+  'Purchasing Office':  { bg: '#e0e7ff', text: '#3730a3', avatar: '#4f46e5' },
 };
 
 const TBULK_FIELDS = [
