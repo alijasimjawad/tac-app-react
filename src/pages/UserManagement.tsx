@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { PROJ_NAMES } from './NetworkScopes';
 import { logActivity } from '../lib/activityLog';
+import { ensureProjectsLoaded, getProjects } from '../lib/projectsCache';
 import { sendPushToRoles } from '../lib/pushNotify';
 import { VIEW_CORE, VIEW_DAILY_WORK, VIEW_FINANCE, VIEW_HR, VIEW_ADMIN, VIEW_WAREHOUSE, VIEW_OTHER, ACTION_DEFS, ACTION_SCOPES, LEGACY_ACTION_KEY, FIELD_ROLE_DEFAULT_KEYS, type PermDef } from '../lib/permissionsCatalog';
 import css from './UserManagement.module.css';
@@ -262,9 +263,17 @@ export default function UserManagement() {
     setTouchedPerms(new Set());
 
     // Fetch DB projects in background, then update
-    supabase.from('sections').select('project_name').neq('project_name', null).then(({ data }) => {
+    // Union of projects that have sections AND every active project from the
+    // `projects` table, so a brand-new project (no sections yet) can still be
+    // granted/revoked here.
+    Promise.all([
+      supabase.from('sections').select('project_name').neq('project_name', null),
+      ensureProjectsLoaded(),
+    ]).then(([{ data }]) => {
       if (data) {
-        const projs = [...new Set(data.map((r: { project_name: string }) => r.project_name).filter(Boolean))].sort() as string[];
+        const fromSections = data.map((r: { project_name: string }) => r.project_name);
+        const fromProjects = getProjects().filter(p => p.has_sections).map(p => p.key);
+        const projs = [...new Set([...fromSections, ...fromProjects].filter(Boolean))].sort() as string[];
         setDbProjects(projs);
         // Add any project perm keys that aren't in the initial map
         setPerms(prev => {
