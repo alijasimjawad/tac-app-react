@@ -120,6 +120,7 @@ export default function FinInvoices() {
   const [pickerIds,    setPickerIds]    = useState<Set<string>>(new Set()); // invoiced IDs to exclude in picker
   const [checkedRevs,  setCheckedRevs]  = useState<Set<string>>(new Set()); // currently-checked revenue IDs
   const [customItems,  setCustomItems]  = useState<LineItem[]>([]);
+  const [descOverrides, setDescOverrides] = useState<Record<string, string>>({}); // revenue id -> edited line description
   const [pickerLoad,   setPickerLoad]   = useState(false);
   const [pickerStatus, setPickerStatus] = useState('Select a project first');
   const [showCustForm, setShowCustForm] = useState(false);
@@ -212,13 +213,14 @@ export default function FinInvoices() {
   const totalOutstanding = totalInvoiced - totalReceived;
   const overdueCount     = invoices.filter(r => r.status === 'Overdue').length;
 
-  // Revenue line items from checked boxes
+  // Revenue line items from checked boxes (description is editable per line)
+  const defaultLineDesc = (r: RevRow) => `Site implementation — ${r.site_id}`;
   const revenueLineItems: LineItem[] = revSites
     .filter(r => checkedRevs.has(r.id))
     .map(r => ({
       site_id: r.site_id,
       section_name: r.section_name || '',
-      description: `Site implementation — ${r.site_id}`,
+      description: (descOverrides[r.id] ?? '').trim() || defaultLineDesc(r),
       amount: +(r.amount || 0),
       revenue_id: r.id,
     }));
@@ -299,6 +301,7 @@ export default function FinInvoices() {
     setRevSites([]);
     setPickerIds(new Set());
     setCheckedRevs(new Set());
+    setDescOverrides({});
     setCustomItems([]);
     setShowCustForm(false);
     setCustForm({ site: '', desc: '', amt: '' });
@@ -324,6 +327,10 @@ export default function FinInvoices() {
       if (inv?.project_name) {
         await loadPickerForProject(inv.project_name, id, false);
         setCheckedRevs(new Set(revItems.map(x => x.revenue_id!).filter(Boolean)));
+        // keep descriptions that were edited/saved earlier instead of regenerating them
+        const saved: Record<string, string> = {};
+        revItems.forEach(x => { if (x.revenue_id && x.description) saved[x.revenue_id] = x.description; });
+        setDescOverrides(saved);
       }
     } else {
       const year  = new Date().getFullYear();
@@ -342,6 +349,7 @@ export default function FinInvoices() {
     setRevSites([]);
     setPickerIds(new Set());
     setCheckedRevs(new Set());
+    setDescOverrides({});
     setCustomItems([]);
     setShowCustForm(false);
     setPickerStatus('Select a project first');
@@ -830,6 +838,7 @@ export default function FinInvoices() {
                     const p = e.target.value;
                     setInvForm(f => ({ ...f, project: p }));
                     setCheckedRevs(new Set());
+                    setDescOverrides({});
                     loadPickerForProject(p, invEditId, false);
                   }}>
                   <option value="">— Select —</option>
@@ -887,7 +896,8 @@ export default function FinInvoices() {
                               {sites.map(r => {
                                 const isInvoiced = pickerIds.has(r.id);
                                 return (
-                                  <label key={r.id}
+                                  <div key={r.id}>
+                                  <label
                                     className={`${css.pickerRow} ${isInvoiced ? css.pickerRowDisabled : ''}`}
                                     style={{ display: 'flex' }}
                                   >
@@ -906,6 +916,16 @@ export default function FinInvoices() {
                                     {isInvoiced && <span className={css.pickerInvoicedBadge}>Invoiced</span>}
                                     <span className={css.pickerAmt}>{iqd(r.amount || 0)}</span>
                                   </label>
+                                  {!isInvoiced && checkedRevs.has(r.id) && (
+                                    <div style={{ padding: '0 14px 8px 38px' }}>
+                                      <input className={css.formInput} style={{ fontSize: 12, padding: '6px 10px' }}
+                                        maxLength={200} aria-label={`Description for ${String(r.site_id || 'site')}`}
+                                        placeholder={defaultLineDesc(r)}
+                                        value={descOverrides[r.id] ?? defaultLineDesc(r)}
+                                        onChange={e => setDescOverrides(o => ({ ...o, [r.id]: e.target.value }))} />
+                                    </div>
+                                  )}
+                                  </div>
                                 );
                               })}
                             </div>
@@ -930,7 +950,9 @@ export default function FinInvoices() {
               {customItems.map(item => (
                 <div key={item._customId} className={css.customItem}>
                   <span className={css.customItemId}>{String(item.site_id || 'Custom')}</span>
-                  <span className={css.customItemDesc}>{item.description}</span>
+                  <input className={css.formInput} style={{ flex: 1, fontSize: 12, padding: '5px 9px', minWidth: 0 }}
+                    maxLength={200} aria-label="Item description" value={item.description ?? ''}
+                    onChange={e => setCustomItems(cs => cs.map(c => c._customId === item._customId ? { ...c, description: e.target.value } : c))} />
                   <span className={css.customItemAmt}>{(+(item.amount || 0)).toLocaleString()} IQD</span>
                   <button className={css.btnRemoveItem} title="Remove"
                     onClick={() => setCustomItems(cs => cs.filter(c => c._customId !== item._customId))}>✕</button>
