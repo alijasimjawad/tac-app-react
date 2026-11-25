@@ -171,6 +171,7 @@ export const ACTION_SCOPES: ActionScope[] = [
       { key: 'fin_invoices_record_payment', label: 'Record Payment' },
       { key: 'fin_invoices_download_pdf',   label: 'Download PDF' },
       { key: 'fin_invoices_add_item',       label: 'Add Line Item' },
+      { key: 'fin_invoices_settings',       label: 'Edit Invoice Settings (company, bank, terms)' },
     ],
   },
   {

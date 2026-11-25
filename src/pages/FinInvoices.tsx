@@ -4,7 +4,9 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { iqd } from '../lib/finHelpers';
 import { buildInvoiceHtml } from '../lib/invoicePrint';
-import { COMPANY } from '../lib/companyInfo';
+import { DEFAULT_COMPANY, type CompanyInfo } from '../lib/companyInfo';
+import { loadInvoiceCompany, saveInvoiceCompany, sampleInvoiceArgs } from '../lib/invoiceSettings';
+import { logActivity } from '../lib/activityLog';
 import invoiceLogo from '../assets/invoice-logo.png';
 import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
 import css from './FinBilling.module.css';
@@ -85,11 +87,11 @@ const STATUS_PILL_ACTIVE: Record<string, string> = {
 // ── Print helper ──────────────────────────────────────────────
 // The premium layout lives in src/lib/invoicePrint.ts; company details, bank
 // info and terms are edited in src/lib/companyInfo.ts.
-function printInvoice(inv: Invoice, client: Client | undefined, items: InvoiceItem[], payments: Payment[]) {
+const logoAbsUrl = () => new URL(invoiceLogo, window.location.origin).href;
+
+function printInvoice(inv: Invoice, client: Client | undefined, items: InvoiceItem[], payments: Payment[], company: CompanyInfo) {
   const html = buildInvoiceHtml({
-    invoice: inv, client, items, payments,
-    company: COMPANY,
-    logoUrl: new URL(invoiceLogo, window.location.origin).href,
+    invoice: inv, client, items, payments, company, logoUrl: logoAbsUrl(),
   });
   const w = window.open('', '_blank');
   if (w) { w.document.write(html); w.document.close(); }
@@ -136,6 +138,13 @@ export default function FinInvoices() {
   const [detailPayments, setDetailPayments] = useState<Payment[]>([]);
   const [detailLoad,     setDetailLoad]     = useState(false);
 
+  // ── Invoice settings (company / bank / terms) ─────────────
+  const [company,      setCompany]      = useState<CompanyInfo>(DEFAULT_COMPANY);
+  const [setModal,     setSetModal]     = useState(false);
+  const [setForm,      setSetForm]      = useState<CompanyInfo>(DEFAULT_COMPANY);
+  const [setErr,       setSetErr]       = useState('');
+  const [setSaving,    setSetSaving]    = useState(false);
+
   // ── Toast ─────────────────────────────────────────────────
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,6 +152,10 @@ export default function FinInvoices() {
 
   useEffect(() => {
     ensureProjectsLoaded().then(() => setFinProjects(getProjectNames()));
+  }, []);
+
+  useEffect(() => {
+    loadInvoiceCompany().then(setCompany);
   }, []);
 
   if (!hasPerm('view_fin_invoices')) return <div className={css.errorMsg}>Access denied.</div>;
@@ -456,6 +469,47 @@ export default function FinInvoices() {
     setDetailLoad(false);
   }
 
+  // ── Invoice settings handlers ─────────────────────────────
+  function openSettings() {
+    setSetForm({ ...company, bank: { ...company.bank }, terms: [...company.terms] });
+    setSetErr('');
+    setSetModal(true);
+  }
+  const setField = (k: 'nameEn' | 'nameAr' | 'address' | 'phone' | 'email' | 'website', v: string) =>
+    setSetForm(f => ({ ...f, [k]: v }));
+  const setBank = (k: keyof CompanyInfo['bank'], v: string) =>
+    setSetForm(f => ({ ...f, bank: { ...f.bank, [k]: v } }));
+  const setTerm = (i: number, v: string) =>
+    setSetForm(f => ({ ...f, terms: f.terms.map((t, idx) => idx === i ? v : t) }));
+  const addTerm = () => setSetForm(f => ({ ...f, terms: [...f.terms, ''] }));
+  const removeTerm = (i: number) => setSetForm(f => ({ ...f, terms: f.terms.filter((_, idx) => idx !== i) }));
+  function resetSettingsForm() {
+    if (!window.confirm('Reset the form to the built-in defaults? (Nothing is saved until you click Save.)')) return;
+    setSetForm({ ...DEFAULT_COMPANY, bank: { ...DEFAULT_COMPANY.bank }, terms: [...DEFAULT_COMPANY.terms] });
+  }
+  function previewSettings() {
+    const html = buildInvoiceHtml(sampleInvoiceArgs(setForm, logoAbsUrl()));
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+  }
+  async function saveSettings() {
+    if (!setForm.nameEn.trim()) { setSetErr('Company name (English) is required.'); return; }
+    setSetErr('');
+    setSetSaving(true);
+    const { error, saved } = await saveInvoiceCompany(setForm);
+    setSetSaving(false);
+    if (error) { setSetErr('Could not save: ' + error); return; }
+    setCompany(saved);
+    setSetModal(false);
+    showToast('Invoice settings saved.', true);
+    logActivity({
+      userFullName: currentUser?.full_name ?? currentUser?.username,
+      action: 'Edit Invoice Settings',
+      sectionName: 'Invoices',
+      details: 'Updated company details, bank details and terms printed on invoices',
+    });
+  }
+
   // ── Filtered invoices ─────────────────────────────────────
   const filteredInvoices = statusFilter ? invoices.filter(i => i.status === statusFilter) : invoices;
 
@@ -475,6 +529,12 @@ export default function FinInvoices() {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             Refresh
           </button>
+          {hasPerm('fin_invoices_settings') && (
+            <button className={css.btnGhost} onClick={openSettings} title="Company details, bank details and terms printed on invoices">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              Invoice Settings
+            </button>
+          )}
           {hasPerm('fin_invoices_add') && (
             <button className={css.btnAccent} onClick={() => openInvModal(null)}>+ New Invoice</button>
           )}
@@ -596,7 +656,7 @@ export default function FinInvoices() {
                               const client2 = clients.find(c => c.id === inv.client_id);
                               const invItems = items.filter(x => x.invoice_id === inv.id);
                               const invPayments = payments.filter(x => x.invoice_id === inv.id);
-                              printInvoice(inv, client2, invItems, invPayments);
+                              printInvoice(inv, client2, invItems, invPayments, company);
                             }} style={{ color: '#7c3aed' }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
                             </button>
@@ -660,6 +720,90 @@ export default function FinInvoices() {
             ))}
           </div>
       }
+
+      {/* Invoice Settings Modal */}
+      {setModal && createPortal(
+        <div className={css.overlay} onClick={e => { if (e.target === e.currentTarget) setSetModal(false); }}>
+          <div className={`${css.modal} ${css.modalLg}`}>
+            <div className={css.modalTitle}>Invoice Settings</div>
+            <div className={css.setHint}>These details are printed on every invoice. Leave a field blank to hide it.</div>
+
+            <div className={css.setSecTitle}>Company Details</div>
+            <div className={css.formGrid}>
+              <div className={css.formField}>
+                <label>Company name (English) *</label>
+                <input className={css.formInput} maxLength={120} value={setForm.nameEn} onChange={e => setField('nameEn', e.target.value)} />
+              </div>
+              <div className={css.formField}>
+                <label>Company name (Arabic)</label>
+                <input className={css.formInput} dir="rtl" maxLength={120} value={setForm.nameAr} onChange={e => setField('nameAr', e.target.value)} />
+              </div>
+              <div className={`${css.formField} ${css.span2}`}>
+                <label>Address</label>
+                <input className={css.formInput} maxLength={300} placeholder="Street, city, country" value={setForm.address} onChange={e => setField('address', e.target.value)} />
+              </div>
+              <div className={css.formField}>
+                <label>Phone</label>
+                <input className={css.formInput} maxLength={60} value={setForm.phone} onChange={e => setField('phone', e.target.value)} />
+              </div>
+              <div className={css.formField}>
+                <label>Email</label>
+                <input className={css.formInput} maxLength={120} value={setForm.email} onChange={e => setField('email', e.target.value)} />
+              </div>
+              <div className={`${css.formField} ${css.span2}`}>
+                <label>Website</label>
+                <input className={css.formInput} maxLength={120} value={setForm.website} onChange={e => setField('website', e.target.value)} />
+              </div>
+            </div>
+
+            <div className={css.setSecTitle}>Bank / Payment Details</div>
+            <div className={css.formGrid}>
+              <div className={css.formField}>
+                <label>Bank name</label>
+                <input className={css.formInput} maxLength={120} value={setForm.bank.bankName} onChange={e => setBank('bankName', e.target.value)} />
+              </div>
+              <div className={css.formField}>
+                <label>Account name</label>
+                <input className={css.formInput} maxLength={120} value={setForm.bank.accountName} onChange={e => setBank('accountName', e.target.value)} />
+              </div>
+              <div className={css.formField}>
+                <label>Account number</label>
+                <input className={css.formInput} maxLength={60} value={setForm.bank.accountNumber} onChange={e => setBank('accountNumber', e.target.value)} />
+              </div>
+              <div className={css.formField}>
+                <label>IBAN</label>
+                <input className={css.formInput} maxLength={60} value={setForm.bank.iban} onChange={e => setBank('iban', e.target.value)} />
+              </div>
+              <div className={css.formField}>
+                <label>SWIFT</label>
+                <input className={css.formInput} maxLength={30} value={setForm.bank.swift} onChange={e => setBank('swift', e.target.value)} />
+              </div>
+            </div>
+
+            <div className={css.setSecTitle}>Terms &amp; Conditions</div>
+            {setForm.terms.length === 0 && <div className={css.setHint}>No terms — the Terms block is hidden on invoices.</div>}
+            {setForm.terms.map((t, i) => (
+              <div key={i} className={css.termRow}>
+                <span className={css.termNum}>{i + 1}.</span>
+                <input className={css.formInput} maxLength={300} value={t} onChange={e => setTerm(i, e.target.value)} />
+                <button type="button" className={css.actBtn} title="Remove" onClick={() => removeTerm(i)}>✕</button>
+              </div>
+            ))}
+            {setForm.terms.length < 12 && (
+              <button type="button" className={css.btnGhost} style={{ marginTop: 6 }} onClick={addTerm}>+ Add term</button>
+            )}
+
+            {setErr && <div className={css.modalErr}>{setErr}</div>}
+            <div className={css.modalActions}>
+              <button className={css.btnGhost} onClick={resetSettingsForm} style={{ marginRight: 'auto' }}>Reset to defaults</button>
+              <button className={css.btnGhost} onClick={previewSettings}>Preview</button>
+              <button className={css.btnCancel} onClick={() => setSetModal(false)}>Cancel</button>
+              <button className={css.btnSave} onClick={saveSettings} disabled={setSaving}>{setSaving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       {/* Invoice Modal */}
       {invModal && createPortal(
@@ -933,7 +1077,7 @@ export default function FinInvoices() {
                 <button className={css.btnPurple} onClick={() => {
                   const invItems = items.filter(x => x.invoice_id === detailInv.id);
                   const invPays  = payments.filter(x => x.invoice_id === detailInv.id);
-                  printInvoice(detailInv, detailClient, invItems, invPays);
+                  printInvoice(detailInv, detailClient, invItems, invPays, company);
                 }}>📄 PDF</button>
               )}
               {hasPerm('fin_invoices_record_payment') && (

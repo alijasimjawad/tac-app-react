@@ -1,9 +1,10 @@
-// ── Company details printed on invoices ─────────────────────────────────────
+// ── Default company details printed on invoices ─────────────────────────────
 //
-// Edit the values below to change what appears on every printed invoice.
-// Any field left as '' is simply hidden on the invoice — nothing breaks, no
-// empty boxes are drawn. The bank block is shown only when at least one bank
-// field is filled in; the terms block only when `terms` is non-empty.
+// These are only the DEFAULTS. Admins change the real values from the app
+// (Invoices → Invoice Settings); those are saved in the app_settings table
+// and take priority — see lib/invoiceSettings.ts. Any field left blank is
+// simply hidden on the invoice. The bank block is shown only when at least one
+// bank field is filled in; the terms block only when `terms` is non-empty.
 
 export interface CompanyInfo {
   nameEn:  string;
@@ -22,7 +23,7 @@ export interface CompanyInfo {
   terms: string[];
 }
 
-export const COMPANY: CompanyInfo = {
+export const DEFAULT_COMPANY: CompanyInfo = {
   nameEn:  'Tareeq Al-Ahmadi Company',
   nameAr:  'شركة طريق الأحمدي',
   address: '',
@@ -43,3 +44,6 @@ export const COMPANY: CompanyInfo = {
     'Any discrepancy must be reported within 7 days of receiving this invoice.',
   ],
 };
+
+/** @deprecated use DEFAULT_COMPANY — kept so older imports keep compiling. */
+export const COMPANY = DEFAULT_COMPANY;
