@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { iqd } from '../lib/finHelpers';
+import { buildInvoiceHtml } from '../lib/invoicePrint';
+import { COMPANY } from '../lib/companyInfo';
+import invoiceLogo from '../assets/invoice-logo.png';
 import { ensureProjectsLoaded, getProjectNames } from '../lib/projectsCache';
 import css from './FinBilling.module.css';
 
@@ -80,84 +83,14 @@ const STATUS_PILL_ACTIVE: Record<string, string> = {
 };
 
 // ── Print helper ──────────────────────────────────────────────
+// The premium layout lives in src/lib/invoicePrint.ts; company details, bank
+// info and terms are edited in src/lib/companyInfo.ts.
 function printInvoice(inv: Invoice, client: Client | undefined, items: InvoiceItem[], payments: Payment[]) {
-  const outstanding = (+inv.total_amount || 0) - (+inv.amount_received || 0);
-  const statusColor = STATUS_TEXT[inv.status] || '#475569';
-  const statusBg    = STATUS_COLOR[inv.status] || '#f1f5f9';
-  const fmt = (v: number | null | undefined) => (+(v ?? 0)).toLocaleString('en-IQ') + ' IQD';
-  const e   = (s: string | null | undefined) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const itemsRows = items.length === 0
-    ? '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:16px">No line items.</td></tr>'
-    : items.map((item, i) => `<tr style="background:${i % 2 === 0 ? '#fff' : '#f8fafc'}">
-        <td>${e(item.section_name)}</td>
-        <td style="font-weight:600">${e(String(item.site_id || '—'))}</td>
-        <td style="color:#64748b">${e(item.description)}</td>
-        <td style="text-align:right;font-weight:700">${fmt(item.amount)}</td>
-      </tr>`).join('');
-  const payRows = payments.length === 0
-    ? '<tr><td colspan="3" style="text-align:center;color:#94a3b8;padding:12px">No payments recorded.</td></tr>'
-    : payments.map(p => `<tr>
-        <td>${e(p.payment_date)}</td>
-        <td style="font-weight:700;color:#16a34a">${fmt(p.amount)}</td>
-        <td style="color:#64748b">${e(p.reference || '')}${p.notes ? ' · ' + e(p.notes) : ''}</td>
-      </tr>`).join('');
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>Invoice ${e(inv.invoice_number)}</title>
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size:13px; color:#1e293b; background:#fff; padding:32px; }
-    @media print { body { padding:16px; } @page { margin:12mm; } }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:32px; padding-bottom:20px; border-bottom:2px solid #e2e8f0; }
-    .brand { font-size:22px; font-weight:900; color:#2563eb; letter-spacing:-0.5px; }
-    .brand-sub { font-size:11px; color:#94a3b8; margin-top:2px; }
-    .inv-meta { text-align:right; }
-    .inv-number { font-size:20px; font-weight:800; color:#1e293b; }
-    .status-badge { display:inline-block; padding:2px 12px; border-radius:20px; font-size:11px; font-weight:700; margin-top:4px; background:${statusBg}; color:${statusColor}; }
-    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:28px; }
-    .info-box h4 { font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.8px; margin-bottom:6px; }
-    .info-box p { font-size:13px; color:#334155; line-height:1.6; }
-    .info-box strong { color:#1e293b; font-weight:700; }
-    table { width:100%; border-collapse:collapse; margin-bottom:24px; }
-    th { background:#f1f5f9; font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.5px; padding:8px 12px; text-align:left; border-bottom:1px solid #e2e8f0; }
-    td { padding:9px 12px; border-bottom:1px solid #f1f5f9; color:#334155; }
-    .section-title { font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px; margin-top:20px; }
-    .totals-box { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
-    .tot-item { text-align:center; }
-    .tot-label { font-size:11px; color:#94a3b8; margin-bottom:3px; text-transform:uppercase; letter-spacing:.5px; }
-    .tot-value { font-size:16px; font-weight:800; }
-    .notes { margin-top:24px; font-size:12px; color:#64748b; font-style:italic; border-top:1px solid #e2e8f0; padding-top:12px; }
-    .footer { margin-top:36px; padding-top:14px; border-top:1px solid #e2e8f0; font-size:11px; color:#94a3b8; text-align:center; }
-  </style></head><body>
-  <div class="header">
-    <div><div class="brand">TAC Network</div><div class="brand-sub">Telecom Infrastructure Management</div></div>
-    <div class="inv-meta">
-      <div class="inv-number">${e(inv.invoice_number)}</div>
-      <div class="status-badge">${e(inv.status || 'Draft')}</div>
-    </div>
-  </div>
-  <div class="grid-2">
-    <div class="info-box">
-      <h4>Bill To</h4>
-      <p><strong>${e(client?.company_name)}</strong>${client?.contact_person ? '<br>' + e(client.contact_person) : ''}${client?.email ? '<br>' + e(client.email) : ''}${client?.phone ? '<br>' + e(client.phone) : ''}${client?.address ? '<br>' + e(client.address) : ''}</p>
-    </div>
-    <div class="info-box" style="text-align:right">
-      <h4>Invoice Details</h4>
-      <p>Project: <strong>${e(inv.project_name)}</strong><br>Issue Date: <strong>${e(inv.issue_date)}</strong><br>Due Date: <strong>${e(inv.due_date)}</strong></p>
-    </div>
-  </div>
-  <div class="section-title">Line Items</div>
-  <table><thead><tr><th>Section</th><th>Site ID</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>${itemsRows}</tbody></table>
-  <div class="section-title">Payment History</div>
-  <table><thead><tr><th>Date</th><th>Amount</th><th>Reference / Notes</th></tr></thead><tbody>${payRows}</tbody></table>
-  <div class="totals-box">
-    <div class="tot-item"><div class="tot-label">Total Invoiced</div><div class="tot-value" style="color:#1e293b">${fmt(inv.total_amount)}</div></div>
-    <div class="tot-item"><div class="tot-label">Received</div><div class="tot-value" style="color:#16a34a">${fmt(inv.amount_received)}</div></div>
-    <div class="tot-item"><div class="tot-label">Outstanding</div><div class="tot-value" style="color:${outstanding > 0 ? '#dc2626' : '#16a34a'}">${fmt(outstanding)}</div></div>
-  </div>
-  ${inv.notes ? `<div class="notes">Notes: ${e(inv.notes)}</div>` : ''}
-  <div class="footer">Generated by TAC Network Tracker &nbsp;·&nbsp; ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-  <script>window.onload = function(){ window.print(); }<\/script>
-  </body></html>`;
+  const html = buildInvoiceHtml({
+    invoice: inv, client, items, payments,
+    company: COMPANY,
+    logoUrl: new URL(invoiceLogo, window.location.origin).href,
+  });
   const w = window.open('', '_blank');
   if (w) { w.document.write(html); w.document.close(); }
 }
